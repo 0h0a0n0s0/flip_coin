@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Flip Coin Game</title>
+
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/notyf@3/notyf.min.css">
+  
+  <link rel="stylesheet" href="style.css">
+
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/ethers/6.7.0/ethers.umd.min.js" integrity="sha512-bLwLr3lzJN1cvtbClBMhKDyaD0uocWmphiqO8v0w3/z/XqUwzkM00gZq7BV3dQS9mQu0rarZMTsxlcnIHszElA==" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+  
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.7.2/socket.io.min.js" integrity="sha512-Xm9qbB6Pu06k3PUwPj785dyTl6oHxgsv9nHp7ej7nCpAqGZT3OZpsELuCYX05DdonFpTlBpXMOxjavIAIUwr0w==" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+
+</head>
+<body>
+
+  <header>
+    <h1>Flip Coin Game</h1>
+    <div>
+      <span id="userIdDisplay" style="display: none;"></span>
+      <span id="userWalletAddressDisplay" style="display: none;"></span>
+      
+      <button id="logoutBtn" style="display: none;">登出</button>
+      
+      <button id="connectWalletBtn">连接钱包 / 注册</button>
+    </div>
+  </header>
+
+  <main>
+    <section id="gameSection">
+          
+      <div class="game-header-container">
+        <h2>Flip Coin</h2> 
+        
+        <div class="streak-info-container">
+            <span id="userStreakDisplay"></span> 
+            <span id="userMaxStreakDisplay"></span> 
+        </div>
+      </div>
+        
+        <div class="coin-container">
+            <div id="coin-flipper" class="coin">
+              <div class="coin-front"></div>
+              <div class="coin-back"></div>
+            </div>
+          </div>
+          
+          <label><input type="radio" name="flipChoice" value="head"> 正面</label>
+          <label><input type="radio" name="flipChoice" value="tail"> 反面</label><br>
+          <input type="number" id="betAmount" placeholder="下注金额 (ETH)" step="0.001">
+          <button id="confirmBetBtn">确认下注</button>
+      </section>
+
+      <section id="leaderboardSection">
+        <h2>🏆 最高連勝排行榜</h2>
+        <ol id="leaderboardList"> 
+            <li>Loading...</li>
+        </ol>
+    </section>      
+
+      <section id="historySection">
+          <h2>投注历史</h2>
+          <ul id="historyList">
+            <li>连接钱包以查看历史记录</li>
+          </ul>
+      </section>
+  </main>
+
+  <script src="https://cdn.jsdelivr.net/npm/notyf@3/notyf.min.js"></script>
+
+  <script type="module" src="app.js"></script>
+
+</body>
+</html>

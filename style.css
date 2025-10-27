@@ -1,0 +1,422 @@
+body {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  background-color: #f4f7f6;
+  color: #333;
+  margin: 0;
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+header {
+  width: 100%;
+  max-width: 800px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 30px;
+}
+
+header h1 {
+  margin: 0;
+  color: #1a1a1a;
+}
+
+header div {
+  display: flex;
+  align-items: center;
+  gap: 15px; /* Controls spacing between header items */
+}
+
+#userIdDisplay {
+  font-size: 14px;
+  background-color: #eee;
+  padding: 8px 12px;
+  border-radius: 6px;
+  font-weight: 500;
+}
+
+/* Added for wallet address display */
+#userWalletAddressDisplay {
+  font-family: monospace; /* Better for addresses */
+  font-size: 14px;
+  background-color: #eee;
+  padding: 8px 12px;
+  border-radius: 6px;
+  font-weight: 500;
+}
+
+button, #connectWalletBtn, #logoutBtn {
+  background-color: #007aff;
+  color: white;
+  border: none;
+  padding: 10px 15px;
+  border-radius: 8px;
+  font-size: 16px;
+  cursor: pointer;
+  transition: background-color 0.2s ease;
+}
+
+button:hover, #connectWalletBtn:hover, #logoutBtn:hover {
+  background-color: #0056b3;
+}
+
+button:disabled {
+  background-color: #999;
+  cursor: not-allowed;
+}
+
+#logoutBtn {
+  background-color: #777; /* Slightly different color for logout */
+}
+#logoutBtn:hover {
+  background-color: #555;
+}
+
+main {
+  display: flex;
+  flex-direction: column;
+  gap: 30px;
+  width: 100%;
+  max-width: 800px;
+}
+
+section {
+  background-color: #ffffff;
+  border-radius: 12px;
+  padding: 25px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
+}
+
+/* --- ★★★ h2 style MODIFIED (border removed) ★★★ --- */
+h2 {
+  margin-top: 0;
+  margin-bottom: 0; /* Adjusted margin */
+  color: #1a1a1a; /* Match header h1 color */
+}
+
+input[type="number"] {
+  padding: 10px;
+  font-size: 16px;
+  border: 1px solid #ccc;
+  border-radius: 8px;
+  margin-right: 10px;
+}
+
+input[type="radio"] {
+  margin-right: 5px;
+}
+
+label {
+  margin-right: 15px;
+  font-size: 18px;
+}
+
+#historyList {
+  list-style-type: none;
+  padding-left: 0;
+  max-height: 300px;
+  overflow-y: auto;
+}
+
+#historyList li {
+  background-color: #f9f9f9;
+  padding: 12px;
+  border-bottom: 1px solid #eee;
+  font-family: "SF Mono", "Courier New", monospace;
+  font-size: 14px;
+}
+
+#historyList li:last-child {
+  border-bottom: none;
+}
+#historyList a {
+  color: #007aff;
+  text-decoration: none;
+}
+#historyList a:hover {
+  text-decoration: underline;
+}
+
+
+/* --- ★★★ Coin Flip Animation (Should already exist) ★★★ --- */
+
+.coin-container {
+width: 150px;
+height: 150px;
+perspective: 1000px;
+margin: 30px auto;
+}
+
+.coin {
+width: 100%;
+height: 100%;
+position: relative;
+transform-style: preserve-3d;
+transition: transform 0.8s;
+}
+
+.coin.flipping {
+animation: flip 1.5s infinite linear;
+}
+
+.coin.show-head {
+transform: rotateY(0deg);
+}
+
+.coin.show-tail {
+transform: rotateY(1800deg);
+}
+
+
+.coin-front, .coin-back {
+position: absolute;
+width: 100%;
+height: 100%;
+-webkit-backface-visibility: hidden;
+backface-visibility: hidden;
+border-radius: 50%;
+box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
+}
+
+.coin-front {
+background-color: #ffd700;
+background-image: url('https://i.imgur.com/KydL1m2.png');
+background-size: 60%;
+background-repeat: no-repeat;
+background-position: center;
+}
+
+.coin-back {
+background-color: #c0c0c0;
+background-image: url('https://i.imgur.com/KxT5GjQ.png');
+background-size: 60%;
+background-repeat: no-repeat;
+background-position: center;
+transform: rotateY(180deg);
+}
+
+@keyframes flip {
+from { transform: rotateY(0deg); }
+to { transform: rotateY(360deg); }
+}
+
+
+/* --- ★★★ NEW Styles for Header Layout ★★★ --- */
+
+/* New game header container */
+.game-header-container {
+  display: flex;
+  justify-content: space-between; /* Push items to ends */
+  align-items: center; /* Vertically align items */
+  
+  /* Styles moved from h2 */
+  border-bottom: 2px solid #eee;
+  padding-bottom: 15px;
+  margin-bottom: 20px; /* Space below header */
+}
+
+/* New streak info container */
+.streak-info-container {
+  display: flex;
+  flex-direction: row;       /* ★★★ 改為 row (水平排列) ★★★ */
+  gap: 15px;                 /* ★★★ 調整左右間距 ★★★ */
+  align-items: center;       /* ★★★ 垂直居中對齊 ★★★ */
+}
+
+/* Base styles for streak spans (moved from index.html) */
+#userStreakDisplay,
+#userMaxStreakDisplay {
+    padding: 8px 12px;
+    border-radius: 6px;
+    font-weight: 500;
+    font-size: 14px;
+    display: none; 
+    white-space: nowrap; 
+}
+/* ★★★ 新增：為連勝/連敗 span 添加固定寬度和居中 ★★★ */
+#userStreakDisplay {
+  min-width: 80px; /* 保留至少 80px 寬度 */
+  text-align: center; /* 文字居中 */
+}
+
+/* ★★★ 新增：為最高連勝 span 移除背景（覆蓋預設）★★★ */
+#userMaxStreakDisplay {
+  /* background-color: transparent !important; */ /* <-- 刪除或註解掉這行 */
+  background-color: #f8f8e0; /* ★★★ 還原預設的黃色背景 ★★★ */
+  color: #646400; /* ★★★ 還原預設的文字顏色 ★★★ */
+}
+
+/* 排行榜區塊 */
+#leaderboardSection {
+  /* (可以根據需要添加額外樣式) */
+}
+
+/* 排行榜列表 */
+#leaderboardList {
+  padding-left: 25px; /* 為排名數字留出空間 */
+  font-size: 15px;
+}
+
+#leaderboardList li {
+  padding: 10px 0;
+  border-bottom: 1px solid #eee;
+  display: flex; /* 使用 flex 方便排版 */
+  justify-content: space-between; /* 將地址推到右側 */
+  align-items: center;
+}
+#leaderboardList li:last-child {
+  border-bottom: none;
+}
+
+#leaderboardList .address {
+  font-family: monospace;
+  color: #666;
+  margin-left: 15px; /* 與連勝紀錄分開 */
+}
+
+
+/* --- ★★★ Responsive Design (RWD) ★★★ --- */
+
+/* --- Tablet Breakpoint (<= 768px) --- */
+@media (max-width: 768px) {
+  body {
+      padding: 15px; /* 減少頁面邊距 */
+  }
+
+  header {
+      flex-direction: column; /* Header 內容垂直堆疊 */
+      align-items: flex-start; /* 左對齊 */
+      gap: 15px;
+      margin-bottom: 20px;
+  }
+
+  header h1 {
+      font-size: 24px; /* 縮小標題字體 */
+  }
+
+  /* 讓 Header 右側按鈕區塊也堆疊 */
+  header div {
+      flex-wrap: wrap; /* 允許換行 */
+      gap: 10px;
+  }
+
+  main {
+      gap: 20px; /* 減少區塊間距 */
+  }
+
+  section {
+      padding: 20px; /* 減少區塊內邊距 */
+  }
+
+  /* 遊戲標題區塊調整 */
+  .game-header-container {
+      flex-direction: column; /* 垂直堆疊 */
+      align-items: flex-start; /* 左對齊 */
+      gap: 10px; /* 增加間距 */
+      padding-bottom: 10px;
+  }
+  .streak-info-container {
+      flex-direction: row; /* 在平板上保持水平 */
+      gap: 10px;
+  }
+   #userStreakDisplay, #userMaxStreakDisplay {
+      font-size: 13px; /* 稍小字體 */
+      padding: 6px 10px;
+   }
+   h2 { /* 恢復一些底部間距 */
+      margin-bottom: 10px;
+   }
+
+
+  /* 投注歷史列表 */
+  #historyList {
+      max-height: 250px; /* 稍微減小高度 */
+  }
+}
+
+
+/* --- Mobile Breakpoint (<= 480px) --- */
+@media (max-width: 480px) {
+  body {
+      padding: 10px;
+  }
+
+  header h1 {
+      font-size: 20px;
+  }
+
+  header div {
+      width: 100%; /* 讓按鈕區塊佔滿寬度 */
+      justify-content: space-between; /* 將按鈕推向兩側 */
+  }
+  #userIdDisplay, #userWalletAddressDisplay {
+     flex-grow: 1; /* 允許文字區塊伸展 */
+     text-align: center; /* 文字居中 */
+     margin: 0 5px; /* 增加左右邊距 */
+  }
+  button, #connectWalletBtn, #logoutBtn {
+      padding: 8px 12px;
+      font-size: 14px;
+  }
+
+  section {
+      padding: 15px;
+  }
+
+  /* 遊戲區塊 */
+  .game-header-container h2 {
+      font-size: 18px; /* 縮小遊戲標題 */
+  }
+  .streak-info-container {
+      gap: 8px; /* 縮小連勝間距 */
+  }
+   #userStreakDisplay, #userMaxStreakDisplay {
+      font-size: 12px;
+      padding: 5px 8px;
+   }
+
+  .coin-container {
+      width: 100px; /* 縮小硬幣 */
+      height: 100px;
+      margin: 20px auto;
+  }
+
+  /* 投注選項和按鈕 */
+  #gameSection label {
+      font-size: 16px;
+  }
+  #gameSection input[type="number"] {
+      width: calc(100% - 110px); /* 讓輸入框適應寬度 */
+      font-size: 14px;
+      margin-right: 5px;
+  }
+  #gameSection button {
+      width: 90px; /* 固定按鈕寬度 */
+  }
+
+  /* 排行榜 */
+  #leaderboardSection h2 {
+       font-size: 18px;
+  }
+  #leaderboardList {
+      padding-left: 20px;
+      font-size: 13px;
+  }
+  #leaderboardList li {
+      padding: 8px 0;
+  }
+
+  /* 投注歷史 */
+  #historySection h2 {
+       font-size: 18px;
+  }
+  #historyList {
+      max-height: 200px; /* 進一步減小高度 */
+      font-size: 12px;
+  }
+  #historyList li {
+      padding: 10px;
+  }
+}

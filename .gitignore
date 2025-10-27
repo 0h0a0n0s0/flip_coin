@@ -1,0 +1,21 @@
+# 環境變數檔案 (包含私鑰、RPC URL 等)
+.env
+
+# Node.js 依賴資料夾 (非常龐大，不需要上傳)
+backend/node_modules/
+
+# 作業系統產生的檔案
+.DS_Store
+Thumbs.db
+
+# IDE 或編輯器設定檔 (例如 VS Code)
+.vscode/
+
+# Docker Volume 資料 (通常不需要上傳，除非有特殊需求)
+# 如果您未來有其他 volume，也加進來
+# postgres_data/ # (通常 Docker volume 不在專案目錄下，但以防萬一)
+
+# 建構輸出或日誌檔 (如果有的話)
+# build/
+# dist/
+# *.log

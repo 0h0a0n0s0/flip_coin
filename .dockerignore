@@ -1,0 +1,15 @@
+# 忽略 Python 虛擬環境
+venv
+.venv
+
+# 忽略 Git 相關檔案
+.git
+.gitignore
+
+# 忽略 Python 快取
+__pycache__
+*.pyc
+
+# 忽略 Docker 相關檔案
+Dockerfile
+.dockerignore
