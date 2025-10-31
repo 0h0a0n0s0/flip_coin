@@ -1,38 +1,65 @@
-# docker-compose.yml
-version: '3.8' # 指定 docker-compose 文件版本
+# docker-compose.yml (修改)
+version: '3.8' 
 
 services:
-  # 後端 API 服務
+  # 後端 API 服務 (v1)
   api:
-    build: ./backend # 指示 Docker Compose 使用 backend 資料夾中的 Dockerfile 來建構映像
+    build: ./backend 
     container_name: flipcoin-api
     ports:
-      - "3000:3000" # 將本機的 3000 port 映射到容器的 3000 port
+      - "3000:3000" 
     volumes:
-      - ./backend:/usr/src/app # 將本地的 backend 資料夾同步到容器中，方便開發時即時更新程式碼
-      - /usr/src/app/node_modules # 避免本地的 node_modules 覆蓋容器中的
+      - ./backend:/usr/src/app
+      - /usr/src/app/node_modules
+      # (★★★ 修正：掛載 v1 檔案到容器內的 /usr/src/app/v1_frontend ★★★)
+      - ./index.html:/usr/src/app/v1_frontend/index.html
+      - ./app.js:/usr/src/app/v1_frontend/app.js
+      - ./style.css:/usr/src/app/v1_frontend/style.css
+      - ./config.js:/usr/src/app/v1_frontend/config.js
+      - ./modules:/usr/src/app/v1_frontend/modules
+      - ./403.html:/usr/src/app/v1_frontend/403.html
     depends_on:
-      - db # 確保 db 服務先於 api 服務啟動
+      - db 
     env_file:
-      - .env  # 環境變數檔案
+      - .env  
     environment:
       - DATABASE_URL=postgres://game_user:game_password@db:5432/flipcoin_db
     restart: unless-stopped
 
-  # 資料庫服務
+  # 資料庫服務 (v1)
   db:
-    image: postgres:14-alpine # 使用官方的 PostgreSQL 映像
+    image: postgres:14-alpine 
     container_name: flipcoin-db
     environment:
-      POSTGRES_USER: game_user # 設定資料庫使用者
-      POSTGRES_PASSWORD: game_password # 設定資料庫密碼
-      POSTGRES_DB: flipcoin_db # 設定資料庫名稱
+      POSTGRES_USER: game_user 
+      POSTGRES_PASSWORD: game_password 
+      POSTGRES_DB: flipcoin_db 
     ports:
-      - "5432:5432" # 將本機的 5432 port 映射到容器的 5432 port
+      - "5432:5432" 
     volumes:
-      - postgres_data:/var/lib/postgresql/data # 持久化資料庫資料
-      - ./init.sql:/docker-entrypoint-initdb.d/init.sql # 專案啟動時執行的初始化 SQL 檔案
+      - postgres_data:/var/lib/postgresql/data 
+      - ./init.sql:/docker-entrypoint-initdb.d/init.sql 
+    restart: unless-stopped
+
+  # (v2 修改) 後台前端 UI 服務
+  admin-ui:
+    build: ./admin-ui 
+    container_name: flipcoin-admin-ui
+    # (★★★ 刪除 ports ★★★)
+    # 移除 ports: - "8080:80"
+    # 因為 Nginx 將會代理它，它不需要對外開放
+    restart: unless-stopped
+
+  # (v2 新增) Nginx 代理服務
+  nginx:
+    build: ./nginx # 指向我們剛才建立的 nginx 資料夾
+    container_name: flipcoin-proxy
+    ports:
+      - "8080:80" # (★★★ 關鍵 ★★★) 瀏覽器訪問 8080
+    depends_on:
+      - api        # 確保 Nginx 在 api 之後啟動
+      - admin-ui   # 確保 Nginx 在 admin-ui 之後啟動
     restart: unless-stopped
 
 volumes:
-  postgres_data: # 定義一個 volume 來儲存資料庫資料，防止容器關閉後資料遺失
+  postgres_data:

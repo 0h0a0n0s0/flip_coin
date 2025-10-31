@@ -19,3 +19,8 @@ Thumbs.db
 # build/
 # dist/
 # *.log
+
+# (★★★ v2 新增 ★★★)
+admin-ui/node_modules/
+admin-ui/dist/
+admin-ui/vue.config.js # (如果您不希望 .env 檔案 被上傳)

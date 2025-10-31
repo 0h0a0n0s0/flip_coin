@@ -1,6 +1,6 @@
 // modules/api.js
 
-const API_BASE_URL = 'http://localhost:3000/api'; // 我們的後端 API 地址
+const API_BASE_URL = '/api'; // (不再寫死 localhost:3000)
 
 // 統一的錯誤處理和請求函數
 async function request(endpoint, options = {}) {
@@ -71,4 +71,17 @@ export function getHistory(walletAddress) {
  */
 export function getLeaderboard() {
     return request('/leaderboard'); 
+}
+
+/**
+ * ★★★ 新增：更新用戶昵稱 ★★★
+ * @param {string} walletAddress 
+ * @param {string} nickname
+ * @returns {Promise<object>}
+ */
+export function updateNickname(walletAddress, nickname) {
+    return request('/users/nickname', {
+        method: 'PATCH',
+        body: JSON.stringify({ walletAddress, nickname }),
+    });
 }

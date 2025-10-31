@@ -2,7 +2,7 @@
 // ★★★ 導入 WalletService，移除 game.js ★★★
 import { BrowserExtensionWalletService } from './modules/BrowserExtensionWalletService.js'; 
 import { renderHistory } from './modules/history.js';
-import { registerOrLogin, getLeaderboard, placeBet } from './modules/api.js'; // <-- 導入 placeBet
+import { registerOrLogin, getLeaderboard, placeBet, updateNickname } from './modules/api.js';
 import { SUPPORTED_CHAIN_ID, GAME_WALLET_ADDRESS } from './config.js';
 
 // --- Notyf 實例化 (完整且正確的版本) ---
@@ -29,6 +29,7 @@ let currentAccount = null;
 let currentUser = null;
 let socket = null;
 let connectWalletBtn, logoutBtn, confirmBetBtn, userIdDisplay, betAmountInput, userWalletAddressDisplay, userStreakDisplay, userMaxStreakDisplay;
+let userNicknameDisplay, editNicknameBtn, nicknameModal, closeNicknameModalBtn, cancelNicknameBtn, confirmNicknameBtn, nicknameInput;
 
 // --- 遮罩 ---
 function showNetworkOverlay(message) {
@@ -67,15 +68,20 @@ function initializeSocket(walletAddress) {
         console.log('[Socket.io] Received bet update:', betData);
         const coin = document.getElementById('coin-flipper');
         coin.classList.remove('flipping');
+
+        // (★★★ v2 修正：使用後端傳來的 prizeAmountEth ★★★)
         if (betData.status === 'won') {
-            coin.classList.add('show-head');
-            notyf.success(`恭喜中獎！贏得 ${betData.amount * 2} ETH`);
+            coin.classList.add('show-head'); // (假設 won 對應 head，lost 對應 tail，可調整)
+            // 使用後端計算好的 prizeAmountEth，如果不存在則 fallback
+            const prizeDisplay = betData.prizeAmountEth || (parseFloat(betData.amount) * 2); 
+            notyf.success(`恭喜中獎！贏得 ${prizeDisplay} ETH`);
         } else if (betData.status === 'lost') {
             coin.classList.add('show-tail');
             notyf.error('很遺憾，未中獎...');
         } else if (betData.status === 'prize_pending') { 
-            coin.classList.add('show-head');
-            notyf.open({ type: 'warning', message: `恭喜中獎！<br>獎金派發中，請稍後...` });
+            coin.classList.add('show-head'); // (假設 pending 也顯示 head)
+             const prizeDisplay = betData.prizeAmountEth || (parseFloat(betData.amount) * 2); 
+            notyf.open({ type: 'warning', message: `恭喜中獎！<br>獎金 ${prizeDisplay} ETH 派發中，請稍後...` });
         } else if (betData.status === 'failed') {
             notyf.error('投注處理失敗，請聯繫客服。');
         }
@@ -143,8 +149,20 @@ function updateUI() {
         userWalletAddressDisplay.innerText = `${currentAccount.slice(0, 6)}...${currentAccount.slice(-4)}`;
         logoutBtn.style.display = 'block';
         connectWalletBtn.style.display = 'none';
+
+        // (★★★ v2 新增：顯示昵稱 和按鈕 ★★★)
+        userNicknameDisplay.style.display = 'inline-block';
+        if (currentUser.nickname) {
+            userNicknameDisplay.innerText = `👋 ${currentUser.nickname}`;
+        } else {
+            userNicknameDisplay.innerText = `(未設定昵稱)`;
+        }
+        editNicknameBtn.style.display = 'inline-block';
+        // (★★★ v2 新增結束 ★★★)
+
         const streak = currentUser.current_streak || 0;
         userStreakDisplay.style.display = 'inline-block'; 
+        // ... (連勝/敗 邏輯不變)
         if (streak > 0) {
             userStreakDisplay.innerText = `🔥 連勝 ${streak} 場`;
             userStreakDisplay.style.backgroundColor = '#e0f8e0';
@@ -163,6 +181,7 @@ function updateUI() {
         userMaxStreakDisplay.innerText = `🏆 最高連勝: ${maxStreak}`;
         userMaxStreakDisplay.style.backgroundColor = '#f8f8e0'; 
         userMaxStreakDisplay.style.color = '#646400';
+
     } else {
         // --- 登出狀態 ---
         userIdDisplay.style.display = 'none';
@@ -172,6 +191,10 @@ function updateUI() {
         connectWalletBtn.innerText = '连接钱包 / 注册';
         userStreakDisplay.style.display = 'none';
         userMaxStreakDisplay.style.display = 'none';
+
+        // (★★★ v2 新增：隱藏昵稱 和按鈕 ★★★)
+        userNicknameDisplay.style.display = 'none';
+        editNicknameBtn.style.display = 'none';
     }
 }
 
@@ -262,6 +285,14 @@ async function handleConfirmBet() {
         notyf.error('请输入有效的下注金额');
         return;
     }
+        // 在呼叫 MetaMask 之前，檢查 currentUser 物件中的 status
+    if (currentUser.status === 'banned') {
+        console.warn(`[Bet Blocked] User ${currentUser.user_id} is banned.`);
+        // 彈出您要求的 Toast 提示
+        notyf.error('无法投注，请联系客服确认');
+        return; // (★★★ 關鍵) 終止函數，不執行後續的交易
+    }
+    // (★★★ v2 修改結束 ★★★)
     
     const originalButtonText = confirmBetBtn.innerText;
     try {
@@ -298,10 +329,18 @@ async function handleConfirmBet() {
         await renderHistory(currentAccount);
 
     } catch (error) {
-        if (error.code === 'ACTION_REJECTED' || error.message?.includes('User denied transaction')) {
+        // (★★★ v2 雙重保險的 CATCH ★★★)
+        // 如果錯誤訊息是 '无法投注，请联系客服确认'
+        // (這代表 /api/bets 攔截了)
+        if (error.message && error.message.includes('无法投注')) {
+            notyf.error(error.message); // 顯示後端傳來的錯誤
+        }
+        else if (error.code === 'ACTION_REJECTED' || error.message?.includes('User denied transaction')) {
             notyf.error('您已在錢包中取消了交易。');
         } else if (error.message !== 'Insufficient funds') {
             console.error("交易失敗:", error);
+            // (★★★ v2 修改：我們需要解析 api.js 拋出的錯誤)
+            // 由於 api.js 使用了 alert()，我們最好在這裡也用 notyf
             notyf.error(`交易失敗：${error.message}`);
         }
     } finally {
@@ -423,6 +462,59 @@ async function checkNetwork() {
      }
 }
 
+// (★★★ v2 新增：昵稱 彈窗處理函數 ★★★)
+function showNicknameModal() {
+    if (!currentUser) return;
+    // 將當前昵稱 填入輸入框
+    nicknameInput.value = currentUser.nickname || '';
+    nicknameModal.style.display = 'block';
+}
+
+function hideNicknameModal() {
+    nicknameModal.style.display = 'none';
+}
+
+async function handleUpdateNickname() {
+    if (!currentAccount) return;
+
+    const newNickname = nicknameInput.value.trim();
+    // (前端簡單驗證)
+    if (newNickname.length > 50) {
+        notyf.error('昵稱 過長，最多 50 字元。');
+        return;
+    }
+
+    const originalButtonText = confirmNicknameBtn.innerText;
+    confirmNicknameBtn.disabled = true;
+    confirmNicknameBtn.innerText = '儲存中...';
+
+    try {
+        // 呼叫 API
+        const updatedUser = await updateNickname(currentAccount, newNickname); //
+
+        // 更新全局狀態
+        currentUser.nickname = updatedUser.nickname;
+
+        // 更新 UI
+        updateUI(); //
+
+        notyf.success('昵稱 更新成功！');
+        hideNicknameModal();
+
+    } catch (error) {
+        console.error('Failed to update nickname:', error);
+        // (api.js 的 alert 不太好，我們在這裡用 notyf 覆蓋)
+        if (error.message) {
+             notyf.error(`更新失敗：${error.message}`);
+        } else {
+             notyf.error('更新失敗，請稍後再試。');
+        }
+    } finally {
+        confirmNicknameBtn.disabled = false;
+        confirmNicknameBtn.innerText = '確認';
+    }
+}
+
 // --- 應用程式啟動器 ---
 function initializeApp() {
     console.log("✅ Ethers.js is ready. Initializing the app...");
@@ -436,10 +528,31 @@ function initializeApp() {
     userStreakDisplay = document.getElementById('userStreakDisplay');
     userMaxStreakDisplay = document.getElementById('userMaxStreakDisplay');
 
-    // 綁定事件
+    // (昵稱 相關)
+    userNicknameDisplay = document.getElementById('userNicknameDisplay');
+    editNicknameBtn = document.getElementById('editNicknameBtn');
+    nicknameModal = document.getElementById('nicknameModal');
+    closeNicknameModalBtn = document.getElementById('closeNicknameModalBtn');
+    cancelNicknameBtn = document.getElementById('cancelNicknameBtn');
+    confirmNicknameBtn = document.getElementById('confirmNicknameBtn');
+    nicknameInput = document.getElementById('nicknameInput');
+
+    // (★★★ v2 修改：綁定事件 ★★★)
     connectWalletBtn.addEventListener('click', handleConnectWallet);
     logoutBtn.addEventListener('click', handleLogout);
     confirmBetBtn.addEventListener('click', handleConfirmBet);
+    
+    // (昵稱 相關)
+    editNicknameBtn.addEventListener('click', showNicknameModal);
+    closeNicknameModalBtn.addEventListener('click', hideNicknameModal);
+    cancelNicknameBtn.addEventListener('click', hideNicknameModal);
+    confirmNicknameBtn.addEventListener('click', handleUpdateNickname);
+    // (點擊彈窗外部灰色區域也可關閉)
+    window.addEventListener('click', (event) => {
+        if (event.target == nicknameModal) {
+            hideNicknameModal();
+        }
+    });
 
     // 初始化 UI 和列表
     updateUI(); 

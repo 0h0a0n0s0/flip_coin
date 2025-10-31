@@ -1,0 +1,3 @@
+# 檔案: admin-ui/.dockerignore (新檔案)
+node_modules
+dist

@@ -21,7 +21,8 @@
     <div>
       <span id="userIdDisplay" style="display: none;"></span>
       <span id="userWalletAddressDisplay" style="display: none;"></span>
-      
+      <span id="userNicknameDisplay" class="tag tag-nickname"></span>
+      <button id="editNicknameBtn" class="btn btn-secondary btn-small" style="display: none;">編輯昵稱</button>
       <button id="logoutBtn" style="display: none;">登出</button>
       
       <button id="connectWalletBtn">连接钱包 / 注册</button>
@@ -71,6 +72,21 @@
   <script src="https://cdn.jsdelivr.net/npm/notyf@3/notyf.min.js"></script>
 
   <script type="module" src="app.js"></script>
+
+  <div id="nicknameModal" class="modal" style="display: none;">
+    <div class="modal-content">
+        <span id="closeNicknameModalBtn" class="modal-close">&times;</span>
+        <h2>編輯用戶昵稱</h2>
+        <div class="modal-body">
+            <label for="nicknameInput">請輸入您的新昵稱：</label>
+            <input type="text" id="nicknameInput" class="input-field" maxlength="50" placeholder="最多 50 字元">
+        </div>
+        <div class="modal-footer">
+            <button id="cancelNicknameBtn" class="btn btn-secondary">取消</button>
+            <button id="confirmNicknameBtn" class="btn btn-primary">確認</button>
+        </div>
+    </div>
+  </div>
 
 </body>
 </html>
