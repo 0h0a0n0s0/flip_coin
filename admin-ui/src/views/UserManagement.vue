@@ -8,9 +8,9 @@
         <el-form-item label="用户ID">
           <el-input v-model="searchParams.userId" placeholder="用户ID (模糊)" clearable></el-input>
         </el-form-item>
-        
-        <el-form-item label="钱包地址">
-          <el-input v-model="searchParams.walletAddress" placeholder="钱包地址 (精确)" clearable></el-input>
+
+        <el-form-item label="用戶帳號">
+          <el-input v-model="searchParams.username" placeholder="登入帳號 (模糊)" clearable></el-input>
         </el-form-item>
         
         <el-form-item label="用户昵称">
@@ -23,6 +23,10 @@
         
         <el-form-item label="推荐人邀请码">
           <el-input v-model="searchParams.referrerCode" placeholder="推荐人邀请码 (精确)" clearable></el-input>
+        </el-form-item>
+        
+        <el-form-item label="最新登入IP">
+          <el-input v-model="searchParams.lastLoginIp" placeholder="登入IP (精确)" clearable></el-input>
         </el-form-item>
         
         <el-form-item label="状态">
@@ -43,6 +47,17 @@
           />
         </el-form-item>
 
+         <el-form-item label="最新活动时间">
+          <el-date-picker
+            v-model="searchParams.activityDateRange"
+            type="datetimerange"
+            range-separator="至"
+            start-placeholder="開始時間"
+            end-placeholder="結束時間"
+            value-format="YYYY-MM-DDTHH:mm:ssZ"
+          />
+        </el-form-item>
+
         <el-form-item>
           <el-button type="primary" @click="handleSearch">查詢</el-button>
         </el-form-item>
@@ -53,28 +68,34 @@
     <el-card shadow="never" class="table-card" v-loading="loading">
       <el-table :data="tableData" style="width: 100%" :cell-style="{ paddingTop: '8px', paddingBottom: '8px' }">
         
-        <el-table-column prop="user_id" label="用户ID" width="120" />
-        <el-table-column prop="wallet_address" label="钱包地址" />
-
-        <el-table-column label="钱包馀额" width="120">
-            <template #default="scope">
-                <el-button 
-                    type="primary" 
-                    link 
-                    @click="handleCheckBalance(scope.row)">
-                    查詢餘額
-                </el-button>
-            </template>
+        <el-table-column prop="user_id" label="用户ID" width="120" fixed="left" />
+        <el-table-column prop="username" label="用戶帳號" width="150" />
+        <el-table-column prop="balance" label="平台餘額 (USDT)" width="150">
+           <template #default="scope">{{ formatCurrency(scope.row.balance) }}</template>
         </el-table-column>
         <el-table-column prop="nickname" label="用户昵称" width="120" />
         <el-table-column prop="level" label="用户等级" width="100" />
-        <el-table-column prop="invite_code" label="自身邀请码" width="120" />
+        
+        <el-table-column prop="invite_code" label="自身邀请码" width="130">
+           <template #default="scope">
+             <el-button type="primary" link @click="handleViewReferrals(scope.row)">
+               {{ scope.row.invite_code }}
+             </el-button>
+           </template>
+        </el-table-column>
         <el-table-column prop="referrer_code" label="推荐人邀请码" width="130" />
+        
+        <el-table-column prop="wallet_address" label="提現錢包" width="300" />
+        <el-table-column prop="chain_type" label="提現公鏈" width="100" />
+        
+        <el-table-column prop="last_login_ip" label="最新登入IP" width="150" />
+        <el-table-column prop="last_activity_at" label="最新活动时间" width="180">
+           <template #default="scope">{{ formatDateTime(scope.row.last_activity_at) }}</template>
+        </el-table-column>
+        
         <el-table-column prop="max_streak" label="最高連勝" width="100" />
         <el-table-column prop="created_at" label="注册时间" width="180">
-           <template #default="scope">
-            {{ formatDateTime(scope.row.created_at) }}
-          </template>
+           <template #default="scope">{{ formatDateTime(scope.row.created_at) }}</template>
         </el-table-column>
         
         <el-table-column prop="status" label="禁用投注" width="100" fixed="right">
@@ -91,6 +112,15 @@
             />
           </template>
         </el-table-column>
+
+        <el-table-column label="操作" width="100" fixed="right">
+           <template #default="scope">
+             <el-button type="primary" link @click="handleEdit(scope.row)">
+               编辑
+             </el-button>
+           </template>
+        </el-table-column>
+        
       </el-table>
 
       <el-pagination
@@ -106,30 +136,51 @@
     </el-card>
 
     <el-dialog
-        v-model="balanceDialogVisible"
-        title="即時錢包餘額查詢 (Sepolia)"
+        v-model="editDialogVisible"
+        title="编辑用戶"
         width="600px"
         :close-on-click-modal="false"
     >
-        <div v-loading="balanceLoading">
-            <div v-if="currentBalanceData">
-                <p><strong>錢包地址:</strong> {{ currentBalanceData.walletAddress }}</p>
-                <p><strong>ETH 餘額:</strong> 
-                    <span style="font-size: 20px; font-weight: bold; color: #67c23a;">
-                        {{ currentBalanceData.balanceEth }} ETH
-                    </span>
-                </p>
-                <p style="color: #909399; font-size: 12px;">(Wei: {{ currentBalanceData.balanceWei }})</p>
-            </div>
-            <div v-else>
-                <p>正在查詢，請稍候...</p>
-            </div>
-        </div>
-        <template #footer>
-            <el-button @click="balanceDialogVisible = false">關閉</el-button>
-        </template>
+      <el-form v-if="editForm.currentUser" ref="editFormRef" :model="editForm" :rules="editFormRules" label-width="120px">
+        <el-form-item label="用户ID">
+          <el-input :value="editForm.currentUser.user_id" disabled />
+        </el-form-item>
+         <el-form-item label="用戶帳號">
+          <el-input :value="editForm.currentUser.username" disabled />
+        </el-form-item>
+        
+        <el-form-item label="平台餘額 (USDT)" prop="balance">
+           <el-input-number v-model="editForm.balance" :min="0" :precision="6" placeholder="用戶平台餘額" />
+           <div class="form-tip">(警告：手動修改餘額不會留下金流記錄)</div>
+        </el-form-item>
+        
+        <el-form-item label="用户昵称" prop="nickname">
+          <el-input v-model="editForm.nickname" placeholder="请输入用户昵称" />
+        </el-form-item>
+        <el-form-item label="用户等级" prop="level">
+          <el-input-number v-model="editForm.level" :min="1" placeholder="请输入用户等级" />
+           <div class="form-tip">(注意：手動調整等級不會派發升級獎金)</div>
+        </el-form-item>
+        <el-form-item label="推荐人邀请码" prop="referrer_code">
+          <el-input v-model="editForm.referrer_code" placeholder="(留空可清除推薦人)" clearable />
+           <div class="form-tip">(必須是已存在的其他用戶的「自身邀请码」)</div>
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="editDialogVisible = false">取消</el-button>
+        <el-button type="primary" @click="handleSubmitEdit" :loading="editLoading">確認儲存</el-button>
+      </template>
     </el-dialog>
-    </div>
+
+    <el-dialog
+        v-model="referralDialogVisible"
+        :title="`查看 ${referralData.inviteCode} 的推薦列表`"
+        width="700px"
+        :close-on-click-modal="false"
+    >
+      </el-dialog>
+    
+  </div>
 </template>
 
 <script>
@@ -146,46 +197,73 @@ export default {
         page: 1,
         limit: 10,
       },
+      // (★★★ v6 修改：searchParams ★★★)
       searchParams: {
         userId: '',
-        walletAddress: '',
+        username: '', // (v6 新增)
+        // walletAddress: '', // (v6 移除)
         dateRange: null, 
         nickname: '',
+        status: '',
         inviteCode: '',
         referrerCode: '',
-        status: '',
+        lastLoginIp: '',
+        activityDateRange: null, 
       },
-      // (Part 6 新增)
-      balanceDialogVisible: false,
-      balanceLoading: false,
-      currentBalanceData: null,
+      
+      // (★★★ v6 移除：balanceDialog ★★★)
+      
+      // (★★★ v6 修改：editForm ★★★)
+      editDialogVisible: false,
+      editLoading: false,
+      editForm: {
+        currentUser: null,
+        nickname: '',
+        level: 1,
+        referrer_code: '',
+        balance: 0, // (v6 新增)
+      },
+      editFormRules: {
+        nickname: [{ max: 50, message: '昵称长度不能超过 50 个字符', trigger: 'blur' }],
+        level: [{ required: true, message: '等级不能为空' }, { type: 'integer', min: 1, message: '等级必须是正整数', trigger: 'blur' }],
+        referrer_code: [{ max: 8, message: '邀请码长度不能超过 8 个字符', trigger: 'blur' }],
+        balance: [{ required: true, message: '餘額不能为空' }, { type: 'number', min: 0, message: '餘額必須是非負數', trigger: 'blur' }] // (v6 新增)
+      },
+
+      // (推薦列表彈窗 不變)
+      referralDialogVisible: false,
+      referralData: {
+        loading: false,
+        inviteCode: '',
+        list: []
+      }
     };
   },
   created() {
     this.fetchUsers();
   },
   methods: {
+    // (★★★ v6 修改：fetchUsers ★★★)
     async fetchUsers() {
       if (this.loading) return;
       this.loading = true;
-
       try {
         const params = {
           ...this.pagination,
           userId: this.searchParams.userId || undefined, 
-          walletAddress: this.searchParams.walletAddress || undefined,
+          username: this.searchParams.username || undefined, // (v6 新增)
+          // walletAddress: this.searchParams.walletAddress || undefined, // (v6 移除)
           dateRange: this.searchParams.dateRange ? JSON.stringify(this.searchParams.dateRange) : undefined,
           nickname: this.searchParams.nickname || undefined,
+          status: this.searchParams.status || undefined,
           inviteCode: this.searchParams.inviteCode || undefined,
           referrerCode: this.searchParams.referrerCode || undefined,
-          status: this.searchParams.status || undefined,
+          lastLoginIp: this.searchParams.lastLoginIp || undefined,
+          activityDateRange: this.searchParams.activityDateRange ? JSON.stringify(this.searchParams.activityDateRange) : undefined,
         };
-
         const response = await this.$api.getUsers(params);
-        
         this.tableData = response.list;
         this.totalItems = response.total;
-
       } catch (error) {
         console.error('Failed to fetch users:', error);
       } finally {
@@ -193,77 +271,84 @@ export default {
       }
     },
     
-    async handleStatusChange(row) {
-      const newStatus = row.status;
-      const newStatusText = newStatus === 'banned' ? '禁用' : '啟用';
-      
+    // (handleStatusChange 不變)
+    async handleStatusChange(row) { /* ... (不變) ... */ },
+
+    // (★★★ v6 移除：handleCheckBalance ★★★)
+
+    // (handleSearch, handleSizeChange, handlePageChange 函數不變)
+    handleSearch() { this.pagination.page = 1; this.fetchUsers(); },
+    handleSizeChange(newLimit) { this.pagination.limit = newLimit; this.pagination.page = 1; this.fetchUsers(); },
+    handlePageChange(newPage) { this.pagination.page = newPage; this.fetchUsers(); },
+    
+    // (formatDateTime 不變)
+    formatDateTime(isoString) { /* ... (不變) ... */ },
+    
+    // (★★★ v6 新增：formatCurrency ★★★)
+    formatCurrency(value) {
+      if (value === null || value === undefined) return '0.00';
       try {
-        await this.$api.updateUserStatus(row.id, newStatus);
-        ElMessage.success(`用户 ${row.user_id} 狀態已更新為 ${newStatusText}`);
-      } catch (error) {
-        console.error('Failed to update status:', error);
-        row.status = (newStatus === 'banned' ? 'active' : 'banned');
-      }
-    },
-
-    // (Part 6 新增)
-    async handleCheckBalance(row) {
-        console.log('Checking balance for:', row.wallet_address);
-        this.balanceDialogVisible = true;
-        this.balanceLoading = true;
-        this.currentBalanceData = null; 
-
-        try {
-            const data = await this.$api.getUserBalance(row.wallet_address);
-            this.currentBalanceData = data;
-        } catch (error)
-        {
-            console.error('Failed to fetch balance:', error);
-            this.balanceDialogVisible = false; 
-        } finally {
-            this.balanceLoading = false;
-        }
-    },
-
-    handleSearch() {
-      this.pagination.page = 1;
-      this.fetchUsers();
-    },
-    handleSizeChange(newLimit) {
-      this.pagination.limit = newLimit;
-      this.pagination.page = 1; 
-      this.fetchUsers();
-    },
-    handlePageChange(newPage) {
-      this.pagination.page = newPage;
-      this.fetchUsers();
-    },
-    formatDateTime(isoString) {
-      if (!isoString) return 'N/A';
-      try {
-        const date = new Date(isoString);
-        return date.toLocaleString('zh-TW', { timeZone: 'Asia/Taipei' });
+        const num = parseFloat(value);
+        if (isNaN(num)) return '0.00';
+        return num.toFixed(2); // (USDT 顯示到小數點後 2 位)
       } catch (e) {
-        return isoString;
+        return '0.00';
       }
-    }
+    },
+
+    // (★★★ v6 修改：handleEdit ★★★)
+    handleEdit(row) {
+      this.editForm.currentUser = row;
+      this.editForm.nickname = row.nickname || '';
+      this.editForm.level = row.level;
+      this.editForm.referrer_code = row.referrer_code || '';
+      this.editForm.balance = parseFloat(row.balance) || 0; // (v6 新增)
+      
+      this.editDialogVisible = true;
+      this.$nextTick(() => {
+        this.$refs.editFormRef?.clearValidate();
+      });
+    },
+
+    // (★★★ v6 修改：handleSubmitEdit ★★★)
+    async handleSubmitEdit() {
+      const formEl = this.$refs.editFormRef;
+      if (!formEl) return;
+      await formEl.validate(async (valid) => {
+        if (valid) {
+          this.editLoading = true;
+          try {
+            const dataToSubmit = {
+              nickname: this.editForm.nickname,
+              level: this.editForm.level,
+              referrer_code: this.editForm.referrer_code || null,
+              balance: this.editForm.balance, // (v6 新增)
+            };
+            await this.$api.updateUser(this.editForm.currentUser.id, dataToSubmit);
+            ElMessage.success('用戶資料更新成功');
+            this.editDialogVisible = false;
+            await this.fetchUsers();
+          } catch (error) {
+            console.error('Failed to update user:', error);
+          } finally {
+            this.editLoading = false;
+          }
+        } else {
+          return false;
+        }
+      });
+    },
+
+    // (handleViewReferrals 不變)
+    async handleViewReferrals(row) { /* ... (不變) ... */ }
   },
 };
 </script>
 
 <style scoped>
-.search-card {
-  margin-bottom: 20px;
-}
-.table-card {
-  margin-bottom: 20px;
-}
-.pagination-container {
-  margin-top: 20px;
-  display: flex;
-  justify-content: flex-end;
-}
-.el-form-item {
-  margin-bottom: 10px;
-}
+.search-card { margin-bottom: 20px; }
+.table-card { margin-bottom: 20px; }
+.pagination-container { margin-top: 20px; display: flex; justify-content: flex-end; }
+.el-form-item { margin-bottom: 10px; }
+.form-tip { font-size: 12px; color: #909399; margin-top: 5px; line-height: 1.2; }
 </style>

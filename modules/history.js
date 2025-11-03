@@ -1,23 +1,21 @@
-// modules/history.js
+// 檔案: modules/history.js (片段修改)
+
 import { getHistory } from './api.js';
 
-// 我們不再需要 addHistory，因為所有歷史都由後端管理
-// const HISTORY_KEY = 'flipCoinBetHistory';
-
-export async function renderHistory(walletAddress) {
-    if (!walletAddress) {
-        console.log('No wallet connected, skipping history render.');
+export async function renderHistory(token) { // (★★★ 修改：傳入 token ★★★)
+    if (!token) { // (★★★ 修改：檢查 token ★★★)
+        console.log('No token provided, skipping history render.');
+        document.getElementById('historyList').innerHTML = '<li>登入後以查看歷史記錄</li>'; // (★★★ 修改：提示 ★★★)
         return;
     }
 
     const historyListEl = document.getElementById('historyList');
-    // 保留載入提示，防止重複呼叫時閃爍
     if (historyListEl.children.length === 0 || historyListEl.children[0].innerText.includes("...")) {
         historyListEl.innerHTML = '<li>Loading...</li>';
     }
 
     try {
-        const history = await getHistory(walletAddress);
+        const history = await getHistory(token); // (★★★ 修改：傳入 token ★★★)
         
         if (history.length === 0) {
             historyListEl.innerHTML = '<li>暂无投注记录</li>';
@@ -31,27 +29,20 @@ export async function renderHistory(walletAddress) {
             const choiceText = item.choice === 'head' ? '正面' : '反面';
             let statusText = '';
             
-            // ★★★ 確保 switch 判斷中有 prize_pending ★★★
+            // (★★★ v6 修改：移除 prize_pending，因為 v6 餘額是即時扣款/派發 ★★★)
             switch(item.status) {
                 case 'won': statusText = '✅ 已中奖'; break;
                 case 'lost': statusText = '❌ 未中奖'; break;
-                case 'prize_pending': statusText = '💰 獎金待發'; break; // 確保這一行存在
+                // case 'prize_pending': statusText = '💰 獎金待發'; break; // (v6 移除)
                 case 'pending': statusText = '⌛️ 待開獎'; break;
                 case 'failed': statusText = '⚠️ 處理失敗'; break;
                 default: statusText = '⌛️ 處理中';
             }
             
+            // (★★★ v6 修改：tx_hash 是平台開獎 hash，不再是派獎 hash ★★★)
             const txLink = item.tx_hash ? `<a href="https://sepolia.etherscan.io/tx/${item.tx_hash}" target="_blank">${item.tx_hash.substring(0, 10)}...</a>` : 'N/A';
             
-            // 顯示派獎 Hash
-            let prizeLink = '';
-            if (item.prize_tx_hash) {
-                prizeLink = ` | 派獎TX: <a href="https://sepolia.etherscan.io/tx/${item.prize_tx_hash}" target="_blank">${item.prize_tx_hash.substring(0, 10)}...</a>`;
-            } else if (item.status === 'prize_pending') {
-                prizeLink = ' | 派獎TX: (待處理)';
-            }
-
-            li.innerHTML = `[${betTime}] 选择: ${choiceText} | 金额: ${item.amount} | 状态: ${statusText} | TX: ${txLink}${prizeLink}`;
+            li.innerHTML = `[${betTime}] 选择: ${choiceText} | 金额: ${item.amount} | 状态: ${statusText} | 開獎TX: ${txLink}`;
             historyListEl.appendChild(li);
         });
     } catch (error) {

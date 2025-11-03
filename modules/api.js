@@ -1,8 +1,12 @@
-// modules/api.js
+// 檔案: modules/api.js (★★★ v6.1 中心化 Auth 版 ★★★)
 
-const API_BASE_URL = '/api'; // (不再寫死 localhost:3000)
+// (★★★ v6 修改：API 路徑改為 /api/v1/ ★★★)
+const API_BASE_URL = '/api/v1'; 
 
-// 統一的錯誤處理和請求函數
+/**
+ * 統一的錯誤處理和請求函數
+ * (★★★ v6 修改：加入 token 參數 ★★★)
+ */
 async function request(endpoint, options = {}) {
     const url = `${API_BASE_URL}${endpoint}`;
     
@@ -12,61 +16,121 @@ async function request(endpoint, options = {}) {
         },
         ...options,
     };
+
+    // (如果提供了 token，加入到 Authorization 標頭)
+    if (options.token) {
+        config.headers['Authorization'] = `Bearer ${options.token}`;
+    }
+
     try {
         const response = await fetch(url, config);
-        // 增加對回應格式的檢查
         const contentType = response.headers.get("content-type");
-        if (!response.ok || !contentType || !contentType.includes("application/json")) {
-            // 如果回應不是 JSON，我們就不能用 .json() 解析
+
+        if (contentType && contentType.includes("application/json")) {
+            const data = await response.json();
+            if (!response.ok) {
+                // 優先使用後端 JSON 中的 error 訊息
+                throw new Error(data.error || 'Request failed with status ' + response.status);
+            }
+            return data;
+        }
+
+        // 處理非 JSON 回應
+        if (!response.ok) {
             const textResponse = await response.text();
             throw new Error(`Server returned non-JSON response: ${textResponse}`);
         }
-        return response.json();
+        return response.text();
+
     } catch (error) {
-        console.error(`API Error on ${endpoint}:`, error);
-        alert(`Error: ${error.message}`);
+        console.error(`API Error on ${endpoint}:`, error.message);
+        // (不再 alert，讓呼叫者 (app.js) 去 catch)
         throw error; 
     }
 }
 
 /**
- * 註冊或登入用戶
- * @param {string} walletAddress 
- * @returns {Promise<object>} 用戶物件
+ * (★★★ v6 新增：傳統註冊 ★★★)
+ * @param {string} username 
+ * @param {string} password 
+ * @returns {Promise<object>} { user, token }
  */
-export function registerOrLogin(walletAddress) {
+export function register(username, password) {
     return request('/register', {
         method: 'POST',
-        body: JSON.stringify({ walletAddress }),
+        body: JSON.stringify({ username, password }),
     });
 }
 
 /**
- * 處理下注 (現在傳遞 txHash)
- * @param {string} walletAddress
- * @param {string} choice 'head' or 'tail'
- * @param {number} amount
- * @param {string} txHash 鏈上交易的雜湊
+ * (★★★ v6 新增：傳統登入 ★★★)
+ * @param {string} username 
+ * @param {string} password 
+ * @returns {Promise<object>} { user, token }
+ */
+export function login(username, password) {
+    return request('/login', {
+        method: 'POST',
+        body: JSON.stringify({ username, password }),
+    });
+}
+
+/**
+ * (★★★ v6 新增：獲取用戶資訊 ★★★)
+ * @param {string} token 
+ * @returns {Promise<object>} user (包含 balance)
+ */
+export function getUserInfo(token) {
+    return request('/me', {
+        method: 'GET',
+        token: token
+    });
+}
+
+/**
+ * (★★★ v6 新增：更新用戶昵稱 ★★★)
+ * (注意：這個 API 尚未在後端 v1Router 實作，我們先定義)
+ * @param {string} token 
+ * @param {string} nickname
  * @returns {Promise<object>}
  */
-export function placeBet(walletAddress, choice, amount, txHash) {
-    return request('/bets', {
-        method: 'POST',
-        body: JSON.stringify({ walletAddress, choice, amount, txHash }),
+export function updateNickname(token, nickname) {
+    return request('/users/nickname', {
+        method: 'PATCH',
+        token: token,
+        body: JSON.stringify({ nickname }),
     });
 }
 
 /**
- * 獲取投注歷史
- * @param {string} walletAddress 
- * @returns {Promise<Array>} 歷史記錄陣列
+ * (★★★ v6 新增：綁定推薦碼 ★★★)
+ * (注意：這個 API 尚未在後端 v1Router 實作，我們先定義)
+ * @param {string} token 
+ * @param {string} referrerCode
+ * @returns {Promise<object>}
  */
-export function getHistory(walletAddress) {
-    return request(`/history/${walletAddress}`);
+export function bindReferrer(token, referrerCode) {
+    return request('/users/bind-referrer', {
+        method: 'POST',
+        token: token,
+        body: JSON.stringify({ referrerCode }),
+    });
 }
 
 /**
- * ★★★ 新增：獲取排行榜數據 ★★★
+ * (★★★ v6 修改：使用 token 驗證 ★★★)
+ * @param {string} token 
+ * @returns {Promise<Array>} 歷史記錄陣列
+ */
+export function getHistory(token) {
+    return request(`/history`, {
+        method: 'GET',
+        token: token
+    });
+}
+
+/**
+ * (★★★ v6 修改：公開 API，無需 token ★★★)
  * @returns {Promise<Array>} 排行榜陣列
  */
 export function getLeaderboard() {
@@ -74,14 +138,17 @@ export function getLeaderboard() {
 }
 
 /**
- * ★★★ 新增：更新用戶昵稱 ★★★
- * @param {string} walletAddress 
- * @param {string} nickname
+ * (★★★ v6 新增：中心化下注 ★★★)
+ * (v6.2 才會實作後端)
+ * @param {string} token 
+ * @param {string} choice 'head' or 'tail'
+ * @param {number} amount
  * @returns {Promise<object>}
  */
-export function updateNickname(walletAddress, nickname) {
-    return request('/users/nickname', {
-        method: 'PATCH',
-        body: JSON.stringify({ walletAddress, nickname }),
+export function placeBet(token, choice, amount) {
+    return request('/bets', {
+        method: 'POST',
+        token: token,
+        body: JSON.stringify({ choice, amount }),
     });
 }

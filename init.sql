@@ -1,49 +1,82 @@
+-- 檔案: init.sql (★★★ v7.1 HD 錢包架構 ★★★)
+
 -- ----------------------------
--- v1: 建立用戶表 (已擴充 v2 欄位)
+-- v7: 建立用戶表 (HD 錢包)
 -- ----------------------------
 CREATE TABLE users (
     id SERIAL PRIMARY KEY,
-    wallet_address VARCHAR(42) UNIQUE NOT NULL,
-    user_id VARCHAR(8) UNIQUE NOT NULL,
+    username VARCHAR(50) UNIQUE NOT NULL, 
+    password_hash VARCHAR(100) NOT NULL, 
+    balance NUMERIC NOT NULL DEFAULT 0, -- 平台餘額 (USDT)
+    
+    -- (★★★ v7 HD 錢包索引 ★★★)
+    -- (我們使用同一個索引派生所有鏈的地址，例如 /.../index)
+    deposit_path_index INT UNIQUE, 
+    
+    -- (★★★ v7 充值地址 ★★★)
+    -- (我們儲存地址是為了 "高效監聽" 方案，加快反向查詢)
+    evm_deposit_address VARCHAR(42) UNIQUE, -- (BSC, ETH, Polygon)
+    tron_deposit_address VARCHAR(255) UNIQUE, -- (TRC20)
+    -- (未來可新增 sol_deposit_address)
+
+    user_id VARCHAR(8) UNIQUE NOT NULL, 
     current_streak INT NOT NULL DEFAULT 0,
     max_streak INT NOT NULL DEFAULT 0,
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     nickname VARCHAR(50) NULL,
     level INT NOT NULL DEFAULT 1,
-    invite_code VARCHAR(8) UNIQUE NULL, -- (已加入 UNIQUE 約束)
+    invite_code VARCHAR(8) UNIQUE NULL,
     referrer_code VARCHAR(8) NULL,
     last_login_ip VARCHAR(50) NULL,
     last_activity_at TIMESTAMP WITH TIME ZONE NULL,
-    status VARCHAR(20) NOT NULL DEFAULT 'active', -- (例如: 'active', 'banned')
-    last_level_up_time TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP -- 最後升級時間 (新用戶預設為註冊時間)
+    status VARCHAR(20) NOT NULL DEFAULT 'active', 
+    last_level_up_time TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
+-- (為高效監聽器建立索引)
+CREATE INDEX idx_users_evm_deposit_address ON users(evm_deposit_address);
+CREATE INDEX idx_users_tron_deposit_address ON users(tron_deposit_address);
+
 
 -- ----------------------------
--- v1: 建立投注記錄表
+-- v6: 建立投注記錄表 (不變)
+-- (開獎 tx_hash 來自平台輪巡地址)
 -- ----------------------------
 CREATE TABLE bets (
     id SERIAL PRIMARY KEY,
-    user_id VARCHAR(8) NOT NULL,
+    user_id VARCHAR(8) NOT NULL, 
     game_type VARCHAR(50) NOT NULL DEFAULT 'FlipCoin',
     choice VARCHAR(4) NOT NULL,
-    amount NUMERIC NOT NULL,
+    amount NUMERIC NOT NULL, 
     status VARCHAR(15) NOT NULL DEFAULT 'pending',
     bet_time TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     settle_time TIMESTAMP WITH TIME ZONE,
-    tx_hash VARCHAR(66) UNIQUE,
-    prize_tx_hash VARCHAR(66) UNIQUE,
+    tx_hash VARCHAR(66) UNIQUE, 
+    payout_multiplier INT NOT NULL DEFAULT 2,
     FOREIGN KEY (user_id) REFERENCES users(user_id) ON DELETE CASCADE
 );
 
 -- ----------------------------
--- v1: 建立索引
+-- v6: 建立資金流水表 (不變)
 -- ----------------------------
-CREATE INDEX idx_users_wallet_address ON users(wallet_address);
-CREATE INDEX idx_bets_user_id ON bets(user_id);
--- (v2 invite_code 的索引已在 CREATE TABLE 中透過 UNIQUE 隱含建立)
+CREATE TABLE platform_transactions (
+    id SERIAL PRIMARY KEY,
+    user_id VARCHAR(8) NOT NULL, 
+    type VARCHAR(50) NOT NULL, -- ( 'deposit', 'withdraw', 'level_up_reward', 'commission' )
+    chain VARCHAR(20) NULL, -- ( 'TRC20', 'BSC' )
+    amount NUMERIC NOT NULL DEFAULT 0, 
+    gas_fee NUMERIC NOT NULL DEFAULT 0, 
+    tx_hash VARCHAR(255) UNIQUE, 
+    status VARCHAR(20) NOT NULL DEFAULT 'completed', -- ( 'pending', 'completed', 'failed' )
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (user_id) REFERENCES users(user_id) ON DELETE SET NULL
+);
+CREATE INDEX idx_platform_transactions_type ON platform_transactions(type);
+CREATE INDEX idx_platform_transactions_user_id ON platform_transactions(user_id);
+
 
 -- ----------------------------
--- v2: 建立後台管理員表
+-- v2: 建立後台管理員表 (不變)
 -- ----------------------------
 CREATE TABLE admin_users (
     id SERIAL PRIMARY KEY,
@@ -53,82 +86,89 @@ CREATE TABLE admin_users (
     status VARCHAR(20) NOT NULL DEFAULT 'active',
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
-
--- 插入一個預設管理員
--- 帳號: admin
--- 密碼: admin123
--- (密碼已經使用 bcrypt 加密)
 INSERT INTO admin_users (username, password_hash, role)
 VALUES ('admin', '$2a$10$E.M9.xQJ3.K/T.Xgs83V9uM.KkNwG.fW1y.H.xP.j/b1L.rYqKz7m', 'super_admin');
 
 -- ----------------------------
--- v2: 建立錢包監控表
+-- v7: 建立平台功能錢包表
+-- (取代 v6 的 monitored_wallets)
+-- (注意：私鑰儲存在 .env 中，這裡只儲存地址和功能)
 -- ----------------------------
-CREATE TABLE monitored_wallets (
+CREATE TABLE platform_wallets (
     id SERIAL PRIMARY KEY,
-    name VARCHAR(100) NOT NULL, -- 錢包名稱
-    type VARCHAR(50) NOT NULL DEFAULT 'unknown', -- 錢包類型 ('collection', 'payment', 'payout', 'unknown')
-    address VARCHAR(42) UNIQUE NOT NULL, -- 錢包地址
+    name VARCHAR(100) NOT NULL, 
+    chain_type VARCHAR(20) NOT NULL, -- ( 'BSC', 'TRC20', 'ETH', 'POLYGON', 'SOL' )
+    address VARCHAR(255) UNIQUE NOT NULL,
+    
+    -- (功能標籤)
+    is_gas_reserve BOOLEAN NOT NULL DEFAULT false, -- (是否為 Gas 儲備錢包 (TRX, BNB...))
+    is_collection BOOLEAN NOT NULL DEFAULT false, -- (是否為資金歸集地址 (USDT))
+    
+    is_opener_a BOOLEAN NOT NULL DEFAULT false, -- (是否為開獎地址 A)
+    is_opener_b BOOLEAN NOT NULL DEFAULT false, -- (是否為開獎地址 B)
+    
+    is_active BOOLEAN NOT NULL DEFAULT true, -- (是否啟用)
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
+-- (範例：你可以手動將 .env 中的錢包地址加入這裡)
+-- INSERT INTO platform_wallets (name, chain_type, address, is_gas_reserve) 
+-- VALUES ('TRON Gas Wallet', 'TRC20', 'T...', true);
+-- INSERT INTO platform_wallets (name, chain_type, address, is_collection) 
+-- VALUES ('TRON Collection Wallet', 'TRC20', 'T...', true);
 
--- (可選) 插入一些預設監控的錢包，例如 v1 的遊戲錢包 (地址需要從 .env 取得)
--- INSERT INTO monitored_wallets (name, type, address) VALUES ('v1 Game Wallet', 'payout', 'YOUR_GAME_WALLET_ADDRESS');
 
 -- ----------------------------
--- v2: 建立系統設定表
+-- v2: 系統設定表 (不變)
 -- ----------------------------
 CREATE TABLE system_settings (
-    key VARCHAR(50) PRIMARY KEY, -- 設定項目的鍵 (例如 'PAYOUT_MULTIPLIER')
-    value TEXT NOT NULL,         -- 設定值 (以文字儲存，由程式解析)
-    description TEXT,            -- 描述
-    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP -- 最後更新時間
+    key VARCHAR(50) PRIMARY KEY,
+    value TEXT NOT NULL,
+    description TEXT,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
-
--- 插入預設的遊戲參數
 INSERT INTO system_settings (key, value, description) 
 VALUES ('PAYOUT_MULTIPLIER', '2', '派獎倍數 (整數)'); 
--- (注意：這裡寫死為 '2'，因為 init.sql 無法讀取 .env)
+INSERT INTO system_settings (key, value, description) 
+VALUES ('ALLOW_BSC', 'true', '是否開放 BSC 充值 (true/false)');
+INSERT INTO system_settings (key, value, description) 
+VALUES ('ALLOW_TRC20', 'true', '是否開放 TRC20 充值 (true/false)');
 
 -- ----------------------------
--- v2: 建立阻擋地區表
+-- v2: 阻擋地區表 (不變)
 -- ----------------------------
 CREATE TABLE blocked_regions (
     id SERIAL PRIMARY KEY,
-    ip_range CIDR UNIQUE NOT NULL, -- IP 地址或 CIDR 範圍
-    description TEXT,              -- 描述 (例如 '地區名稱')
+    ip_range CIDR UNIQUE NOT NULL,
+    description TEXT,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
 -- ----------------------------
--- v2: 建立用戶等級設定表
+-- v2: 用戶等級設定表 (不變)
 -- ----------------------------
 CREATE TABLE user_levels (
-    level INT PRIMARY KEY CHECK (level > 0), -- 等級 (主鍵)
-    name VARCHAR(50) NOT NULL DEFAULT '', -- 等級名稱
-    max_bet_amount NUMERIC NOT NULL DEFAULT 100, -- 投注限額
-    required_bets_for_upgrade INT NOT NULL DEFAULT 0, -- 升級所需注單數 (0=最高級)
-    min_bet_amount_for_upgrade NUMERIC NOT NULL DEFAULT 0, -- 升級注單最小金額
-    upgrade_reward_amount NUMERIC NOT NULL DEFAULT 0, -- 升級獎勵金額
+    level INT PRIMARY KEY CHECK (level > 0),
+    name VARCHAR(50) NOT NULL DEFAULT '',
+    max_bet_amount NUMERIC NOT NULL DEFAULT 100,
+    required_bets_for_upgrade INT NOT NULL DEFAULT 0,
+    min_bet_amount_for_upgrade NUMERIC NOT NULL DEFAULT 0,
+    upgrade_reward_amount NUMERIC NOT NULL DEFAULT 0,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
-
--- 插入一個預設的 Level 1
 INSERT INTO user_levels (level, name, max_bet_amount, required_bets_for_upgrade, min_bet_amount_for_upgrade, upgrade_reward_amount) 
 VALUES (1, 'Level 1', 100, 10, 0.01, 0.005); 
--- 範例：1級，投注上限100ETH，需10筆有效注單升級，有效注單需>=0.01ETH，升級獎勵0.005ETH
 
 -- ----------------------------
--- v2: 建立後台 IP 白名單表
+-- v2: 後台 IP 白名單表 (不變)
 -- ----------------------------
 CREATE TABLE admin_ip_whitelist (
     id SERIAL PRIMARY KEY,
-    ip_range CIDR UNIQUE NOT NULL, -- IP 地址或 CIDR 範圍
-    description TEXT,              -- 描述 (例如 '辦公室 IP')
+    ip_range CIDR UNIQUE NOT NULL,
+    description TEXT,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
-
--- 插入本機 IP 作為安全後門
 INSERT INTO admin_ip_whitelist (ip_range, description) VALUES ('127.0.0.1/32', 'Localhost Access');
 INSERT INTO admin_ip_whitelist (ip_range, description) VALUES ('::1/128', 'Localhost IPv6 Access');
+INSERT INTO admin_ip_whitelist (ip_range, description) VALUES ('192.168.65.1/32', 'Docker Host IP (Local Dev)');
+INSERT INTO admin_ip_whitelist (ip_range, description) VALUES ('125.229.37.48/32', 'My Public IP');

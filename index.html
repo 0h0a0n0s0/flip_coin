@@ -4,37 +4,30 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Flip Coin Game</title>
-
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/notyf@3/notyf.min.css">
-  
   <link rel="stylesheet" href="style.css">
-
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/ethers/6.7.0/ethers.umd.min.js" integrity="sha512-bLwLr3lzJN1cvtbClBMhKDyaD0uocWmphiqO8v0w3/z/XqUwzkM00gZq7BV3dQS9mQu0rarZMTsxlcnIHszElA==" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
   
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.7.2/socket.io.min.js" integrity="sha512-Xm9qbB6Pu06k3PUwPj785dyTl6oHxgsv9nHp7ej7nCpAqGZT3OZpsELuCYX05DdonFpTlBpXMOxjavIAIUwr0w==" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
-
-</head>
+  </head>
 <body>
 
   <header>
     <h1>Flip Coin Game</h1>
-    <div>
-      <span id="userIdDisplay" style="display: none;"></span>
-      <span id="userWalletAddressDisplay" style="display: none;"></span>
-      <span id="userNicknameDisplay" class="tag tag-nickname"></span>
-      <button id="editNicknameBtn" class="btn btn-secondary btn-small" style="display: none;">編輯昵稱</button>
-      <button id="logoutBtn" style="display: none;">登出</button>
+    <div id="authContainer">
+      <button id="loginBtn" class="btn-secondary">登入</button>
+      <button id="registerBtn" class="btn-primary">註冊</button>
       
-      <button id="connectWalletBtn">连接钱包 / 注册</button>
+      <span id="userInfoDisplay" style="display: none;">
+        歡迎, <strong id="usernameDisplay">...</strong> | 餘額: <strong id="balanceDisplay">0.00</strong> USDT
+      </span>
+      <button id="personalCenterBtn" class="btn-secondary" style="display: none;">個人中心</button>
+      <button id="logoutBtn" style="display: none;">登出</button>
     </div>
   </header>
 
   <main>
     <section id="gameSection">
-          
       <div class="game-header-container">
         <h2>Flip Coin</h2> 
-        
         <div class="streak-info-container">
             <span id="userStreakDisplay"></span> 
             <span id="userMaxStreakDisplay"></span> 
@@ -50,7 +43,7 @@
           
           <label><input type="radio" name="flipChoice" value="head"> 正面</label>
           <label><input type="radio" name="flipChoice" value="tail"> 反面</label><br>
-          <input type="number" id="betAmount" placeholder="下注金额 (ETH)" step="0.001">
+          <input type="number" id="betAmount" placeholder="下注金额 (USDT)" step="0.01">
           <button id="confirmBetBtn">确认下注</button>
       </section>
 
@@ -64,26 +57,70 @@
       <section id="historySection">
           <h2>投注历史</h2>
           <ul id="historyList">
-            <li>连接钱包以查看历史记录</li>
+            <li>登入後以查看歷史記錄</li>
           </ul>
       </section>
   </main>
 
   <script src="https://cdn.jsdelivr.net/npm/notyf@3/notyf.min.js"></script>
-
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.7.2/socket.io.min.js"></script>
+  
   <script type="module" src="app.js"></script>
 
-  <div id="nicknameModal" class="modal" style="display: none;">
+  <div id="loginModal" class="modal" style="display: none;">
     <div class="modal-content">
-        <span id="closeNicknameModalBtn" class="modal-close">&times;</span>
-        <h2>編輯用戶昵稱</h2>
+        <span id="closeLoginModalBtn" class="modal-close">&times;</span>
+        <h2>登入</h2>
         <div class="modal-body">
-            <label for="nicknameInput">請輸入您的新昵稱：</label>
-            <input type="text" id="nicknameInput" class="input-field" maxlength="50" placeholder="最多 50 字元">
+            <label for="loginUsernameInput">帳號</label>
+            <input type="text" id="loginUsernameInput" class="input-field" placeholder="請輸入帳號">
+            <label for="loginPasswordInput">密碼</label>
+            <input type="password" id="loginPasswordInput" class="input-field" placeholder="請輸入密碼">
         </div>
         <div class="modal-footer">
-            <button id="cancelNicknameBtn" class="btn btn-secondary">取消</button>
-            <button id="confirmNicknameBtn" class="btn btn-primary">確認</button>
+            <button id="cancelLoginBtn" class="btn btn-secondary">取消</button>
+            <button id="confirmLoginBtn" class="btn btn-primary">登入</button>
+        </div>
+    </div>
+  </div>
+  
+  <div id="registerModal" class="modal" style="display: none;">
+    <div class="modal-content">
+        <span id="closeRegisterModalBtn" class="modal-close">&times;</span>
+        <h2>註冊</h2>
+        <div class="modal-body">
+            <label for="registerUsernameInput">帳號 (3-20 字元)</label>
+            <input type="text" id="registerUsernameInput" class="input-field" placeholder="請輸入帳號">
+            <label for="registerPasswordInput">密碼 (至少 6 位)</label>
+            <input type="password" id="registerPasswordInput" class="input-field" placeholder="請輸入密碼">
+            <label for="registerPasswordConfirmInput">確認密碼</label>
+            <input type="password" id="registerPasswordConfirmInput" class="input-field" placeholder="請再次輸入密碼">
+        </div>
+        <div class="modal-footer">
+            <button id="cancelRegisterBtn" class="btn btn-secondary">取消</button>
+            <button id="confirmRegisterBtn" class="btn btn-primary">註冊</button>
+        </div>
+    </div>
+  </div>
+  
+  <div id="personalCenterModal" class="modal" style="display: none;">
+    <div class="modal-content pc-modal-content">
+        <span id="closePersonalCenterModalBtn" class="modal-close">&times;</span>
+        <h2>個人中心</h2>
+        
+        <div class="modal-body">
+            <ul class="pc-info-list">
+                <li><span>用戶 ID:</span> <strong id="pc_userId">...</strong></li>
+                <li><span>用戶帳號:</span> <strong id="pc_username">...</strong></li>
+                <li><span>用戶等級:</span> <strong id="pc_level">...</strong></li>
+                <li><span>最高連勝:</span> <strong id="pc_maxStreak">...</strong></li>
+                <li><span>我的邀請碼:</span> <strong id="pc_inviteCode">...</strong></li>
+                <li><span>推薦人邀請碼:</span> <strong id="pc_referrerCode">...</strong></li>
+            </ul>
+        </div>
+        
+        <div class="modal-footer">
+            <button id="pc_cancelBtn" class="btn btn-secondary">關閉</button>
         </div>
     </div>
   </div>

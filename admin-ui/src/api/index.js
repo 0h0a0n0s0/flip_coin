@@ -27,15 +27,17 @@ export function getDashboardStats() {
 
 // --- User Management ---
 /**
- * @description 獲取用戶列表 (分頁/搜尋)
+ * @description 獲取用戶列表 (v6 版)
  */
 export function getUsers(params) {
     return request({
         url: '/api/admin/users',
         method: 'get',
-        params: params,
+        params: params, // (params 內容已在 vue 檔案中更新)
     });
 }
+
+
 /**
  * @description 更新用戶狀態 (禁用投注)
  */
@@ -52,6 +54,27 @@ export function updateUserStatus(userId, status) {
 export function getUserBalance(walletAddress) {
     return request({
         url: `/api/admin/users/balance/${walletAddress}`,
+        method: 'get',
+    });
+}
+
+/**
+ * @description (管理員) 更新用戶資料
+ */
+export function updateUser(userId, data) { // (★★★ v6 新增 ★★★)
+    return request({
+        url: `/api/admin/users/${userId}`,
+        method: 'put',
+        data: data // { nickname, level, referrer_code, balance }
+    });
+}
+
+/**
+ * @description 根據邀請碼獲取推薦用戶列表
+ */
+export function getReferrals(inviteCode) {
+    return request({
+        url: `/api/admin/users/by-referrer/${inviteCode}`,
         method: 'get',
     });
 }
@@ -76,7 +99,7 @@ export function getProfitLossReport(params) {
     return request({
         url: '/api/admin/reports/profit-loss',
         method: 'get',
-        params: params,
+        params: params, // { userQuery, dateRange }
     });
 }
 
@@ -84,11 +107,11 @@ export function getProfitLossReport(params) {
 /**
  * @description 獲取監控錢包列表 (含餘額)
  */
-export function getWallets(params) { // (★★★ 確保此函數存在 ★★★)
+export function getWallets(params) { 
     return request({
         url: '/api/admin/wallets',
         method: 'get',
-        params,
+        params, // (params 內容 {name, chain_type, address})
     });
 }
 /**

@@ -40,23 +40,26 @@ service.interceptors.response.use(
         
         let message = '請求失敗';
         if (error.response) {
-            // 處理後端返回的錯誤 (例如 401, 400)
             if (error.response.data && error.response.data.error) {
                 message = error.response.data.error;
             } else {
                 message = `錯誤 ${error.response.status}: ${error.response.statusText}`;
             }
 
-            // (★★★ 關鍵 ★★★)
-            // 如果是 401 (未授權) 或 400 (Token 無效)
-            if (error.response.status === 401 || error.response.status === 400) {
-                // 清除本地 token 並強制重新整理到登入頁
+            // (★★★ 關鍵修改：只攔截 401，並跳轉到 /admin/login ★★★)
+            if (error.response.status === 401) {
+                ElMessage.error('Token 已過期或無效，請重新登入。');
                 localStorage.removeItem('admin_token');
-                // (我們稍後會在 router 中實作更優雅的跳轉)
-                window.location.href = '/login'; 
+                
+                // (使用 /admin/login 來確保跳轉到正確的後台登入頁)
+                window.location.href = '/admin/login'; 
+                
+                // (返回一個 pending 的 Promise 來中斷當前的 API 鏈)
+                return new Promise(() => {});
             }
         }
         
+        // (對於 400 業務錯誤 或 500 伺服器錯誤，只彈出提示)
         ElMessage.error(message);
         return Promise.reject(error);
     }

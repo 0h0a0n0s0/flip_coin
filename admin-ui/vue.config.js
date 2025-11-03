@@ -4,7 +4,9 @@ const { defineConfig } = require('@vue/cli-service');
 module.exports = defineConfig({
   transpileDependencies: true,
   
-  // (★★★ 關鍵：告訴 Vue App 它的部署路徑是 /admin/ ★★★)
-  // 這會讓所有靜態資源 (JS/CSS) 都從 /admin/ 路徑請求
   publicPath: '/admin/',
+
+  // (★★★ 新增這一行：禁用生產環境的 Source Map ★★★)
+  // 這將停止生成 .map 檔案，並防止使用 'eval'，以修復 CSP 錯誤
+  productionSourceMap: false
 });

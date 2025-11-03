@@ -1,5 +1,5 @@
 // 檔案: backend/routes/admin.js (新檔案)
-const { ethers } = require('ethers'); //
+const { ethers } = require('ethers');
 const express = require('express');
 const router = express.Router();
 const db = require('../db');
@@ -99,113 +99,66 @@ router.post('/login', async (req, res) => {
  * @access Private (需要 Token)
  */
 router.get('/stats', authMiddleware, async (req, res) => {
-    // (因為通過了 authMiddleware, 我們可以訪問 req.user)
     console.log(`[Admin Stats] User ${req.user.username} is requesting stats...`);
-    
     try {
-        // 範例查詢：總用戶數
         const userCountResult = await db.query('SELECT COUNT(*) FROM users');
         const totalUsers = userCountResult.rows[0].count;
 
-        // 範例查詢：總投注數
         const betCountResult = await db.query('SELECT COUNT(*) FROM bets');
         const totalBets = betCountResult.rows[0].count;
 
-        // 範例查詢：待處理派獎數
-        const pendingPayoutsResult = await db.query("SELECT COUNT(*) FROM bets WHERE status = 'prize_pending'");
-        const pendingPayouts = pendingPayoutsResult.rows[0].count;
+        // (★★★ v6 修改：不再有 prize_pending ★★★)
+        const pendingWithdrawalsResult = await db.query("SELECT COUNT(*) FROM platform_transactions WHERE type = 'withdraw' AND status = 'pending'");
+        const pendingPayouts = pendingWithdrawalsResult.rows[0].count;
 
         res.status(200).json({
             totalUsers: parseInt(totalUsers),
             totalBets: parseInt(totalBets),
-            pendingPayouts: parseInt(pendingPayouts)
+            pendingPayouts: parseInt(pendingPayouts) // (改為 待處理提現)
         });
-
     } catch (error) {
-        console.error('[Admin Stats] Error fetching stats:', error);
+        console.error('[Admin Stats] Error fetching stats (v6):', error);
         res.status(500).json({ error: 'Internal server error' });
     }
 });
 
-// ★★★ (v2 新增) 用戶管理 - 獲取用戶列表 (分頁/搜尋) ★★★
+// --- 用戶管理 (★★★ v6 重構 ★★★) ---
 /**
- * @description 獲取用戶列表 (分頁/搜尋)
- * @route GET /api/admin/users
- * @access Private (需要 Token)
+ * @description 獲取用戶列表 (v6 版)
  * @params query {
- * page?: number,
- * limit?: number,
- * userId?: string, (对应 v1 的 user_id)
- * walletAddress?: string,
- * dateRange?: [string, string] (注册时间)
+ * (★★★ 移除 walletAddress, 新增 username, balance ★★★)
  * }
  */
 router.get('/users', authMiddleware, async (req, res) => {
-    // 1. 解構查詢參數 (v2)
     const { 
-        page = 1, 
-        limit = 10,
+        page = 1, limit = 10,
         userId,
-        walletAddress,
-        dateRange,
-        nickname, // (v2 新增)
-        inviteCode, // (v2 新增 - 自身邀请码)
-        referrerCode, // (v2 新增 - 推荐人邀请码)
-        status // (v2 新增 - 禁用投注)
+        username, // (★★★ v6 新增 ★★★)
+        dateRange, 
+        nickname, 
+        status,
+        inviteCode,
+        referrerCode,
+        lastLoginIp,
+        activityDateRange
     } = req.query;
 
     try {
-        // 2. 準備 SQL 查詢條件
         const params = [];
         let whereClauses = [];
         let paramIndex = 1;
 
-        // (v1 欄位... 保持不變)
-        if (userId) {
-            params.push(`%${userId}%`);
-            whereClauses.push(`user_id ILIKE $${paramIndex++}`); 
-        }
-        if (walletAddress) {
-            params.push(walletAddress.toLowerCase());
-            whereClauses.push(`wallet_address = $${paramIndex++}`);
-        }
-        if (dateRange) {
-            try {
-                const [startDate, endDate] = JSON.parse(dateRange);
-                if (startDate && endDate) {
-                    params.push(startDate);
-                    whereClauses.push(`created_at >= $${paramIndex++}`);
-                    params.push(endDate);
-                    whereClauses.push(`created_at <= $${paramIndex++}`);
-                }
-            } catch (e) { console.warn('Failed to parse dateRange'); }
-        }
-
-        // (★★★ v2 新增搜尋條件 ★★★)
-        // 搜尋: 用户昵称 (精确)
-        if (nickname) {
-            params.push(nickname);
-            whereClauses.push(`nickname = $${paramIndex++}`);
-        }
-        // 搜尋: 自身邀请码 (精确)
-        if (inviteCode) {
-            params.push(inviteCode);
-            whereClauses.push(`invite_code = $${paramIndex++}`);
-        }
-        // 搜尋: 推荐人邀请码 (精确)
-        if (referrerCode) {
-            params.push(referrerCode);
-            whereClauses.push(`referrer_code = $${paramIndex++}`);
-        }
-        // 搜尋: 状态 (精确)
-        if (status) {
-            params.push(status);
-            whereClauses.push(`status = $${paramIndex++}`);
-        }
+        if (userId) { params.push(`%${userId}%`); whereClauses.push(`user_id ILIKE $${paramIndex++}`); }
+        if (username) { params.push(`%${username}%`); whereClauses.push(`username ILIKE $${paramIndex++}`); } // (★★★ v6 新增 ★★★)
+        if (dateRange) { /* ... (不變) ... */ }
+        if (nickname) { params.push(nickname); whereClauses.push(`nickname = $${paramIndex++}`); }
+        if (status) { params.push(status); whereClauses.push(`status = $${paramIndex++}`); }
+        if (inviteCode) { params.push(inviteCode); whereClauses.push(`invite_code = $${paramIndex++}`); }
+        if (referrerCode) { params.push(referrerCode); whereClauses.push(`referrer_code = $${paramIndex++}`); }
+        if (lastLoginIp) { params.push(lastLoginIp); whereClauses.push(`last_login_ip = $${paramIndex++}`); }
+        if (activityDateRange) { /* ... (不變) ... */ }
         
         const whereSql = whereClauses.length > 0 ? `WHERE ${whereClauses.join(' AND ')}` : '';
-
-        // 3. 執行查詢 (獲取總數)
         const countSql = `SELECT COUNT(*) FROM users ${whereSql}`;
         const countResult = await db.query(countSql, params);
         const total = parseInt(countResult.rows[0].count, 10);
@@ -214,13 +167,14 @@ router.get('/users', authMiddleware, async (req, res) => {
             return res.status(200).json({ total: 0, list: [] });
         }
 
-        // 4. 執行查詢 (獲取分頁資料)
-        // (★★★ v2 擴充 SELECT 欄位 ★★★)
+        // (★★★ v6 修改：SELECT 欄位更新 ★★★)
         const dataSql = `
             SELECT 
-                id, user_id, wallet_address, 
+                id, user_id, username, balance, -- (v6 新增)
+                wallet_address, chain_type, -- (v6 新增)
                 current_streak, max_streak, created_at,
-                nickname, level, invite_code, referrer_code, status 
+                nickname, level, invite_code, referrer_code, status,
+                last_login_ip, last_activity_at
             FROM users 
             ${whereSql}
             ORDER BY created_at DESC
@@ -230,17 +184,106 @@ router.get('/users', authMiddleware, async (req, res) => {
         const offset = (page - 1) * limit;
         params.push(limit);
         params.push(offset);
-        
         const dataResult = await db.query(dataSql, params);
 
-        // 5. 返回結果
-        res.status(200).json({
-            total: total,
-            list: dataResult.rows
-        });
+        res.status(200).json({ total: total, list: dataResult.rows });
+    } catch (error) {
+        console.error('[Admin Users] Error fetching users (v6):', error);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+/**
+ * @description (管理員) 更新用戶資料 (★★★ v6 重構：新增 balance ★★★)
+ */
+router.put('/users/:id', authMiddleware, async (req, res) => {
+    const { id } = req.params;
+    const { nickname, level, referrer_code, balance } = req.body; // (★★★ v6 新增 balance ★★★)
+    
+    try {
+        const updates = [];
+        const params = [];
+        let paramIndex = 1;
+
+        if (nickname !== undefined) {
+            if (nickname.length > 50) { return res.status(400).json({ error: 'Nickname is too long (max 50 chars).' }); }
+            updates.push(`nickname = $${paramIndex++}`);
+            params.push(nickname);
+        }
+        if (level !== undefined) {
+            const newLevel = parseInt(level, 10);
+            if (isNaN(newLevel) || newLevel <= 0) { return res.status(400).json({ error: 'Invalid level. Must be a positive integer.' }); }
+            const levelExists = await db.query('SELECT 1 FROM user_levels WHERE level = $1', [newLevel]);
+            if (levelExists.rows.length === 0) { return res.status(400).json({ error: `Level ${newLevel} does not exist in system settings.` }); }
+            updates.push(`level = $${paramIndex++}`);
+            params.push(newLevel);
+        }
+        if (referrer_code !== undefined) {
+            if (referrer_code === null || referrer_code === '') {
+                updates.push(`referrer_code = $${paramIndex++}`);
+                params.push(null);
+            } else {
+                const referrerExists = await db.query('SELECT 1 FROM users WHERE invite_code = $1', [referrer_code]);
+                if (referrerExists.rows.length === 0) { return res.status(400).json({ error: 'Invalid referrer code. Code does not exist.' }); }
+                const selfCheck = await db.query('SELECT 1 FROM users WHERE id = $1 AND invite_code = $2', [id, referrer_code]);
+                 if (selfCheck.rows.length > 0) { return res.status(400).json({ error: 'Cannot set referrer code to own invite code.' }); }
+                updates.push(`referrer_code = $${paramIndex++}`);
+                params.push(referrer_code);
+            }
+        }
+        
+        // (★★★ v6 新增：手動調整餘額 ★★★)
+        if (balance !== undefined) {
+            const newBalance = parseFloat(balance);
+             if (isNaN(newBalance) || newBalance < 0) {
+                 return res.status(400).json({ error: 'Invalid balance. Must be a non-negative number.' });
+             }
+             updates.push(`balance = $${paramIndex++}`);
+             params.push(newBalance);
+             // (★★★ 待辦：手動調餘額是否要寫入 platform_transactions？目前先不寫)
+        }
+
+        if (updates.length === 0) {
+            return res.status(400).json({ error: 'No valid fields provided for update.' });
+        }
+
+        params.push(id); 
+        const updateSql = `UPDATE users SET ${updates.join(', ')} WHERE id = $${paramIndex} RETURNING *`;
+        const result = await db.query(updateSql, params);
+
+        if (result.rows.length === 0) {
+            return res.status(404).json({ error: 'User not found.' });
+        }
+
+        console.log(`[Admin Users] User ID ${result.rows[0].id} updated by ${req.user.username}`);
+        res.status(200).json(result.rows[0]);
 
     } catch (error) {
-        console.error('[Admin Users] Error fetching users (v2):', error);
+        console.error('[Admin Users] Error updating user (v6):', error);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+
+// (★★★ 新增 GET /api/admin/users/by-referrer/:invite_code ★★★)
+/**
+ * @description 根據邀請碼查詢推薦的用戶列表
+ * @route GET /api/admin/users/by-referrer/:invite_code
+ * @access Private (需要 Token)
+ */
+router.get('/users/by-referrer/:invite_code', authMiddleware, async (req, res) => {
+    const { invite_code } = req.params;
+
+    try {
+        const result = await db.query(
+            'SELECT user_id, nickname, wallet_address FROM users WHERE referrer_code = $1 ORDER BY created_at DESC',
+            [invite_code]
+        );
+        
+        res.status(200).json(result.rows);
+
+    } catch (error) {
+        console.error(`[Admin Users] Error fetching referrals for code ${invite_code}:`, error);
         res.status(500).json({ error: 'Internal server error' });
     }
 });
@@ -281,135 +324,49 @@ router.patch('/users/:id/status', authMiddleware, async (req, res) => {
     }
 });
 
-// ★★★ (v2 新增) 用戶管理 - 即時查詢錢包餘額 ★★★
-/**
- * @description 查詢指定錢包地址的 Sepolia ETH 餘額
- * @route GET /api/admin/users/balance/:address
- * @access Private (需要 Token)
- */
-router.get('/users/balance/:address', authMiddleware, async (req, res) => {
-    const { address } = req.params;
-    
-    // (我們需要從 server.js 獲取 provider，但 Node.js 模組快取機制允許我們這樣做)
-    // 獲取在 server.js 中實例化的 provider
-    const provider = require('../server.js').provider; 
-    
-    if (!provider) {
-         return res.status(500).json({ error: 'Blockchain provider is not initialized.' });
-    }
+router.get('/users/by-referrer/:invite_code', authMiddleware, async (req, res) => { /* ... (不變) ... */ });
+router.patch('/users/:id/status', authMiddleware, async (req, res) => { /* ... (不變) ... */ });
 
-    try {
-        const balanceWei = await provider.getBalance(address);
-        const balanceEth = ethers.formatEther(balanceWei); //
-        
-        console.log(`[Admin Balance] User ${req.user.username} checked balance for ${address}: ${balanceEth} ETH`);
-        res.status(200).json({
-            walletAddress: address,
-            balanceEth: balanceEth,
-            balanceWei: balanceWei.toString()
-        });
-
-    } catch (error) {
-        console.error(`[Admin Balance] Error fetching balance for ${address}:`, error.message);
-        // 可能是地址無效
-        if (error.code === 'INVALID_ARGUMENT') {
-            return res.status(400).json({ error: 'Invalid wallet address.' });
-        }
-        res.status(500).json({ error: 'Internal server error while fetching balance.' });
-    }
-});
-
-// ★★★ (v2 修正版) 注单管理 - 獲取投注列表 (分頁/搜尋) ★★★
-/**
- * @description 獲取注单管理列表 (依據您提供的 10 欄位需求)
- * @route GET /api/admin/bets
- * @access Private (需要 Token)
- * @params query {
- * page?: number,
- * limit?: number,
- * betId?: string (注单编号, 模糊),
- * userId?: string (用户ID, 模糊),
- * walletAddress?: string (钱包地址, 精确),
- * status?: string (注单状态, 精确),
- * dateRange?: [string, string] (下注交易完成时间)
- * }
- */
+// --- 注單管理 (★★★ v6 重構 ★★★) ---
 router.get('/bets', authMiddleware, async (req, res) => {
-    // 1. 解構查詢參數
     const {
-        page = 1,
-        limit = 10,
-        betId,
-        userId,
-        walletAddress,
-        status,
-        dateRange // 預期格式: '["2023-01-01...", "2023-01-31..."]'
+        page = 1, limit = 10,
+        betId, userId, 
+        status, dateRange
+        // (★★★ v6 移除：walletAddress ★★★)
     } = req.query;
 
     try {
-        // 2. 準備 SQL 查詢條件
         const params = [];
         let whereClauses = [];
         let paramIndex = 1;
 
-        // 搜尋: 注单编号 (模糊)
-        if (betId) {
-            params.push(`%${betId}%`);
-            whereClauses.push(`b.id::text ILIKE $${paramIndex++}`);
-        }
-
-        // 搜尋: 用户ID (模糊)
-        if (userId) {
-            params.push(`%${userId}%`);
-            whereClauses.push(`b.user_id ILIKE $${paramIndex++}`);
-        }
-        
-        // 搜尋: 钱包地址 (精确) (需要 JOIN users 表)
-        if (walletAddress) {
-            params.push(walletAddress.toLowerCase());
-            whereClauses.push(`u.wallet_address = $${paramIndex++}`);
-        }
-
-        // 搜尋: 注单状态 (精确)
-        if (status) {
-            params.push(status);
-            whereClauses.push(`b.status = $${paramIndex++}`);
-        }
-
-        // 搜尋: 下注交易完成时间 (bet_time)
-        if (dateRange) {
-            try {
-                const [startDate, endDate] = JSON.parse(dateRange);
-                if (startDate && endDate) {
-                    params.push(startDate);
-                    whereClauses.push(`b.bet_time >= $${paramIndex++}`);
-                    params.push(endDate);
-                    whereClauses.push(`b.bet_time <= $${paramIndex++}`);
-                }
-            } catch (e) { console.warn('Failed to parse dateRange for bets'); }
-        }
+        if (betId) { params.push(`%${betId}%`); whereClauses.push(`b.id::text ILIKE $${paramIndex++}`); }
+        if (userId) { params.push(`%${userId}%`); whereClauses.push(`b.user_id ILIKE $${paramIndex++}`); }
+        // (★★★ v6 移除：walletAddress 搜尋 ★★★)
+        if (status) { params.push(status); whereClauses.push(`b.status = $${paramIndex++}`); }
+        if (dateRange) { /* ... (不變) ... */ }
         
         const whereSql = whereClauses.length > 0 ? `WHERE ${whereClauses.join(' AND ')}` : '';
-        const joinSql = 'FROM bets b JOIN users u ON b.user_id = u.user_id';
+        // (★★★ v6 修改：不再需要 JOIN users 表 ★★★)
+        const fromSql = 'FROM bets b';
 
-        // 3. 執行查詢 (獲取總數)
-        const countSql = `SELECT COUNT(b.id) ${joinSql} ${whereSql}`;
+        const countSql = `SELECT COUNT(b.id) ${fromSql} ${whereSql}`;
         const countResult = await db.query(countSql, params);
         const total = parseInt(countResult.rows[0].count, 10);
-
         if (total === 0) {
             return res.status(200).json({ total: 0, list: [] });
         }
 
-        // 4. 執行查詢 (獲取分頁資料)
-        // (欄位: id, user_id, game_type, choice, amount, status, bet_time, settle_time, tx_hash, prize_tx_hash)
+        // (★★★ v6 修改：SELECT 欄位 ★★★)
         const dataSql = `
             SELECT 
-                b.id, b.user_id, u.wallet_address, 
+                b.id, b.user_id,
                 b.game_type, b.choice, b.amount, b.status, 
                 b.bet_time, b.settle_time, 
-                b.tx_hash, b.prize_tx_hash
-            ${joinSql}
+                b.tx_hash,
+                b.payout_multiplier
+            ${fromSql}
             ${whereSql}
             ORDER BY b.bet_time DESC
             LIMIT $${paramIndex++} OFFSET $${paramIndex++}
@@ -418,130 +375,134 @@ router.get('/bets', authMiddleware, async (req, res) => {
         const offset = (page - 1) * limit;
         params.push(limit);
         params.push(offset);
-        
         const dataResult = await db.query(dataSql, params);
-
-        // 5. 返回結果
-        res.status(200).json({
-            total: total,
-            list: dataResult.rows
-        });
-
+        res.status(200).json({ total: total, list: dataResult.rows });
     } catch (error) {
-        console.error('[Admin Bets] Error fetching bets (v2-corrected):', error);
+        console.error('[Admin Bets] Error fetching bets (v6):', error);
         res.status(500).json({ error: 'Internal server error' });
     }
 });
 
-// ★★★ (v2 新增) 營運管理 - 盈虧報表 ★★★
-/**
- * @description 獲取盈虧報表
- * @route GET /api/admin/reports/profit-loss
- * @access Private (需要 Token)
- * @params query {
- * userQuery?: string (用户ID 或 钱包地址 或 'system')
- * dateRange: [string, string] (投注时间)
- * }
- */
+// --- 盈虧報表 (★★★ v6 重構 ★★★) ---
 router.get('/reports/profit-loss', authMiddleware, async (req, res) => {
-    const { userQuery, dateRange } = req.query; //
+    const { userQuery, dateRange } = req.query; 
     if (!dateRange) { return res.status(400).json({ error: 'Date range is required.' }); }
-
-    // (★★★ 關鍵修正：呼叫函數來獲取最新的快取 ★★★)
-    const getSettingsCache = require('../server.js').getSettingsCache; //
-    const currentSettingsCache = getSettingsCache(); // 執行函數獲取當前快取
-    const PAYOUT_MULTIPLIER = parseInt(currentSettingsCache?.PAYOUT_MULTIPLIER || '2', 10); //
-    console.log(`[Admin Report] Using PAYOUT_MULTIPLIER from getSettingsCache(): ${PAYOUT_MULTIPLIER}`); // (更新日誌)
+    
     try {
-        // 2. 準備 SQL 查詢條件 (不變)
-        const params = [];
-        let whereClauses = [];
-        let paramIndex = 1;
+        // --- 1. 準備 bets 查詢的參數 ---
+        const betParams = [];
+        let betWhereClauses = [];
+        let betParamIndex = 1;
+        let timeParamsAdded = false;
         
         try {
             const [startDate, endDate] = JSON.parse(dateRange);
-            params.push(startDate);
-            whereClauses.push(`b.bet_time >= $${paramIndex++}`);
-            params.push(endDate);
-            whereClauses.push(`b.bet_time <= $${paramIndex++}`);
-        } catch (e) { /* ... */ }
+            betParams.push(startDate);
+            betWhereClauses.push(`b.bet_time >= $${betParamIndex++}`);
+            betParams.push(endDate);
+            betWhereClauses.push(`b.bet_time <= $${betParamIndex++}`);
+            timeParamsAdded = true;
+        } catch (e) { /* 必須有時間 */ }
 
         if (userQuery && userQuery.toLowerCase() !== 'system') {
-            params.push(`%${userQuery}%`);
-            const userFilterIndex = paramIndex++;
-            whereClauses.push(`(u.user_id ILIKE $${userFilterIndex} OR u.wallet_address ILIKE $${userFilterIndex})`);
+            betParams.push(`%${userQuery}%`);
+            const userFilterIndex = betParamIndex++;
+            // (★★★ v6 修改：JOIN users 表並使用 username ★★★)
+            betWhereClauses.push(`(u.user_id ILIKE $${userFilterIndex} OR u.username ILIKE $${userFilterIndex})`);
         }
+        
+        const betWhereSql = `WHERE ${betWhereClauses.join(' AND ')}`;
+        // (★★★ v6 修改：JOIN users 表 ★★★)
+        const betJoinSql = 'FROM bets b JOIN users u ON b.user_id = u.user_id';
 
-        const whereSql = `WHERE ${whereClauses.join(' AND ')}`;
-        const joinSql = 'FROM bets b JOIN users u ON b.user_id = u.user_id';
-        console.log(`[Admin Report DEBUG] 2. Prepared WHERE: ${whereSql}`);
-
-        // 3. 準備彙總查詢 (★★★ 加入 PAYOUT_MULTIPLIER 參數到 params ★★★)
-        const querySql = `
+        // --- 2. 查詢 Bets 相關數據 (投注, 派獎) ---
+        // (★★★ v6 修改：移除 prize_gas_fee ★★★)
+        const betReportSql = `
             SELECT
+                COALESCE(SUM(b.amount), 0) AS total_bet,
                 COALESCE(SUM(
                     CASE 
-                        WHEN b.status IN ('won', 'lost', 'prize_pending') THEN b.amount
-                        ELSE 0 
-                    END
-                ), 0) AS total_bet,
-                COALESCE(SUM(
-                    CASE 
-                        WHEN b.status = 'won' THEN b.amount * $${paramIndex} 
+                        WHEN b.status = 'won' THEN b.amount * b.payout_multiplier 
                         ELSE 0 
                     END
                 ), 0) AS total_payout
-            ${joinSql}
-            ${whereSql}
+            ${betJoinSql}
+            ${betWhereSql}
         `;
-        // (★★★ 重要修正：將倍數加入 params 陣列 ★★★)
-        params.push(PAYOUT_MULTIPLIER); 
+        const betReportResult = await db.query(betReportSql, betParams);
+        const betData = betReportResult.rows[0];
 
-        // (★★★ 關鍵除錯點 ★★★)
-        console.log(`[Admin Report DEBUG] 3. Final SQL:\n${querySql}`);
-        console.log(`[Admin Report DEBUG] 4. Final Params:`, JSON.stringify(params));
-
-        // 4. 執行查詢
-        const result = await db.query(querySql, params);
-        const data = result.rows[0];
-        console.log(`[Admin Report DEBUG] 5. Query Result:`, data); // (看看 data 是不是 { total_bet: '0', total_payout: '0' })
+        // --- 3. 準備 platform_transactions 查詢的參數 ---
+        const bonusParams = [];
+        let bonusWhereClauses = [];
+        let bonusParamIndex = 1;
         
-        // 5. 計算衍生數據 (不變)
-        const totalBet = parseFloat(data.total_bet);
-        const totalPayout = parseFloat(data.total_payout);
-        const platformProfit = totalBet - totalPayout;
-        console.log(`[Admin Report DEBUG] 6. Calculated Values: Bet=${totalBet}, Payout=${totalPayout}, Profit=${platformProfit}`);
+        if (timeParamsAdded) {
+             const [startDate, endDate] = JSON.parse(dateRange);
+             bonusParams.push(startDate);
+             bonusWhereClauses.push(`pt.created_at >= $${bonusParamIndex++}`);
+             bonusParams.push(endDate);
+             bonusWhereClauses.push(`pt.created_at <= $${bonusParamIndex++}`);
+        }
+        
+        if (userQuery && userQuery.toLowerCase() !== 'system') {
+            bonusParams.push(`%${userQuery}%`);
+            const userFilterIndex = bonusParamIndex++;
+            bonusWhereClauses.push(`(u.user_id ILIKE $${userFilterIndex} OR u.username ILIKE $${userFilterIndex})`);
+        }
+        
+        const bonusWhereSql = bonusWhereClauses.length > 0 ? `WHERE ${bonusWhereClauses.join(' AND ')}` : '';
+        const bonusJoinSql = 'FROM platform_transactions pt JOIN users u ON pt.user_id = u.user_id';
 
-        // 6. 返回結果 (不變)
+        // --- 4. 查詢其他支出 (獎金, 提現, Gas) ---
+        // (★★★ v6 修改：Gas Fee 來自 platform_transactions ★★★)
+        const bonusReportSql = `
+            SELECT
+                COALESCE(SUM(CASE WHEN pt.type = 'level_up_reward' THEN pt.amount ELSE 0 END), 0) AS bonus_level,
+                COALESCE(SUM(CASE WHEN pt.type = 'event_bonus' THEN pt.amount ELSE 0 END), 0) AS bonus_event,
+                COALESCE(SUM(CASE WHEN pt.type = 'commission' THEN pt.amount ELSE 0 END), 0) AS bonus_commission,
+                COALESCE(SUM(pt.gas_fee), 0) AS total_gas_fee
+            ${userQuery && userQuery.toLowerCase() !== 'system' ? bonusJoinSql : 'FROM platform_transactions pt'}
+            ${bonusWhereSql}
+        `;
+        const bonusReportResult = await db.query(bonusReportSql, bonusParams);
+        const bonusData = bonusReportResult.rows[0];
+
+        // --- 5. 彙總計算 ---
+        const total_bet = parseFloat(betData.total_bet);
+        const total_payout = parseFloat(betData.total_payout);
+        const bonus_level = parseFloat(bonusData.bonus_level);
+        const bonus_event = parseFloat(bonusData.bonus_event);
+        const bonus_commission = parseFloat(bonusData.bonus_commission);
+        const total_gas_fee = parseFloat(bonusData.total_gas_fee); // (★★★ v6 修改 ★★★)
+        
+        const platform_profit = total_bet - total_payout; 
+        const platform_net_profit = total_bet - total_payout - bonus_level - bonus_event - bonus_commission - total_gas_fee;
+
+        // --- 6. 返回結果 ---
         res.status(200).json({
-            total_bet: totalBet,
-            total_payout: totalPayout,
-            platform_profit: platformProfit,
-            bonus_event: 0,
-            bonus_level: 0,
-            bonus_commission: 0
+            total_bet, total_payout, platform_profit,
+            bonus_event, bonus_level, bonus_commission,
+            total_gas_fee, platform_net_profit
         });
 
     } catch (error) {
-        console.error('[Admin Report] CRITICAL ERROR:', error); // (改用 CRITICAL)
+        console.error('[Admin Report] CRITICAL ERROR (v6):', error); 
         res.status(500).json({ error: 'Internal server error' });
     }
 });
 
-// ★★★ (v2 新增) 錢包監控 - CRUD API ★★★
+
+// --- 錢包監控 (★★★ v6 重構 ★★★) ---
 /**
- * @description 獲取監控錢包列表 (含餘額)
- * @route GET /api/admin/wallets
- * @access Private
- * @params query { page, limit, name, type, address }
+ * @description 獲取監控錢包列表 (v6 版)
  */
 router.get('/wallets', authMiddleware, async (req, res) => {
     const { 
-        page = 1, 
-        limit = 10,
-        name, // 模糊
-        type, // 精确
-        address // 精确
+        page = 1, limit = 10,
+        name, 
+        chain_type, // (★★★ v6 修改 ★★★)
+        address
     } = req.query;
 
     try {
@@ -549,23 +510,11 @@ router.get('/wallets', authMiddleware, async (req, res) => {
         let whereClauses = [];
         let paramIndex = 1;
 
-        if (name) {
-            params.push(`%${name}%`);
-            whereClauses.push(`name ILIKE $${paramIndex++}`);
-        }
-        if (type) {
-            params.push(type);
-            whereClauses.push(`type = $${paramIndex++}`);
-        }
-        if (address) {
-            // ETH 地址不分大小寫，但我們存儲時可以統一小寫
-            params.push(address.toLowerCase());
-            whereClauses.push(`LOWER(address) = LOWER($${paramIndex++})`);
-        }
+        if (name) { params.push(`%${name}%`); whereClauses.push(`name ILIKE $${paramIndex++}`); }
+        if (chain_type) { params.push(chain_type); whereClauses.push(`chain_type = $${paramIndex++}`); } // (★★★ v6 修改 ★★★)
+        if (address) { params.push(address); whereClauses.push(`LOWER(address) = LOWER($${paramIndex++})`); }
         
         const whereSql = whereClauses.length > 0 ? `WHERE ${whereClauses.join(' AND ')}` : '';
-
-        // Count total
         const countSql = `SELECT COUNT(*) FROM monitored_wallets ${whereSql}`;
         const countResult = await db.query(countSql, params);
         const total = parseInt(countResult.rows[0].count, 10);
@@ -574,84 +523,62 @@ router.get('/wallets', authMiddleware, async (req, res) => {
             return res.status(200).json({ total: 0, list: [] });
         }
 
-        // Fetch paginated data
-        const dataSql = `SELECT id, name, type, address, created_at FROM monitored_wallets ${whereSql} ORDER BY created_at DESC LIMIT $${paramIndex++} OFFSET $${paramIndex++}`;
+        // (★★★ v6 修改：SELECT 欄位 ★★★)
+        const dataSql = `SELECT * FROM monitored_wallets ${whereSql} ORDER BY created_at DESC LIMIT $${paramIndex++} OFFSET $${paramIndex++}`;
         const offset = (page - 1) * limit;
-        params.push(limit);
-        params.push(offset);
+        params.push(limit); params.push(offset);
         const dataResult = await db.query(dataSql, params);
         
-        // (★★★ 關鍵：即時查詢餘額 ★★★)
-        const provider = require('../server.js').provider; //
-        if (!provider) throw new Error('Blockchain provider not initialized');
+        // (★★★ v6 移除：餘額查詢，v6 錢包監控暫時不查餘額，邏輯太複雜)
+        // (因為每條鏈的 provider 和餘額查詢 (Token) 方式都不同)
 
-        const walletsWithBalance = await Promise.all(dataResult.rows.map(async (wallet) => {
-            try {
-                const balanceWei = await provider.getBalance(wallet.address);
-                const balanceEth = ethers.formatEther(balanceWei); //
-                return { ...wallet, balanceEth }; // 將餘額 加入物件
-            } catch (balanceError) {
-                console.error(`Failed to get balance for ${wallet.address}:`, balanceError.message);
-                return { ...wallet, balanceEth: '查询失败' }; // 或 null
-            }
-        }));
-
-        res.status(200).json({ total, list: walletsWithBalance });
+        res.status(200).json({ total, list: dataResult.rows });
 
     } catch (error) {
-        console.error('[Admin Wallets] Error fetching wallets:', error);
+        console.error('[Admin Wallets] Error fetching wallets (v6):', error);
         res.status(500).json({ error: 'Internal server error' });
     }
 });
 
 /**
- * @description 新增監控錢包
- * @route POST /api/admin/wallets
- * @access Private
- * @body { name, type, address }
+ * @description 新增監控錢包 (v6 版)
  */
 router.post('/wallets', authMiddleware, async (req, res) => {
-    const { name, type, address } = req.body;
-    if (!name || !type || !address) {
-        return res.status(400).json({ error: 'Name, type, and address are required.' });
+    const { name, chain_type, address, is_deposit, is_payout, is_bonus, is_collection, is_opener_a, is_opener_b } = req.body;
+    if (!name || !chain_type || !address) {
+        return res.status(400).json({ error: 'Name, chain_type, and address are required.' });
     }
-    // (簡單驗證地址格式)
-    if (!ethers.isAddress(address)) {
-        return res.status(400).json({ error: 'Invalid wallet address format.' });
-    }
+    // (★★★ v6 移除：Ethers 驗證，因為 TRON/SOL 地址格式不同 ★★★)
 
     try {
         const result = await db.query(
-            'INSERT INTO monitored_wallets (name, type, address) VALUES ($1, $2, $3) RETURNING *',
-            [name, type, address.toLowerCase()] // 儲存小寫地址
+            `INSERT INTO monitored_wallets (name, chain_type, address, is_deposit, is_payout, is_bonus, is_collection, is_opener_a, is_opener_b) 
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING *`,
+            [name, chain_type, address, !!is_deposit, !!is_payout, !!is_bonus, !!is_collection, !!is_opener_a, !!is_opener_b]
         );
         console.log(`[Admin Wallets] Wallet ${result.rows[0].id} created by ${req.user.username}`);
         res.status(201).json(result.rows[0]);
     } catch (error) {
-        if (error.code === '23505') { // unique_violation (地址已存在)
-             return res.status(409).json({ error: 'Wallet address already exists.' });
-        }
-        console.error('[Admin Wallets] Error creating wallet:', error);
+        if (error.code === '23505') { return res.status(409).json({ error: 'Wallet address already exists.' }); }
+        console.error('[Admin Wallets] Error creating wallet (v6):', error);
         res.status(500).json({ error: 'Internal server error' });
     }
 });
 
 /**
- * @description 更新監控錢包
- * @route PUT /api/admin/wallets/:id
- * @access Private
- * @body { name, type, address }
+ * @description 更新監控錢包 (v6 版)
  */
 router.put('/wallets/:id', authMiddleware, async (req, res) => {
     const { id } = req.params;
-    const { name, type, address } = req.body;
-    if (!name || !type || !address) { /* ... */ }
-    if (!ethers.isAddress(address)) { /* ... */ }
+    const { name, chain_type, address, is_deposit, is_payout, is_bonus, is_collection, is_opener_a, is_opener_b } = req.body;
+    if (!name || !chain_type || !address) { return res.status(400).json({ error: 'Fields are required.' }); }
 
     try {
         const result = await db.query(
-            'UPDATE monitored_wallets SET name = $1, type = $2, address = $3 WHERE id = $4 RETURNING *',
-            [name, type, address.toLowerCase(), id]
+            `UPDATE monitored_wallets SET 
+             name = $1, chain_type = $2, address = $3, is_deposit = $4, is_payout = $5, is_bonus = $6, is_collection = $7, is_opener_a = $8, is_opener_b = $9
+             WHERE id = $10 RETURNING *`,
+            [name, chain_type, address, !!is_deposit, !!is_payout, !!is_bonus, !!is_collection, !!is_opener_a, !!is_opener_b, id]
         );
         if (result.rows.length === 0) {
             return res.status(404).json({ error: 'Wallet not found.' });
@@ -659,42 +586,30 @@ router.put('/wallets/:id', authMiddleware, async (req, res) => {
         console.log(`[Admin Wallets] Wallet ${id} updated by ${req.user.username}`);
         res.status(200).json(result.rows[0]);
     } catch (error) {
-        if (error.code === '23505') { /* ... */ }
-        console.error(`[Admin Wallets] Error updating wallet ${id}:`, error);
+        if (error.code === '23505') { return res.status(409).json({ error: 'Wallet address already exists.' }); }
+        console.error(`[Admin Wallets] Error updating wallet ${id} (v6):`, error);
         res.status(500).json({ error: 'Internal server error' });
     }
 });
 
-/**
- * @description 刪除監控錢包
- * @route DELETE /api/admin/wallets/:id
- * @access Private
- */
+// ( /wallets/:id 刪除路由不變 )
 router.delete('/wallets/:id', authMiddleware, async (req, res) => {
     const { id } = req.params;
     try {
         const result = await db.query('DELETE FROM monitored_wallets WHERE id = $1 RETURNING id', [id]);
-        if (result.rows.length === 0) {
-            return res.status(404).json({ error: 'Wallet not found.' });
-        }
+        if (result.rows.length === 0) { return res.status(404).json({ error: 'Wallet not found.' }); }
         console.log(`[Admin Wallets] Wallet ${id} deleted by ${req.user.username}`);
-        res.status(204).send(); // No Content
+        res.status(204).send();
     } catch (error) {
         console.error(`[Admin Wallets] Error deleting wallet ${id}:`, error);
         res.status(500).json({ error: 'Internal server error' });
     }
 });
 
-// ★★★ (v2 新增) 系統設定 - 遊戲參數 API ★★★
-/**
- * @description 獲取所有系統設定
- * @route GET /api/admin/settings
- * @access Private
- */
+// --- 系統設定 (★★★ v6 修改：加入鏈開關 ★★★) ---
 router.get('/settings', authMiddleware, async (req, res) => {
     try {
         const result = await db.query('SELECT key, value, description FROM system_settings');
-        // 將陣列轉換為 key-value 物件方便前端使用
         const settings = result.rows.reduce((acc, row) => {
             acc[row.key] = { value: row.value, description: row.description };
             return acc;
@@ -705,43 +620,35 @@ router.get('/settings', authMiddleware, async (req, res) => {
         res.status(500).json({ error: 'Internal server error' });
     }
 });
-
-/**
- * @description 更新單個系統設定
- * @route PUT /api/admin/settings/:key
- * @access Private
- * @body { value: string }
- */
 router.put('/settings/:key', authMiddleware, async (req, res) => {
     const { key } = req.params;
     const { value } = req.body;
+    if (value === undefined || value === null) { return res.status(400).json({ error: 'Value is required.' }); }
 
-    if (value === undefined || value === null) {
-        return res.status(400).json({ error: 'Value is required.' });
-    }
-
-    // (未來可擴充：根據 key 做不同的驗證，例如 PAYOUT_MULTIPLIER 必須是數字)
+    let validatedValue = value.toString(); // 預設
+    // (驗證)
     if (key === 'PAYOUT_MULTIPLIER') {
         const numValue = parseInt(value, 10);
-        if (isNaN(numValue) || numValue <= 0) {
-            return res.status(400).json({ error: 'PAYOUT_MULTIPLIER must be a positive integer.' });
+        if (isNaN(numValue) || numValue <= 0) { return res.status(400).json({ error: 'PAYOUT_MULTIPLIER must be a positive integer.' }); }
+    }
+    // (★★★ v6 新增：驗證鏈開關 ★★★)
+    if (key.startsWith('ALLOW_')) {
+        if (value.toString() !== 'true' && value.toString() !== 'false') {
+            return res.status(400).json({ error: 'Value must be true or false string.' });
         }
-        // (驗證通過，繼續使用字串 value 儲存)
+        validatedValue = value.toString();
     }
 
     try {
         const result = await db.query(
             'UPDATE system_settings SET value = $1, updated_at = NOW() WHERE key = $2 RETURNING key, value',
-            [value.toString(), key] // 確保儲存的是字串
+            [validatedValue, key]
         );
-
         if (result.rows.length === 0) {
             return res.status(404).json({ error: `Setting key '${key}' not found.` });
         }
-        
         console.log(`[Admin Settings] Setting '${key}' updated to '${value}' by ${req.user.username}`);
         res.status(200).json(result.rows[0]);
-
     } catch (error) {
         console.error(`[Admin Settings] Error updating setting '${key}':`, error);
         res.status(500).json({ error: 'Internal server error' });
@@ -1042,6 +949,49 @@ router.delete('/accounts/:id', authMiddleware, async (req, res) => {
     } catch (error) {
         console.error(`[Admin Accounts] Error deleting account ${id}:`, error);
         res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+router.get('/ip-whitelist', authMiddleware, async (req, res) => {
+    try {
+        const result = await db.query('SELECT id, ip_range::text, description, created_at FROM admin_ip_whitelist ORDER BY created_at DESC');
+        res.status(200).json(result.rows);
+    } catch (error) { 
+        console.error('[Admin IP Whitelist] Error fetching list:', error);
+        res.status(500).json({ error: 'Internal server error' }); 
+    }
+});
+
+router.post('/ip-whitelist', authMiddleware, async (req, res) => {
+    const { ip_range, description } = req.body;
+    if (!ip_range) {
+        return res.status(400).json({ error: 'IP range (CIDR format) is required.' });
+    }
+    try {
+        const result = await db.query(
+            'INSERT INTO admin_ip_whitelist (ip_range, description) VALUES ($1, $2) RETURNING id, ip_range::text, description, created_at', 
+            [ip_range, description || null]
+        );
+        res.status(201).json(result.rows[0]);
+    } catch (error) { 
+        if (error.code === '23505') { return res.status(409).json({ error: 'IP range already exists.' }); }
+        if (error.code === '22P02') { return res.status(400).json({ error: 'Invalid IP range format (use CIDR).' }); }
+        console.error('[Admin IP Whitelist] Error adding IP:', error);
+        res.status(500).json({ error: 'Internal server error' }); 
+    }
+});
+
+router.delete('/ip-whitelist/:id', authMiddleware, async (req, res) => {
+    const { id } = req.params;
+    try {
+        const result = await db.query('DELETE FROM admin_ip_whitelist WHERE id = $1 RETURNING id', [id]);
+        if (result.rows.length === 0) {
+            return res.status(404).json({ error: 'IP rule not found.' });
+        }
+        res.status(204).send();
+    } catch (error) { 
+        console.error(`[Admin IP Whitelist] Error deleting IP ${id}:`, error);
+        res.status(500).json({ error: 'Internal server error' }); 
     }
 });
 

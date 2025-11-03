@@ -19,11 +19,9 @@ module.exports = function(req, res, next) {
         }
 
         // 3. 驗證 Token
-        // (使用我們在 .env 中設定的 JWT_SECRET)
         const decoded = jwt.verify(token, process.env.JWT_SECRET);
 
-        // 4. 將解碼後的用戶資訊 (例如 id, username) 附加到 req 物件上
-        // 這樣後續的路由就可以訪問 req.user
+        // 4. 將解碼後的用戶資訊附加到 req 物件上
         req.user = decoded;
         
         // 5. 允許請求繼續
@@ -31,6 +29,7 @@ module.exports = function(req, res, next) {
 
     } catch (ex) {
         console.error('[Auth Middleware] Invalid token.', ex.message);
-        res.status(400).json({ error: 'Invalid token.' });
+        // (★★★ 關鍵修改：從 400 改為 401 ★★★)
+        res.status(401).json({ error: 'Invalid token.' });
     }
 };

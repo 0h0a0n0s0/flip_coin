@@ -509,3 +509,135 @@ to { transform: rotateY(360deg); }
   justify-content: flex-end;
   gap: 10px; /* 按鈕間距 */
 }
+
+/* (★★★ 個人中心樣式 ★★★) */
+/* 1. header 中的「個人中心」按鈕樣式 */
+button.btn-secondary {
+  background-color: #6c757d;
+}
+button.btn-secondary:hover {
+  background-color: #5a6268;
+}
+
+/* 2. Modal 彈窗樣式 (覆蓋舊有) */
+.modal-content {
+  background-color: #2c2c2e; /* 深色背景 */
+  color: #f5f5f7; /* 亮色文字 */
+  margin: 10% auto; /* (調整垂直邊距) */
+  padding: 25px 30px;
+  border: 1px solid #444;
+  border-radius: 12px;
+  width: 90%;
+  max-width: 550px; /* (加大寬度) */
+  box-shadow: 0 5px 20px rgba(0,0,0,0.4);
+  position: relative;
+  animation: modalopen 0.3s ease-out;
+}
+.pc-modal-content {
+  max-width: 700px; /* 個人中心彈窗再寬一點 */
+}
+.modal-body {
+  margin-top: 10px; /* (調整間距) */
+  margin-bottom: 20px;
+}
+.modal-footer {
+  margin-top: 25px; /* (調整間距) */
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px; /* 按鈕間距 */
+}
+
+/* 3. 彈窗內的資訊列表 */
+.pc-info-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: grid;
+  grid-template-columns: repeat(2, 1fr); /* 兩欄佈局 */
+  gap: 15px 20px;
+}
+.pc-info-list li {
+  display: flex;
+  flex-direction: column;
+}
+.pc-info-list li span {
+  font-size: 14px;
+  color: #aaa;
+  margin-bottom: 4px;
+}
+.pc-info-list li .address {
+  font-family: monospace;
+  font-size: 14px;
+  word-break: break-all;
+}
+.pc-info-list li .text-sm {
+  font-size: 14px;
+}
+/* 用於邀請碼的簡易列表 */
+.pc-info-list.simple {
+   grid-template-columns: 1fr; /* 單欄 */
+   gap: 10px;
+}
+.pc-info-list.simple li {
+  flex-direction: row;
+  align-items: center;
+  gap: 10px;
+}
+.pc-info-list.simple li span {
+   margin-bottom: 0;
+}
+
+
+/* 4. 彈窗內的表單區域 */
+.pc-form-section {
+  border-top: 1px solid #444;
+  padding-top: 20px;
+  margin-top: 20px;
+}
+.pc-form-section h4 {
+  margin-top: 0;
+  margin-bottom: 15px;
+  color: #ffd04b;
+}
+.form-group {
+  display: flex;
+  gap: 10px;
+}
+.form-group .input-field {
+  flex-grow: 1; /* 讓輸入框佔滿剩餘空間 */
+}
+.form-group .btn-small {
+  padding: 10px 15px; /* 統一按鈕大小 */
+  font-size: 14px;
+  white-space: nowrap; /* 防止 "儲存" 換行 */
+}
+
+/* Header 登入/註冊按鈕 */
+#authContainer {
+  display: flex;
+  align-items: center;
+  gap: 15px;
+}
+#userInfoDisplay {
+  font-size: 14px;
+  background-color: #eee;
+  padding: 8px 12px;
+  border-radius: 6px;
+  font-weight: 500;
+  color: #333;
+}
+#userInfoDisplay strong {
+  color: #007aff;
+}
+
+/* Modal 彈窗內的 Lable (v6 新增) */
+.modal-body label {
+  display: block;
+  margin-top: 15px;
+  margin-bottom: 8px;
+  font-size: 14px;
+  color: #ccc;
+}
+.modal-body label:first-child {
+  margin-top: 0;
+}

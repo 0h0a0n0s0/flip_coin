@@ -2,14 +2,24 @@
 
 const db = require('../db'); //
 const path = require('path');
-// (指向 v1 的 403 頁面，我們共用它)
 const forbiddenPagePath = path.join(__dirname, '../v1_frontend/403.html'); //
 
 /**
  * 檢查請求 IP 是否在 admin_ip_whitelist 表中。
  */
 const adminIpWhitelistMiddleware = async (req, res, next) => {
-    const clientIp = req.ip;
+    
+    // (★★★ 關鍵修改：簡化 IP 獲取邏輯 ★★★)
+    // 在 Nginx 中，我們設置了: proxy_set_header X-Real-IP $remote_addr;
+    // $remote_addr 是 Nginx *直接* 看到的 IP。
+    // 當你訪問 localhost 時，這個 IP *不是* 你的公網 IP，
+    // 而是 Docker 網路的網關 IP (例如 172.17.0.1) 或 127.0.0.1。
+    // 我們只信任這個 Nginx 直接看到的 IP。
+    const clientIp = req.headers['x-real-ip'] || req.ip;
+
+    // (★★★ 關鍵修改：修改日誌 ★★★)
+    console.log(`[Admin Whitelist] Checking IP: ${clientIp} (Headers: X-Forwarded-For: ${req.headers['x-forwarded-for']}, X-Real-IP: ${req.headers['x-real-ip']}, req.ip: ${req.ip})`);
+
 
     if (!clientIp) {
         console.warn('[Admin Whitelist] Cannot determine client IP. Denying request.');

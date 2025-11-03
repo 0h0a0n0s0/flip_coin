@@ -1,111 +1,89 @@
-// app.js
-// ★★★ 導入 WalletService，移除 game.js ★★★
-import { BrowserExtensionWalletService } from './modules/BrowserExtensionWalletService.js'; 
-import { renderHistory } from './modules/history.js';
-import { registerOrLogin, getLeaderboard, placeBet, updateNickname } from './modules/api.js';
-import { SUPPORTED_CHAIN_ID, GAME_WALLET_ADDRESS } from './config.js';
+// 檔案: app.js (★★★ v6.1 中心化 Auth 版 ★★★)
 
-// --- Notyf 實例化 (完整且正確的版本) ---
+// (★★★ v6 導入：只導入需要的 API ★★★)
+import { renderHistory } from './modules/history.js';
+import * as api from './modules/api.js'; 
+// (★★★ v6 移除：BrowserExtensionWalletService 和 config.js ★★★)
+
+// --- Notyf 實例化 (不變) ---
 const notyf = new Notyf({
     duration: 5000,
     position: { x: 'right', y: 'top' },
     dismissible: true,
-    types: [
-        {
-            type: 'warning',
-            background: '#f5a623',
-            icon: {
-                className: 'notyf__icon--warning',
-                tagName: 'i',
-                text: '⚠️'
-            }
-        }
-    ]
+    types: [ /* ... (不變) ... */ ]
 });
 
-// --- 全局狀態 (包含所有 UI 元素) ---
-let walletService = null; 
-let currentAccount = null; 
-let currentUser = null;
+// --- 全局狀態 (★★★ v6 修改 ★★★) ---
+let jwtToken = null;      // (取代 walletService)
+let currentUser = null; // (取代 currentAccount)
 let socket = null;
-let connectWalletBtn, logoutBtn, confirmBetBtn, userIdDisplay, betAmountInput, userWalletAddressDisplay, userStreakDisplay, userMaxStreakDisplay;
-let userNicknameDisplay, editNicknameBtn, nicknameModal, closeNicknameModalBtn, cancelNicknameBtn, confirmNicknameBtn, nicknameInput;
 
-// --- 遮罩 ---
-function showNetworkOverlay(message) {
-    let overlay = document.getElementById('networkOverlay');
-    if (!overlay) {
-        overlay = document.createElement('div');
-        overlay.id = 'networkOverlay';
-        overlay.style = `
-            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
-            background: rgba(0,0,0,0.7); color: white; display: flex;
-            justify-content: center; align-items: center; text-align: center;
-            font-size: 24px; z-index: 1000;
-        `;
-        document.body.appendChild(overlay);
-    }
-    overlay.innerHTML = message;
-    overlay.style.display = 'flex';
-}
-function hideNetworkOverlay() {
-    let overlay = document.getElementById('networkOverlay');
-    if (overlay) {
-        overlay.style.display = 'none';
-    }
-}
+// (遊戲元素)
+let confirmBetBtn, betAmountInput, userStreakDisplay, userMaxStreakDisplay;
+// (Auth 元素)
+let loginBtn, registerBtn, logoutBtn, userInfoDisplay, usernameDisplay, balanceDisplay;
+// (登入 Modal)
+let loginModal, closeLoginModalBtn, cancelLoginBtn, confirmLoginBtn, loginUsernameInput, loginPasswordInput;
+// (註冊 Modal)
+let registerModal, closeRegisterModalBtn, cancelRegisterBtn, confirmRegisterBtn, registerUsernameInput, registerPasswordInput, registerPasswordConfirmInput;
+// (個人中心 Modal)
+let personalCenterBtn, personalCenterModal, closePersonalCenterModalBtn, pc_cancelBtn;
+let pc_userId, pc_username, pc_level, pc_maxStreak, pc_inviteCode, pc_referrerCode;
 
-// --- Socket 連線 (包含 leaderboard_updated) ---
-function initializeSocket(walletAddress) {
+
+// --- Socket 連線 (★★★ v6 修改 ★★★) ---
+function initializeSocket(token) {
     if (socket) socket.disconnect();
-    const lowerAddress = walletAddress.toLowerCase();
-    socket = io('http://localhost:3000');
-    socket.on('connect', () => {
-        console.log(`[Socket.io] Connected: ${socket.id}`);
-        socket.emit('register', lowerAddress);
+    
+    // (使用 token 進行 auth)
+    socket = io('http://localhost:3000', {
+        auth: {
+            token: token
+        }
     });
+
+    socket.on('connect', () => {
+        console.log(`[Socket.io] Connected with token.`);
+        // (★★★ v6 移除：不再需要 register 事件 ★★★)
+    });
+    
+    socket.on('connect_error', (err) => {
+        console.error('[Socket.io] Connection Error:', err.message);
+        if (err.message === 'Authentication error: Invalid token') {
+            // Token 過期或無效，強制登出
+            handleLogout();
+            notyf.error('連線已過期，請重新登入。');
+        }
+    });
+
+    // (★★★ v6 佔位符：下注相關的 socket 監聽，將在 v6.2 中實作 ★★★)
     socket.on('bet_updated', (betData) => {
         console.log('[Socket.io] Received bet update:', betData);
-        const coin = document.getElementById('coin-flipper');
-        coin.classList.remove('flipping');
-
-        // (★★★ v2 修正：使用後端傳來的 prizeAmountEth ★★★)
-        if (betData.status === 'won') {
-            coin.classList.add('show-head'); // (假設 won 對應 head，lost 對應 tail，可調整)
-            // 使用後端計算好的 prizeAmountEth，如果不存在則 fallback
-            const prizeDisplay = betData.prizeAmountEth || (parseFloat(betData.amount) * 2); 
-            notyf.success(`恭喜中獎！贏得 ${prizeDisplay} ETH`);
-        } else if (betData.status === 'lost') {
-            coin.classList.add('show-tail');
-            notyf.error('很遺憾，未中獎...');
-        } else if (betData.status === 'prize_pending') { 
-            coin.classList.add('show-head'); // (假設 pending 也顯示 head)
-             const prizeDisplay = betData.prizeAmountEth || (parseFloat(betData.amount) * 2); 
-            notyf.open({ type: 'warning', message: `恭喜中獎！<br>獎金 ${prizeDisplay} ETH 派發中，請稍後...` });
-        } else if (betData.status === 'failed') {
-            notyf.error('投注處理失敗，請聯繫客服。');
-        }
-        setTimeout(() => coin.className = 'coin', 3000);
-        if (currentAccount) {
-            renderHistory(currentAccount);
-        }
+        // (v6.2 待辦：停止轉盤、彈窗、更新歷史)
     });
-    socket.on('disconnect', () => console.log('[Socket.io] Disconnected.'));
     socket.on('stats_updated', (stats) => {
         console.log('[Socket.io] Received stats update:', stats);
         if (currentUser) {
             currentUser.current_streak = stats.current_streak;
             currentUser.max_streak = stats.max_streak;
-            updateUI();
+            updateUI(); // (更新 UI 上的連勝)
+        }
+    });
+    socket.on('user_info_updated', (fullUser) => {
+        console.log('[Socket.io] Received FULL user info update:', fullUser);
+        if (currentUser && currentUser.id === fullUser.id) {
+            currentUser = fullUser;
+            updateUI(); // (更新餘額、等級等)
         }
     });
     socket.on('leaderboard_updated', (leaderboardData) => {
         console.log('[Socket.io] Received leaderboard update:', leaderboardData);
-        renderLeaderboardData(leaderboardData); // 使用新的輔助函數渲染
+        renderLeaderboardData(leaderboardData);
     });
+    socket.on('disconnect', () => console.log('[Socket.io] Disconnected.'));
 }
 
-// --- ★★★ 新增：渲染排行榜數據的輔助函數 ★★★ ---
+// --- 渲染排行榜 (★★★ v6 修改：顯示名稱 ★★★) ---
 function renderLeaderboardData(leaderboardData) {
     const listEl = document.getElementById('leaderboardList');
     if (!listEl) return; 
@@ -118,51 +96,43 @@ function renderLeaderboardData(leaderboardData) {
     leaderboardData.forEach((player, index) => {
         const li = document.createElement('li');
         li.innerHTML = `
-            <span>${index + 1}. <span class="address">${player.display_address}</span></span>
+            <span>${index + 1}. <span class="address">${player.display_name}</span></span>
             <span>🔥 ${player.max_streak} 連勝</span>
         `;
         listEl.appendChild(li);
     });
 }
-// --- ★★★ 獲取並渲染排行榜函數 (使用輔助函數) ★★★ ---
 async function renderLeaderboard() {
     const listEl = document.getElementById('leaderboardList');
     if (!listEl) return;
     listEl.innerHTML = '<li>Loading...</li>'; 
     try {
-        const leaderboardData = await getLeaderboard(); 
-        renderLeaderboardData(leaderboardData); // <-- 使用輔助函數
+        const leaderboardData = await api.getLeaderboard(); // (改為 api. )
+        renderLeaderboardData(leaderboardData);
     } catch (error) {
         console.error("Failed to render leaderboard:", error);
         listEl.innerHTML = '<li>无法加载排行榜</li>';
-        notyf.error('加载排行榜失败！');
     }
 }
 
-// --- UI 更新 (包含連勝狀態) ---
+// --- UI 更新 (★★★ v6 重構 ★★★) ---
 function updateUI() {
-    if (currentUser && currentAccount) {
+    if (currentUser && jwtToken) {
         // --- 登入狀態 ---
-        userIdDisplay.style.display = 'inline-block'; 
-        userIdDisplay.innerText = `用户ID: ${currentUser.user_id}`;
-        userWalletAddressDisplay.style.display = 'inline-block';
-        userWalletAddressDisplay.innerText = `${currentAccount.slice(0, 6)}...${currentAccount.slice(-4)}`;
+        loginBtn.style.display = 'none';
+        registerBtn.style.display = 'none';
+        
+        userInfoDisplay.style.display = 'inline-block';
+        personalCenterBtn.style.display = 'block';
         logoutBtn.style.display = 'block';
-        connectWalletBtn.style.display = 'none';
 
-        // (★★★ v2 新增：顯示昵稱 和按鈕 ★★★)
-        userNicknameDisplay.style.display = 'inline-block';
-        if (currentUser.nickname) {
-            userNicknameDisplay.innerText = `👋 ${currentUser.nickname}`;
-        } else {
-            userNicknameDisplay.innerText = `(未設定昵稱)`;
-        }
-        editNicknameBtn.style.display = 'inline-block';
-        // (★★★ v2 新增結束 ★★★)
+        // (更新 Header 資訊)
+        usernameDisplay.innerText = currentUser.nickname || currentUser.username;
+        balanceDisplay.innerText = parseFloat(currentUser.balance || 0).toFixed(2); // 顯示平台餘額
 
+        // (更新連勝)
         const streak = currentUser.current_streak || 0;
         userStreakDisplay.style.display = 'inline-block'; 
-        // ... (連勝/敗 邏輯不變)
         if (streak > 0) {
             userStreakDisplay.innerText = `🔥 連勝 ${streak} 場`;
             userStreakDisplay.style.backgroundColor = '#e0f8e0';
@@ -179,406 +149,252 @@ function updateUI() {
         const maxStreak = currentUser.max_streak || 0;
         userMaxStreakDisplay.style.display = 'inline-block'; 
         userMaxStreakDisplay.innerText = `🏆 最高連勝: ${maxStreak}`;
-        userMaxStreakDisplay.style.backgroundColor = '#f8f8e0'; 
-        userMaxStreakDisplay.style.color = '#646400';
 
     } else {
         // --- 登出狀態 ---
-        userIdDisplay.style.display = 'none';
-        userWalletAddressDisplay.style.display = 'none';
+        loginBtn.style.display = 'block';
+        registerBtn.style.display = 'block';
+        
+        userInfoDisplay.style.display = 'none';
+        personalCenterBtn.style.display = 'none';
         logoutBtn.style.display = 'none';
-        connectWalletBtn.style.display = 'block';
-        connectWalletBtn.innerText = '连接钱包 / 注册';
+
         userStreakDisplay.style.display = 'none';
         userMaxStreakDisplay.style.display = 'none';
-
-        // (★★★ v2 新增：隱藏昵稱 和按鈕 ★★★)
-        userNicknameDisplay.style.display = 'none';
-        editNicknameBtn.style.display = 'none';
+        
+        document.getElementById('historyList').innerHTML = '<li>登入後以查看歷史記錄</li>';
     }
 }
 
-// --- 登出 (使用 walletService) ---
-async function handleLogout() {
-    console.log("Handling logout...");
-    localStorage.removeItem('userWalletAddress');
-    currentAccount = null;
+// --- Auth 處理函數 (★★★ v6 新增 ★★★) ---
+function showLoginModal() { loginModal.style.display = 'block'; }
+function hideLoginModal() { loginModal.style.display = 'none'; }
+function showRegisterModal() { registerModal.style.display = 'block'; }
+function hideRegisterModal() { registerModal.style.display = 'none'; }
+
+async function handleRegister() {
+    const username = registerUsernameInput.value;
+    const password = registerPasswordInput.value;
+    const confirmPassword = registerPasswordConfirmInput.value;
+
+    if (password !== confirmPassword) {
+        notyf.error('兩次輸入的密碼不一致');
+        return;
+    }
+    if (username.length < 3 || username.length > 20) {
+         notyf.error('帳號長度必須在 3-20 字元之間');
+        return;
+    }
+     if (password.length < 6) {
+         notyf.error('密碼長度至少需要 6 位');
+        return;
+    }
+
+    const btn = confirmRegisterBtn;
+    const originalText = btn.innerText;
+    btn.disabled = true;
+    btn.innerText = '註冊中...';
+    
+    try {
+        const { user, token } = await api.register(username, password);
+        notyf.success('註冊成功！已自動登入。');
+        hideRegisterModal();
+        
+        // (直接設定 token 和 user)
+        localStorage.setItem('jwt_token', token);
+        jwtToken = token;
+        currentUser = user;
+        
+        updateUI();
+        initializeSocket(token);
+        await renderHistory(token);
+        
+    } catch (error) {
+        notyf.error(`註冊失敗：${error.message}`);
+    } finally {
+        btn.disabled = false;
+        btn.innerText = originalText;
+    }
+}
+
+async function handleLogin() {
+    const username = loginUsernameInput.value;
+    const password = loginPasswordInput.value;
+    
+    if (!username || !password) {
+        notyf.error('請輸入帳號和密碼');
+        return;
+    }
+    
+    const btn = confirmLoginBtn;
+    const originalText = btn.innerText;
+    btn.disabled = true;
+    btn.innerText = '登入中...';
+    
+    try {
+        const { user, token } = await api.login(username, password);
+        notyf.success('登入成功！');
+        hideLoginModal();
+        
+        localStorage.setItem('jwt_token', token);
+        jwtToken = token;
+        currentUser = user;
+        
+        updateUI();
+        initializeSocket(token);
+        await renderHistory(token);
+        
+    } catch (error) {
+         notyf.error(`登入失敗：${error.message}`);
+    } finally {
+        btn.disabled = false;
+        btn.innerText = originalText;
+    }
+}
+
+function handleLogout() {
+    localStorage.removeItem('jwt_token');
+    jwtToken = null;
     currentUser = null;
     if (socket) socket.disconnect();
-    
-    if (walletService) {
-        try {
-            await walletService.disconnect();
-            notyf.success('您已成功登出，錢包權限已撤銷。');
-        } catch (err) {
-            console.error("斷開錢包時發生錯誤:", err);
-            notyf.open({ type: 'warning', message: '您已在應用程式中登出。' });
-        } finally {
-            walletService = null; 
-        }
-    } else {
-         notyf.success('您已成功登出。'); 
-    }
-    updateUI(); 
+    updateUI();
+    notyf.success('您已成功登出。');
 }
 
-// --- 連接錢包 (使用 walletService) ---
-async function handleConnectWallet() {
-    if (!walletService) {
-        try {
-            if (BrowserExtensionWalletService.isAvailable()) {
-                walletService = new BrowserExtensionWalletService();
-            } else {
-                 const userAgrees = confirm('未偵測到錢包擴充。\n\n點擊「確定」前往 MetaMask 官網？');
-                 if (userAgrees) window.open('https://metamask.io/download/', '_blank');
-                 return; 
-            }
-        } catch (initError) {
-             console.error("Wallet Service initialization failed:", initError);
-             notyf.error(`錢包服務初始化失敗: ${initError.message}`);
-             return;
-        }
-    }
+async function fetchUserInfo(token) {
     try {
-        const account = await walletService.connect();
-        if (account) {
-            currentAccount = account; 
-            try {
-                const user = await registerOrLogin(currentAccount); 
-                currentUser = user;
-                localStorage.setItem('userWalletAddress', currentAccount); 
-                updateUI(); 
-                await renderHistory(currentAccount);
-                initializeSocket(currentAccount);
-                checkNetwork(); 
-                setupWalletListeners(); 
-            } catch (error) {
-                console.error('Login failed:', error);
-                notyf.error('後端登入或註冊失敗！');
-            }
-        }
-    } catch (err) {
-        console.error("連接錢包時發生錯誤:", err);
-        if (err.message === 'User rejected connection request.') {
-            notyf.open({ type: 'warning', message: '您已取消錢包連接請求。' });
-        } else {
-            notyf.error(`連接錢包失敗: ${err.message}`);
-        }
-        walletService = null; 
-    }
-}
-
-// --- ★★★ 確認下注 (交易邏輯移至此處) ★★★ ---
-async function handleConfirmBet() {
-    const choice = document.querySelector('input[name="flipChoice"]:checked')?.value;
-    const amount = parseFloat(betAmountInput.value);
-
-    if (!currentUser || !currentAccount || !walletService) {
-        notyf.error('请先连接钱包并登入');
-        return;
-    }
-    if (!choice) {
-        notyf.error('请选择正面或反面');
-        return;
-    }
-    if (isNaN(amount) || amount <= 0) {
-        notyf.error('请输入有效的下注金额');
-        return;
-    }
-        // 在呼叫 MetaMask 之前，檢查 currentUser 物件中的 status
-    if (currentUser.status === 'banned') {
-        console.warn(`[Bet Blocked] User ${currentUser.user_id} is banned.`);
-        // 彈出您要求的 Toast 提示
-        notyf.error('无法投注，请联系客服确认');
-        return; // (★★★ 關鍵) 終止函數，不執行後續的交易
-    }
-    // (★★★ v2 修改結束 ★★★)
-    
-    const originalButtonText = confirmBetBtn.innerText;
-    try {
-        confirmBetBtn.disabled = true;
-        confirmBetBtn.innerText = '處理中...';
-
-        const provider = walletService.getProvider(); 
-        const signer = walletService.getSigner();   
-        const balance = await provider.getBalance(currentAccount);
-        
-        // ★★★ 修正：使用 window.ethers ★★★
-        const betAmountInWei = window.ethers.parseEther(amount.toString()); 
-
-        if (balance < betAmountInWei) {
-            notyf.error('您的錢包餘額不足以支付此次下注！');
-            throw new Error('Insufficient funds'); 
-        }
-
-        confirmBetBtn.innerText = '請在錢包中確認...';
-        const tx = await signer.sendTransaction({
-            to: GAME_WALLET_ADDRESS,
-            value: betAmountInWei
-        });
-
-        confirmBetBtn.innerText = '交易已送出...';
-        console.log('Transaction sent! Hash:', tx.hash);
-        notyf.success('交易已送出！等待伺服器記錄...');
-        
-        await placeBet(currentAccount, choice, amount, tx.hash);
-
-        notyf.success('下注成功！等待開獎...');
-        document.getElementById('coin-flipper').className = 'coin flipping';
-        
-        await renderHistory(currentAccount);
-
+        const user = await api.getUserInfo(token);
+        currentUser = user;
+        updateUI();
+        initializeSocket(token);
+        await renderHistory(token);
     } catch (error) {
-        // (★★★ v2 雙重保險的 CATCH ★★★)
-        // 如果錯誤訊息是 '无法投注，请联系客服确认'
-        // (這代表 /api/bets 攔截了)
-        if (error.message && error.message.includes('无法投注')) {
-            notyf.error(error.message); // 顯示後端傳來的錯誤
-        }
-        else if (error.code === 'ACTION_REJECTED' || error.message?.includes('User denied transaction')) {
-            notyf.error('您已在錢包中取消了交易。');
-        } else if (error.message !== 'Insufficient funds') {
-            console.error("交易失敗:", error);
-            // (★★★ v2 修改：我們需要解析 api.js 拋出的錯誤)
-            // 由於 api.js 使用了 alert()，我們最好在這裡也用 notyf
-            notyf.error(`交易失敗：${error.message}`);
-        }
-    } finally {
-        confirmBetBtn.disabled = false;
-        confirmBetBtn.innerText = originalButtonText;
+        // Token 無效或過期
+        console.error('Auto-login failed:', error.message);
+        handleLogout(); // 清除無效 token
     }
-    
-    betAmountInput.value = '';
 }
 
-// --- 自動登入 (使用 walletService) ---
 async function autoLogin() {
-    const savedAddress = localStorage.getItem('userWalletAddress');
-    if (savedAddress) {
-        console.log(`Found saved address: ${savedAddress}`);
-        currentAccount = savedAddress; 
-        try {
-             if (BrowserExtensionWalletService.isAvailable()) {
-                walletService = new BrowserExtensionWalletService();
-                const accounts = await walletService.ethereum.request({ method: 'eth_accounts' });
-                if (!accounts || accounts.length === 0 || accounts[0].toLowerCase() !== currentAccount) {
-                    console.log("Wallet permission expired or account mismatch. Clearing.");
-                    localStorage.removeItem('userWalletAddress');
-                    currentAccount = null;
-                    walletService = null; 
-                    updateUI();
-                    renderLeaderboard(); 
-                    return; 
-                }
-                 walletService.signer = await walletService.provider.getSigner();
-                 walletService.account = currentAccount; 
-            } else {
-                 console.log("Not in browser extension environment.");
-                 updateUI(); 
-                 renderLeaderboard();
-                 return;
-            }
-            const user = await registerOrLogin(currentAccount);
-            currentUser = user;
-            updateUI();
-            await renderHistory(currentAccount);
-            initializeSocket(currentAccount);
-            await renderLeaderboard();
-            checkNetwork();
-            setupWalletListeners();
-        } catch (error) {
-            console.error('Auto-login failed:', error);
-            localStorage.removeItem('userWalletAddress');
-            currentAccount = null; 
-            currentUser = null;
-            walletService = null;
-            updateUI(); 
-            renderLeaderboard();
-        }
+    const savedToken = localStorage.getItem('jwt_token');
+    if (savedToken) {
+        console.log('Found saved JWT, attempting to login...');
+        jwtToken = savedToken;
+        await fetchUserInfo(savedToken);
     } else {
+        // 沒有 token，正常顯示登出狀態
         updateUI(); 
-        renderLeaderboard(); 
     }
+    // (無論是否登入，都載入排行榜)
+    await renderLeaderboard();
 }
 
-// --- Wallet 事件監聽器回呼函數 ---
-const handleChainChanged = (chainId) => {
-    console.log(`[WalletService] Network changed to: ${chainId}`);
-    if (chainId !== SUPPORTED_CHAIN_ID) {
-        showNetworkOverlay(`網路不正確！<br>請在 MetaMask 中切換回 Sepolia 網路。`);
-    } else {
-        hideNetworkOverlay();
-        // 最好還是刷新一下，確保 Provider 狀態正確
-        window.location.reload(); 
-    }
-};
-const handleAccountsChanged = (accounts) => {
-    console.log('[WalletService] Account changed.');
-    let message = '';
-    if (accounts.length === 0) {
-        message = '您已斷開錢包連線。將為您登出。';
-    } else if (currentAccount && accounts[0].toLowerCase() !== currentAccount) {
-        message = '偵測到您已切換錢包帳號，將為您登出。';
-    }
-    if (message) {
-        notyf.open({ type: 'warning', message: message });
-        localStorage.removeItem('userWalletAddress');
-        if (walletService) {
-             walletService.disconnect().catch(err => console.error("Error disconnecting on account change:", err));
-             walletService = null; 
-        }
-        currentAccount = null;
-        currentUser = null; 
-        updateUI(); 
-        setTimeout(() => window.location.reload(), 1500); 
-    }
-};
-
-// --- 設定 Wallet 監聽器 ---
-function setupWalletListeners() {
-    if (!walletService) return;
-    console.log("Setting up wallet listeners...");
-    walletService.off('chainChanged', handleChainChanged);
-    walletService.off('accountsChanged', handleAccountsChanged);
-    walletService.on('chainChanged', handleChainChanged);
-    walletService.on('accountsChanged', handleAccountsChanged);
-}
-
-// --- 檢查網路 ---
-async function checkNetwork() {
-     if (!walletService) return;
-     try {
-         const network = await walletService.getProvider().getNetwork();
-         const chainId = `0x${network.chainId.toString(16)}`; 
-         console.log("[WalletService] Current Chain ID:", chainId);
-         if (chainId !== SUPPORTED_CHAIN_ID) {
-            showNetworkOverlay(`網路不正確！<br>請在 MetaMask 中切換回 Sepolia 網路。`);
-         } else {
-            hideNetworkOverlay();
-         }
-     } catch (error) {
-         console.error("Failed to check network:", error);
-         showNetworkOverlay(`無法檢查網路狀態，請稍後再試。`);
-     }
-}
-
-// (★★★ v2 新增：昵稱 彈窗處理函數 ★★★)
-function showNicknameModal() {
+// --- 個人中心 (★★★ v6 新增 ★★★) ---
+function showPersonalCenterModal() {
     if (!currentUser) return;
-    // 將當前昵稱 填入輸入框
-    nicknameInput.value = currentUser.nickname || '';
-    nicknameModal.style.display = 'block';
+    
+    // (填充資訊)
+    pc_userId.innerText = currentUser.user_id;
+    pc_username.innerText = currentUser.username;
+    pc_level.innerText = `Level ${currentUser.level}`;
+    pc_maxStreak.innerText = currentUser.max_streak;
+    pc_inviteCode.innerText = currentUser.invite_code || 'N/A';
+    pc_referrerCode.innerText = currentUser.referrer_code || '(未綁定)';
+    
+    // (v6.3 待辦：顯示充值/提現表單)
+    
+    personalCenterModal.style.display = 'block';
+}
+function hidePersonalCenterModal() {
+    personalCenterModal.style.display = 'none';
 }
 
-function hideNicknameModal() {
-    nicknameModal.style.display = 'none';
+// --- v6.2 佔位符 ---
+async function handleConfirmBet() {
+    notyf.error('下注功能 (v6.2) 正在重構中，即將上線！');
 }
 
-async function handleUpdateNickname() {
-    if (!currentAccount) return;
-
-    const newNickname = nicknameInput.value.trim();
-    // (前端簡單驗證)
-    if (newNickname.length > 50) {
-        notyf.error('昵稱 過長，最多 50 字元。');
-        return;
-    }
-
-    const originalButtonText = confirmNicknameBtn.innerText;
-    confirmNicknameBtn.disabled = true;
-    confirmNicknameBtn.innerText = '儲存中...';
-
-    try {
-        // 呼叫 API
-        const updatedUser = await updateNickname(currentAccount, newNickname); //
-
-        // 更新全局狀態
-        currentUser.nickname = updatedUser.nickname;
-
-        // 更新 UI
-        updateUI(); //
-
-        notyf.success('昵稱 更新成功！');
-        hideNicknameModal();
-
-    } catch (error) {
-        console.error('Failed to update nickname:', error);
-        // (api.js 的 alert 不太好，我們在這裡用 notyf 覆蓋)
-        if (error.message) {
-             notyf.error(`更新失敗：${error.message}`);
-        } else {
-             notyf.error('更新失敗，請稍後再試。');
-        }
-    } finally {
-        confirmNicknameBtn.disabled = false;
-        confirmNicknameBtn.innerText = '確認';
-    }
-}
-
-// --- 應用程式啟動器 ---
+// --- 應用程式啟動器 (★★★ v6 重構 ★★★) ---
 function initializeApp() {
-    console.log("✅ Ethers.js is ready. Initializing the app...");
+    console.log("✅ [v6] App initializing...");
     // 獲取所有 DOM 元素
-    connectWalletBtn = document.getElementById('connectWalletBtn');
-    logoutBtn = document.getElementById('logoutBtn');
     confirmBetBtn = document.getElementById('confirmBetBtn'); 
-    userIdDisplay = document.getElementById('userIdDisplay'); 
-    userWalletAddressDisplay = document.getElementById('userWalletAddressDisplay');
     betAmountInput = document.getElementById('betAmount'); 
     userStreakDisplay = document.getElementById('userStreakDisplay');
     userMaxStreakDisplay = document.getElementById('userMaxStreakDisplay');
 
-    // (昵稱 相關)
-    userNicknameDisplay = document.getElementById('userNicknameDisplay');
-    editNicknameBtn = document.getElementById('editNicknameBtn');
-    nicknameModal = document.getElementById('nicknameModal');
-    closeNicknameModalBtn = document.getElementById('closeNicknameModalBtn');
-    cancelNicknameBtn = document.getElementById('cancelNicknameBtn');
-    confirmNicknameBtn = document.getElementById('confirmNicknameBtn');
-    nicknameInput = document.getElementById('nicknameInput');
-
-    // (★★★ v2 修改：綁定事件 ★★★)
-    connectWalletBtn.addEventListener('click', handleConnectWallet);
-    logoutBtn.addEventListener('click', handleLogout);
-    confirmBetBtn.addEventListener('click', handleConfirmBet);
+    // (Auth 元素)
+    loginBtn = document.getElementById('loginBtn');
+    registerBtn = document.getElementById('registerBtn');
+    logoutBtn = document.getElementById('logoutBtn');
+    userInfoDisplay = document.getElementById('userInfoDisplay');
+    usernameDisplay = document.getElementById('usernameDisplay');
+    balanceDisplay = document.getElementById('balanceDisplay');
     
-    // (昵稱 相關)
-    editNicknameBtn.addEventListener('click', showNicknameModal);
-    closeNicknameModalBtn.addEventListener('click', hideNicknameModal);
-    cancelNicknameBtn.addEventListener('click', hideNicknameModal);
-    confirmNicknameBtn.addEventListener('click', handleUpdateNickname);
-    // (點擊彈窗外部灰色區域也可關閉)
+    // (登入 Modal)
+    loginModal = document.getElementById('loginModal');
+    closeLoginModalBtn = document.getElementById('closeLoginModalBtn');
+    cancelLoginBtn = document.getElementById('cancelLoginBtn');
+    confirmLoginBtn = document.getElementById('confirmLoginBtn');
+    loginUsernameInput = document.getElementById('loginUsernameInput');
+    loginPasswordInput = document.getElementById('loginPasswordInput');
+
+    // (註冊 Modal)
+    registerModal = document.getElementById('registerModal');
+    closeRegisterModalBtn = document.getElementById('closeRegisterModalBtn');
+    cancelRegisterBtn = document.getElementById('cancelRegisterBtn');
+    confirmRegisterBtn = document.getElementById('confirmRegisterBtn');
+    registerUsernameInput = document.getElementById('registerUsernameInput');
+    registerPasswordInput = document.getElementById('registerPasswordInput');
+    registerPasswordConfirmInput = document.getElementById('registerPasswordConfirmInput');
+    
+    // (個人中心 Modal)
+    personalCenterBtn = document.getElementById('personalCenterBtn');
+    personalCenterModal = document.getElementById('personalCenterModal');
+    closePersonalCenterModalBtn = document.getElementById('closePersonalCenterModalBtn');
+    pc_cancelBtn = document.getElementById('pc_cancelBtn');
+    pc_userId = document.getElementById('pc_userId');
+    pc_username = document.getElementById('pc_username');
+    pc_level = document.getElementById('pc_level');
+    pc_maxStreak = document.getElementById('pc_maxStreak');
+    pc_inviteCode = document.getElementById('pc_inviteCode');
+    pc_referrerCode = document.getElementById('pc_referrerCode');
+
+    // 綁定 Auth 事件
+    loginBtn.addEventListener('click', showLoginModal);
+    registerBtn.addEventListener('click', showRegisterModal);
+    logoutBtn.addEventListener('click', handleLogout);
+    
+    // 綁定 Modal 關閉事件
+    closeLoginModalBtn.addEventListener('click', hideLoginModal);
+    cancelLoginBtn.addEventListener('click', hideLoginModal);
+    closeRegisterModalBtn.addEventListener('click', hideRegisterModal);
+    cancelRegisterBtn.addEventListener('click', hideRegisterModal);
+    
+    // 綁定 Modal 確認事件
+    confirmLoginBtn.addEventListener('click', handleLogin);
+    confirmRegisterBtn.addEventListener('click', handleRegister);
+    
+    // 綁定個人中心
+    personalCenterBtn.addEventListener('click', showPersonalCenterModal);
+    closePersonalCenterModalBtn.addEventListener('click', hidePersonalCenterModal);
+    pc_cancelBtn.addEventListener('click', hidePersonalCenterModal);
+
+    // 綁定遊戲事件
+    confirmBetBtn.addEventListener('click', handleConfirmBet); // (目前是佔位符)
+    
+    // (點擊 Modal 外部灰色區域也可關閉)
     window.addEventListener('click', (event) => {
-        if (event.target == nicknameModal) {
-            hideNicknameModal();
-        }
+        if (event.target == loginModal) hideLoginModal();
+        if (event.target == registerModal) hideRegisterModal();
+        if (event.target == personalCenterModal) hidePersonalCenterModal();
     });
 
-    // 初始化 UI 和列表
-    updateUI(); 
-    document.getElementById('historyList').innerHTML = '<li>连接钱包以查看历史记录</li>';
-    document.getElementById('leaderboardList').innerHTML = '<li>Loading...</li>'; 
-
-    if (typeof io !== 'undefined') {
-        console.log("✅ Socket.io Client is ready.");
-        autoLogin(); // 直接嘗試自動登入
-    } else {
-        console.error("Socket.io Client failed to load!");
-        updateUI(); 
-        renderLeaderboard(); 
-    }
+    // 啟動 App
+    autoLogin(); // (會自動載入排行榜)
 }
 
-// --- 程式入口 ---
-function waitForEthers() {
-    // ★★★ 確保這裡檢查的是 window.ethers ★★★
-    if (typeof window.ethers !== 'undefined') { 
-        waitForSocketIO();
-    } else {
-        console.log("⏳ Waiting for Ethers.js to load...");
-        setTimeout(waitForEthers, 100);
-    }
-}
+// --- 程式入口 (★★★ v6 修改：不再等待 Ethers.js ★★★) ---
 function waitForSocketIO() {
     if (typeof window.io !== 'undefined') {
         initializeApp();
@@ -587,4 +403,4 @@ function waitForSocketIO() {
         setTimeout(waitForSocketIO, 100);
     }
 }
-document.addEventListener('DOMContentLoaded', waitForEthers);
+document.addEventListener('DOMContentLoaded', waitForSocketIO);

@@ -41,27 +41,55 @@
           <div class="report-label">投注 (總額)</div>
           <div class="report-value">{{ formatCurrency(reportData.total_bet) }} ETH</div>
         </div>
+        
         <div class="report-item"> 
           <div class="report-label">派奖 (總額)</div>
           <div class="report-value">{{ formatCurrency(reportData.total_payout) }} ETH</div>
-        </div>
-        
-        <div :class="['report-item', reportData.platform_profit >= 0 ? 'profit' : 'loss']"> 
-          <div class="report-label">平台盈虧</div>
-          <div class="report-value">{{ formatCurrency(reportData.platform_profit) }} ETH</div>
-        </div>
-        
-        <div class="report-item info">
-          <div class="report-label">活动奖金</div>
-          <div class="report-value">{{ formatCurrency(reportData.bonus_event) }} ETH</div>
         </div>
         <div class="report-item info">
           <div class="report-label">用户等级奖金</div>
           <div class="report-value">{{ formatCurrency(reportData.bonus_level) }} ETH</div>
         </div>
         <div class="report-item info">
+          <div class="report-label">活动奖金</div>
+          <div class="report-value">{{ formatCurrency(reportData.bonus_event) }} ETH</div>
+        </div>
+        <div class="report-item info">
           <div class="report-label">反佣</div>
           <div class="report-value">{{ formatCurrency(reportData.bonus_commission) }} ETH</div>
+        </div>
+        
+        <div class="report-item gas-fee">
+          <div class="report-label">總手續費 (Gas)</div>
+          <div class="report-value">{{ formatCurrency(reportData.total_gas_fee) }} ETH</div>
+        </div>
+
+        <div :class="['report-item', reportData.platform_profit >= 0 ? 'profit' : 'loss']"> 
+          <div class="report-label">
+            <span>平台盈虧</span>
+            <el-tooltip
+              effect="dark"
+              content="公式：投注總額 - 派奖總額"
+              placement="top"
+            >
+              <el-icon><InfoFilled /></el-icon>
+            </el-tooltip>
+          </div>
+          <div class="report-value">{{ formatCurrency(reportData.platform_profit) }} ETH</div>
+        </div>
+        
+        <div :class="['report-item', 'net-profit', reportData.platform_net_profit >= 0 ? 'profit' : 'loss']"> 
+          <div class="report-label">
+            <span>平台 *淨* 營利</span>
+            <el-tooltip
+              effect="dark"
+              content="公式：投注 - 派奖 - 獎金 - 手續費"
+              placement="top"
+            >
+              <el-icon><InfoFilled /></el-icon>
+            </el-tooltip>
+          </div>
+          <div class="report-value">{{ formatCurrency(reportData.platform_net_profit) }} ETH</div>
         </div>
       </div>
       
@@ -73,9 +101,13 @@
 
 <script>
 import { ElMessage } from 'element-plus';
+import { InfoFilled } from '@element-plus/icons-vue';
 
 export default {
   name: 'ReportManagementView',
+  components: {
+    InfoFilled
+  },
   data() {
     return {
       loading: false,
@@ -92,12 +124,10 @@ export default {
         ElMessage.error('请选择时间范围');
         return;
       }
-      
       if (!this.searchParams.userQuery) {
         ElMessage.error('请指定查询对象 (输入用户ID/钱包地址，或输入 system 查询全平台)');
         return;
       }
-
       this.loading = true;
       this.reportData = null; 
 
@@ -107,7 +137,7 @@ export default {
           userQuery: this.searchParams.userQuery.trim(),
         };
 
-        // (★★★ 錯誤修正：this.$api.getProfitLossReport 現在應該存在了 ★★★)
+        // (★★★ 2. API 會返回新欄位 ★★★)
         const response = await this.$api.getProfitLossReport(params);
         this.reportData = response;
 
@@ -118,8 +148,18 @@ export default {
       }
     },
     
+    // (★★★ 3. 修正 formatCurrency ★★★)
     formatCurrency(value) {
-      if (typeof value !== 'number') return '0.00';
+      if (value === null || value === undefined) return '0.00';
+      if (typeof value !== 'number') {
+        try {
+           value = parseFloat(value);
+           if (isNaN(value)) return '0.00';
+        } catch(e) {
+           return '0.00';
+        }
+      }
+      // (顯示正負號)
       return value.toFixed(8); 
     }
   },
@@ -127,21 +167,15 @@ export default {
 </script>
 
 <style scoped>
-/* (樣式不變) */
-.search-card {
-  margin-bottom: 20px;
-}
-.form-tip {
-  font-size: 12px;
-  color: #909399;
-  margin-top: 5px;
-}
-.result-card {
-  margin-bottom: 20px;
-}
+/* (★★★ 4. 新增樣式 ★★★) */
+.search-card { margin-bottom: 20px; }
+.form-tip { font-size: 12px; color: #909399; margin-top: 5px; }
+.result-card { margin-bottom: 20px; }
+
 .report-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  /* (調整網格，容納更多欄位) */
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
   gap: 20px;
 }
 .report-item {
@@ -155,16 +189,49 @@ export default {
   font-size: 14px;
   color: #606266;
   margin-bottom: 12px;
+  /* (★★★ 5. 新增 Flex 佈局 ★★★) */
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 5px; /* 圖標和文字的間距 */
+}
+/* (★★★ 6. 新增 icon 樣式 ★★★) */
+.report-label .el-icon {
+  cursor: help; /* 提示用戶可以懸停 */
+  color: #909399;
 }
 .report-value {
-  font-size: 24px;
+  font-size: 22px; /* (稍微縮小字體) */
   font-weight: bold;
 }
-/* 預設顏色 (用於 投注/派獎/獎金) */
-.report-item .report-value { color: #303133; } /* Element Plus 預設黑色 */
-.report-item.info .report-value { color: #909399; } /* 灰色，用於未來欄位 */
+.report-desc {
+  font-size: 12px;
+  color: #909399;
+  margin-top: 8px;
+}
 
-/* 平台盈虧顏色 */
+/* 顏色 */
+.report-item .report-value { color: #303133; } 
+.report-item.info .report-value { color: #909399; } 
+.report-item.gas-fee .report-value { color: #E6A23C; } /* (手續費 橘色) */
+
+/* 盈虧顏色 */
 .report-item.profit .report-value { color: #67c23a; } /* 綠色 (盈利) */
 .report-item.loss .report-value { color: #f56c6c; } /* 紅色 (虧損) */
+
+/* 淨營利 醒目提示 */
+.report-item.net-profit {
+  border-width: 2px;
+  border-color: #409EFF;
+  background-color: #ecf5ff;
+}
+.report-item.net-profit.loss {
+   border-color: #f56c6c;
+   background-color: #fef0f0;
+}
+.report-item.net-profit.profit {
+   border-color: #67c23a;
+   background-color: #f0f9eb;
+}
+
 </style>
