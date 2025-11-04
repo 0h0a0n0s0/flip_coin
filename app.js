@@ -3,19 +3,28 @@
 // (★★★ v6 導入：只導入需要的 API ★★★)
 import { renderHistory } from './modules/history.js';
 import * as api from './modules/api.js'; 
-// (★★★ v6 移除：BrowserExtensionWalletService 和 config.js ★★★)
 
 // --- Notyf 實例化 (不變) ---
 const notyf = new Notyf({
     duration: 5000,
     position: { x: 'right', y: 'top' },
     dismissible: true,
-    types: [ /* ... (不變) ... */ ]
+    types: [
+        {
+            type: 'warning',
+            background: '#f5a623',
+            icon: {
+                className: 'notyf__icon--warning',
+                tagName: 'i',
+                text: '⚠️'
+            }
+        }
+    ]
 });
 
 // --- 全局狀態 (★★★ v6 修改 ★★★) ---
-let jwtToken = null;      // (取代 walletService)
-let currentUser = null; // (取代 currentAccount)
+let jwtToken = null;
+let currentUser = null;
 let socket = null;
 
 // (遊戲元素)
@@ -26,10 +35,15 @@ let loginBtn, registerBtn, logoutBtn, userInfoDisplay, usernameDisplay, balanceD
 let loginModal, closeLoginModalBtn, cancelLoginBtn, confirmLoginBtn, loginUsernameInput, loginPasswordInput;
 // (註冊 Modal)
 let registerModal, closeRegisterModalBtn, cancelRegisterBtn, confirmRegisterBtn, registerUsernameInput, registerPasswordInput, registerPasswordConfirmInput;
-// (個人中心 Modal)
+// (★★★ v7-M2 修改：個人中心 Modal ★★★)
 let personalCenterBtn, personalCenterModal, closePersonalCenterModalBtn, pc_cancelBtn;
+// (Tab 1: Info)
 let pc_userId, pc_username, pc_level, pc_maxStreak, pc_inviteCode, pc_referrerCode;
+// (Tab 2: Deposit)
+let pc_tab_info, pc_tab_deposit, pc_content_info, pc_content_deposit;
+let pc_tron_address, pc_copy_tron_btn;
 
+let isBetting = false; // (防止重複下注)
 
 // --- Socket 連線 (★★★ v6 修改 ★★★) ---
 function initializeSocket(token) {
@@ -44,10 +58,10 @@ function initializeSocket(token) {
 
     socket.on('connect', () => {
         console.log(`[Socket.io] Connected with token.`);
-        // (★★★ v6 移除：不再需要 register 事件 ★★★)
     });
     
     socket.on('connect_error', (err) => {
+        // ... (v6.1 已修復，不變) ...
         console.error('[Socket.io] Connection Error:', err.message);
         if (err.message === 'Authentication error: Invalid token') {
             // Token 過期或無效，強制登出
@@ -55,25 +69,32 @@ function initializeSocket(token) {
             notyf.error('連線已過期，請重新登入。');
         }
     });
-
-    // (★★★ v6 佔位符：下注相關的 socket 監聽，將在 v6.2 中實作 ★★★)
+    
     socket.on('bet_updated', (betData) => {
-        console.log('[Socket.io] Received bet update:', betData);
-        // (v6.2 待辦：停止轉盤、彈窗、更新歷史)
+        console.log('[Socket.io] Received bet update (for history):', betData);
+        // (收到更新時，刷新歷史列表)
+        if (jwtToken) {
+            renderHistory(jwtToken);
+        }
     });
     socket.on('stats_updated', (stats) => {
         console.log('[Socket.io] Received stats update:', stats);
         if (currentUser) {
             currentUser.current_streak = stats.current_streak;
             currentUser.max_streak = stats.max_streak;
-            updateUI(); // (更新 UI 上的連勝)
+            updateUI(); 
         }
     });
     socket.on('user_info_updated', (fullUser) => {
         console.log('[Socket.io] Received FULL user info update:', fullUser);
         if (currentUser && currentUser.id === fullUser.id) {
             currentUser = fullUser;
-            updateUI(); // (更新餘額、等級等)
+            updateUI();
+            
+            // (★★★ M5 新增：如果不是正在下注時收到餘額更新，才提示充值到帳 ★★★)
+            if (!isBetting) {
+                notyf.success(`帳戶已更新！新餘額: ${parseFloat(fullUser.balance).toFixed(2)} USDT`);
+            }
         }
     });
     socket.on('leaderboard_updated', (leaderboardData) => {
@@ -128,7 +149,11 @@ function updateUI() {
 
         // (更新 Header 資訊)
         usernameDisplay.innerText = currentUser.nickname || currentUser.username;
-        balanceDisplay.innerText = parseFloat(currentUser.balance || 0).toFixed(2); // 顯示平台餘額
+        // (★★★ v7-M2 修改：確保 balance 是數字且格式化 ★★★)
+        const balance = typeof currentUser.balance === 'string' 
+            ? parseFloat(currentUser.balance) 
+            : currentUser.balance;
+        balanceDisplay.innerText = (balance || 0).toFixed(2); 
 
         // (更新連勝)
         const streak = currentUser.current_streak || 0;
@@ -293,7 +318,7 @@ async function autoLogin() {
 function showPersonalCenterModal() {
     if (!currentUser) return;
     
-    // (填充資訊)
+    // (Tab 1: 填充基本資訊)
     pc_userId.innerText = currentUser.user_id;
     pc_username.innerText = currentUser.username;
     pc_level.innerText = `Level ${currentUser.level}`;
@@ -301,22 +326,144 @@ function showPersonalCenterModal() {
     pc_inviteCode.innerText = currentUser.invite_code || 'N/A';
     pc_referrerCode.innerText = currentUser.referrer_code || '(未綁定)';
     
-    // (v6.3 待辦：顯示充值/提現表單)
+    // (★★★ v7-M2 新增：Tab 2: 填充充值資訊 ★★★)
+    pc_tron_address.value = currentUser.tron_deposit_address || '地址生成中...';
+    
+    // (重置 Tab 狀態為顯示 "基本資訊")
+    pc_tab_info.classList.add('active');
+    pc_content_info.classList.add('active');
+    pc_tab_deposit.classList.remove('active');
+    pc_content_deposit.classList.remove('active');
     
     personalCenterModal.style.display = 'block';
 }
+
 function hidePersonalCenterModal() {
     personalCenterModal.style.display = 'none';
 }
 
-// --- v6.2 佔位符 ---
-async function handleConfirmBet() {
-    notyf.error('下注功能 (v6.2) 正在重構中，即將上線！');
+// (★★★ v7-M2 新增：Tab 切換邏輯 ★★★)
+function handlePcTabClick(tabName) {
+    if (tabName === 'info') {
+        pc_tab_info.classList.add('active');
+        pc_content_info.classList.add('active');
+        pc_tab_deposit.classList.remove('active');
+        pc_content_deposit.classList.remove('active');
+    } else if (tabName === 'deposit') {
+        pc_tab_info.classList.remove('active');
+        pc_content_info.classList.remove('active');
+        pc_tab_deposit.classList.add('active');
+        pc_content_deposit.classList.add('active');
+    }
+}
+// (★★★ v7-M2 新增：複製地址邏輯 ★★★)
+function copyTronAddress() {
+    if (!navigator.clipboard) {
+        notyf.error('您的瀏覽器不支持複製功能');
+        return;
+    }
+    navigator.clipboard.writeText(pc_tron_address.value).then(() => {
+        notyf.success('TRC20 地址已複製');
+    }, (err) => {
+        notyf.error('複製失敗');
+        console.error('Failed to copy text: ', err);
+    });
 }
 
-// --- 應用程式啟動器 (★★★ v6 重構 ★★★) ---
+
+// --- (★★★ M5 核心：實作下注功能 ★★★) ---
+async function handleConfirmBet() {
+    if (isBetting) {
+        notyf.error('正在處理上一筆下注，請稍候...');
+        return;
+    }
+
+    const choice = document.querySelector('input[name="flipChoice"]:checked')?.value;
+    const amount = parseFloat(betAmountInput.value);
+
+    if (!choice) {
+        notyf.error('請選擇正面或反面');
+        return;
+    }
+    if (isNaN(amount) || amount <= 0) {
+        notyf.error('請輸入有效的下注金額');
+        return;
+    }
+    if (currentUser && amount > parseFloat(currentUser.balance)) {
+         notyf.error('餘額不足');
+        return;
+    }
+
+    isBetting = true;
+    confirmBetBtn.disabled = true;
+    confirmBetBtn.innerText = '下注中...';
+    document.getElementById('coin-flipper').classList.add('flipping');
+    notyf.success('注單已提交，正在等待鏈上開獎...');
+
+    try {
+        // (★★★ 關鍵：調用 API 並等待完整的結算結果 ★★★)
+        const settledBet = await api.placeBet(jwtToken, choice, amount);
+        
+        // (API 成功返回 = 結算完成)
+        console.log('Bet settled:', settledBet);
+        
+        // (更新餘額 (註：Socket.IO 也會更新，但 API 回傳更快))
+        // (我們直接使用 API 返回的注單來判斷，因為 user_info_updated 可能延遲)
+        if (settledBet.status === 'won') {
+            const newBalance = parseFloat(currentUser.balance) - parseFloat(settledBet.amount) + (parseFloat(settledBet.amount) * settledBet.payout_multiplier);
+            currentUser.balance = newBalance;
+            notyf.success(`恭喜中獎！贏得 ${parseFloat(settledBet.amount) * settledBet.payout_multiplier} USDT`);
+        } else if (settledBet.status === 'lost') {
+            currentUser.balance = parseFloat(currentUser.balance) - parseFloat(settledBet.amount);
+            notyf.error('可惜，未中獎');
+        }
+        
+        // (觸發連勝/餘額 UI 更新)
+        // (後端 BetQueueService 會發送 'stats_updated' 和 'user_info_updated'，我們這裡手動更新以求即時)
+        updateUI(); 
+        
+        // (顯示硬幣結果)
+        const outcome = (settledBet.tx_hash.slice(-1).parseInt(16) % 2 === 0) ? 'head' : 'tail';
+        showCoinResult(outcome); // (假設 showCoinResult 會停止動畫)
+
+    } catch (error) {
+        // (API 失敗 = 下注失敗，餘額已在後端退回)
+        console.error('Bet failed:', error.message);
+        notyf.error(`下注失敗：${error.message}`);
+        
+        // (如果失敗，也停止動畫)
+        document.getElementById('coin-flipper').classList.remove('flipping');
+        
+        // (如果失敗原因是餘額不足等，Socket.IO 不會更新餘額，
+        // 但如果失敗是*中途*失敗(如鏈上錯誤)，後端會發 Socket 通知退款)
+        
+    } finally {
+        isBetting = false;
+        confirmBetBtn.disabled = false;
+        confirmBetBtn.innerText = '确认下注';
+    }
+}
+
+/**
+ * (★★★ M5 新增：顯示硬幣結果的輔助函數 ★★★)
+ */
+function showCoinResult(result) { // 'head' or 'tail'
+    const coin = document.getElementById('coin-flipper');
+    coin.classList.remove('flipping');
+    
+    if (result === 'head') {
+        coin.classList.remove('show-tail');
+        coin.classList.add('show-head');
+    } else {
+        coin.classList.remove('show-head');
+        coin.classList.add('show-tail');
+    }
+    // (我們不再需要 v1 的 2 秒後重置，因為下次點擊會自動加上 flipping)
+}
+
+// --- 應用程式啟動器 (★★★ v7-M2 修改 ★★★) ---
 function initializeApp() {
-    console.log("✅ [v6] App initializing...");
+    console.log("✅ [v7-M2] App initializing...");
     // 獲取所有 DOM 元素
     confirmBetBtn = document.getElementById('confirmBetBtn'); 
     betAmountInput = document.getElementById('betAmount'); 
@@ -348,17 +495,26 @@ function initializeApp() {
     registerPasswordInput = document.getElementById('registerPasswordInput');
     registerPasswordConfirmInput = document.getElementById('registerPasswordConfirmInput');
     
-    // (個人中心 Modal)
+    // (★★★ v7-M2 修改：個人中心 Modal ★★★)
     personalCenterBtn = document.getElementById('personalCenterBtn');
     personalCenterModal = document.getElementById('personalCenterModal');
     closePersonalCenterModalBtn = document.getElementById('closePersonalCenterModalBtn');
     pc_cancelBtn = document.getElementById('pc_cancelBtn');
+    // (Tab 1)
     pc_userId = document.getElementById('pc_userId');
     pc_username = document.getElementById('pc_username');
     pc_level = document.getElementById('pc_level');
     pc_maxStreak = document.getElementById('pc_maxStreak');
     pc_inviteCode = document.getElementById('pc_inviteCode');
     pc_referrerCode = document.getElementById('pc_referrerCode');
+    // (Tab 2)
+    pc_tab_info = document.getElementById('pc_tab_info');
+    pc_tab_deposit = document.getElementById('pc_tab_deposit');
+    pc_content_info = document.getElementById('pc_content_info');
+    pc_content_deposit = document.getElementById('pc_content_deposit');
+    pc_tron_address = document.getElementById('pc_tron_address');
+    pc_copy_tron_btn = document.getElementById('pc_copy_tron_btn');
+
 
     // 綁定 Auth 事件
     loginBtn.addEventListener('click', showLoginModal);
@@ -375,10 +531,16 @@ function initializeApp() {
     confirmLoginBtn.addEventListener('click', handleLogin);
     confirmRegisterBtn.addEventListener('click', handleRegister);
     
-    // 綁定個人中心
+    // (★★★ v7-M2 修改：綁定個人中心 ★★★)
     personalCenterBtn.addEventListener('click', showPersonalCenterModal);
     closePersonalCenterModalBtn.addEventListener('click', hidePersonalCenterModal);
     pc_cancelBtn.addEventListener('click', hidePersonalCenterModal);
+    // (綁定 Tab 切換)
+    pc_tab_info.addEventListener('click', () => handlePcTabClick('info'));
+    pc_tab_deposit.addEventListener('click', () => handlePcTabClick('deposit'));
+    // (綁定複製按鈕)
+    pc_copy_tron_btn.addEventListener('click', copyTronAddress);
+
 
     // 綁定遊戲事件
     confirmBetBtn.addEventListener('click', handleConfirmBet); // (目前是佔位符)
@@ -394,7 +556,7 @@ function initializeApp() {
     autoLogin(); // (會自動載入排行榜)
 }
 
-// --- 程式入口 (★★★ v6 修改：不再等待 Ethers.js ★★★) ---
+// --- 程式入口 (v6 不變) ---
 function waitForSocketIO() {
     if (typeof window.io !== 'undefined') {
         initializeApp();

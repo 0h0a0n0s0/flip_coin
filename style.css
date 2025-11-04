@@ -641,3 +641,57 @@ button.btn-secondary:hover {
 .modal-body label:first-child {
   margin-top: 0;
 }
+
+/* (★★★ v7-M2 新增：Modal Tab 樣式 ★★★) */
+.modal-tabs {
+  display: flex;
+  border-bottom: 1px solid #444;
+  margin-bottom: 20px;
+}
+.modal-tab-btn {
+  padding: 10px 20px;
+  background: none;
+  border: none;
+  color: #aaa;
+  font-size: 16px;
+  cursor: pointer;
+  border-bottom: 3px solid transparent;
+  margin-bottom: -1px; /* (讓按鈕的底線蓋過 tab-container 的底線) */
+}
+.modal-tab-btn:hover {
+  color: #fff;
+}
+.modal-tab-btn.active {
+  color: #ffd04b;
+  border-bottom-color: #ffd04b;
+  font-weight: bold;
+}
+
+/* (Tab 內容) */
+.modal-tab-content {
+  display: none; /* 預設隱藏 */
+}
+.modal-tab-content.active {
+  display: block; /* 顯示 active 的 Tab */
+  animation: tabfade 0.4s;
+}
+@keyframes tabfade {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+/* (充值 Tab 內的樣式) */
+.deposit-warning {
+  background-color: #f8e0e0;
+  color: #a00000;
+  padding: 10px;
+  border-radius: 6px;
+  font-size: 14px;
+  margin-bottom: 15px;
+}
+.deposit-tip {
+  font-size: 13px;
+  color: #aaa;
+  margin-top: 15px;
+  line-height: 1.6;
+}

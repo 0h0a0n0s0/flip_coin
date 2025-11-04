@@ -22,6 +22,7 @@
           <el-sub-menu index="user-management">
             <template #title><el-icon><User /></el-icon><span>用戶管理</span></template>
             <el-menu-item index="/users">用户列表</el-menu-item>
+            <el-menu-item index="/users/deposit-addresses">用戶充值地址</el-menu-item>
           </el-sub-menu>
           <el-sub-menu index="bet-management">
             <template #title><el-icon><Coin /></el-icon><span>投注管理</span></template>

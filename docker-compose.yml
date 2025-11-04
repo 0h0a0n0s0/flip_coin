@@ -11,12 +11,9 @@ services:
     volumes:
       - ./backend:/usr/src/app
       - /usr/src/app/node_modules
-      # (★★★ 修正：掛載 v1 檔案到容器內的 /usr/src/app/v1_frontend ★★★)
       - ./index.html:/usr/src/app/v1_frontend/index.html
       - ./app.js:/usr/src/app/v1_frontend/app.js
       - ./style.css:/usr/src/app/v1_frontend/style.css
-      - ./config.js:/usr/src/app/v1_frontend/config.js
-      - ./modules:/usr/src/app/v1_frontend/modules
       - ./403.html:/usr/src/app/v1_frontend/403.html
     depends_on:
       - db 

@@ -324,8 +324,107 @@ router.patch('/users/:id/status', authMiddleware, async (req, res) => {
     }
 });
 
-router.get('/users/by-referrer/:invite_code', authMiddleware, async (req, res) => { /* ... (不變) ... */ });
-router.patch('/users/:id/status', authMiddleware, async (req, res) => { /* ... (不變) ... */ });
+/**
+ * @description 根據邀請碼查詢推薦的用戶列表
+ * @route GET /api/admin/users/by-referrer/:invite_code
+ * @access Private (需要 Token)
+ */
+router.get('/users/by-referrer/:invite_code', authMiddleware, async (req, res) => {
+    const { invite_code } = req.params;
+
+    try {
+        const result = await db.query(
+            'SELECT user_id, nickname, wallet_address FROM users WHERE referrer_code = $1 ORDER BY created_at DESC',
+            [invite_code]
+        );
+        
+        res.status(200).json(result.rows);
+
+    } catch (error) {
+        console.error(`[Admin Users] Error fetching referrals for code ${invite_code}:`, error);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+router.patch('/users/:id/status', authMiddleware, async (req, res) => {
+    // ... (此路由保持不變) ...
+    const { id } = req.params;
+    const { status } = req.body;
+    if (!status) {
+        return res.status(400).json({ error: 'Status is required.' });
+    }
+    try {
+        const result = await db.query(
+            'UPDATE users SET status = $1 WHERE id = $2 RETURNING id, status',
+            [status, id]
+        );
+        if (result.rows.length === 0) {
+            return res.status(404).json({ error: 'User not found.' });
+        }
+        console.log(`[Admin Users] User ID ${result.rows[0].id} status updated to ${result.rows[0].status} by ${req.user.username}`);
+        res.status(200).json(result.rows[0]);
+    } catch (error) {
+        console.error('[Admin Users] Error updating user status:', error);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+/**
+ * @description 獲取用戶充值地址列表 (v7)
+ * @route GET /api/admin/users/deposit-addresses
+ * @access Private
+ */
+router.get('/users/deposit-addresses', authMiddleware, async (req, res) => {
+    const { 
+        page = 1, limit = 10,
+        userId, username, 
+        tronAddress, evmAddress, 
+        pathIndex 
+    } = req.query;
+
+    try {
+        const params = [];
+        let whereClauses = [];
+        let paramIndex = 1;
+
+        if (userId) { params.push(`%${userId}%`); whereClauses.push(`u.user_id ILIKE $${paramIndex++}`); }
+        if (username) { params.push(`%${username}%`); whereClauses.push(`u.username ILIKE $${paramIndex++}`); }
+        if (tronAddress) { params.push(tronAddress); whereClauses.push(`u.tron_deposit_address = $${paramIndex++}`); }
+        if (evmAddress) { params.push(evmAddress); whereClauses.push(`u.evm_deposit_address = $${paramIndex++}`); }
+        if (pathIndex) { params.push(parseInt(pathIndex, 10)); whereClauses.push(`u.deposit_path_index = $${paramIndex++}`); }
+        
+        const whereSql = whereClauses.length > 0 ? `WHERE ${whereClauses.join(' AND ')}` : '';
+        
+        const countSql = `SELECT COUNT(u.id) FROM users u ${whereSql}`;
+        const countResult = await db.query(countSql, params);
+        const total = parseInt(countResult.rows[0].count, 10);
+
+        if (total === 0) {
+            return res.status(200).json({ total: 0, list: [] });
+        }
+
+        const dataSql = `
+            SELECT 
+                u.user_id, u.username, 
+                u.deposit_path_index, 
+                u.tron_deposit_address, u.evm_deposit_address
+            FROM users u
+            ${whereSql}
+            ORDER BY u.deposit_path_index DESC
+            LIMIT $${paramIndex++} OFFSET $${paramIndex++}
+        `;
+        
+        const offset = (page - 1) * limit;
+        params.push(limit);
+        params.push(offset);
+        const dataResult = await db.query(dataSql, params);
+
+        res.status(200).json({ total: total, list: dataResult.rows });
+    } catch (error) {
+        console.error('[Admin Addr] Error fetching user addresses (v7):', error);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
 
 // --- 注單管理 (★★★ v6 重構 ★★★) ---
 router.get('/bets', authMiddleware, async (req, res) => {
@@ -493,15 +592,15 @@ router.get('/reports/profit-loss', authMiddleware, async (req, res) => {
 });
 
 
-// --- 錢包監控 (★★★ v6 重構 ★★★) ---
+// --- 錢包監控 (★★★ v7 重構：對應 platform_wallets 表 ★★★) ---
 /**
- * @description 獲取監控錢包列表 (v6 版)
+ * @description 獲取平台錢包列表 (v7 版)
  */
 router.get('/wallets', authMiddleware, async (req, res) => {
     const { 
         page = 1, limit = 10,
         name, 
-        chain_type, // (★★★ v6 修改 ★★★)
+        chain_type,
         address
     } = req.query;
 
@@ -511,11 +610,12 @@ router.get('/wallets', authMiddleware, async (req, res) => {
         let paramIndex = 1;
 
         if (name) { params.push(`%${name}%`); whereClauses.push(`name ILIKE $${paramIndex++}`); }
-        if (chain_type) { params.push(chain_type); whereClauses.push(`chain_type = $${paramIndex++}`); } // (★★★ v6 修改 ★★★)
+        if (chain_type) { params.push(chain_type); whereClauses.push(`chain_type = $${paramIndex++}`); } 
         if (address) { params.push(address); whereClauses.push(`LOWER(address) = LOWER($${paramIndex++})`); }
         
+        // (★★★ v7 修改：查詢 platform_wallets ★★★)
         const whereSql = whereClauses.length > 0 ? `WHERE ${whereClauses.join(' AND ')}` : '';
-        const countSql = `SELECT COUNT(*) FROM monitored_wallets ${whereSql}`;
+        const countSql = `SELECT COUNT(*) FROM platform_wallets ${whereSql}`;
         const countResult = await db.query(countSql, params);
         const total = parseInt(countResult.rows[0].count, 10);
 
@@ -523,62 +623,64 @@ router.get('/wallets', authMiddleware, async (req, res) => {
             return res.status(200).json({ total: 0, list: [] });
         }
 
-        // (★★★ v6 修改：SELECT 欄位 ★★★)
-        const dataSql = `SELECT * FROM monitored_wallets ${whereSql} ORDER BY created_at DESC LIMIT $${paramIndex++} OFFSET $${paramIndex++}`;
+        // (★★★ v7 修改：查詢 platform_wallets ★★★)
+        const dataSql = `SELECT * FROM platform_wallets ${whereSql} ORDER BY created_at DESC LIMIT $${paramIndex++} OFFSET $${paramIndex++}`;
         const offset = (page - 1) * limit;
         params.push(limit); params.push(offset);
         const dataResult = await db.query(dataSql, params);
         
-        // (★★★ v6 移除：餘額查詢，v6 錢包監控暫時不查餘額，邏輯太複雜)
-        // (因為每條鏈的 provider 和餘額查詢 (Token) 方式都不同)
-
         res.status(200).json({ total, list: dataResult.rows });
 
     } catch (error) {
-        console.error('[Admin Wallets] Error fetching wallets (v6):', error);
+        console.error('[Admin Wallets] Error fetching wallets (v7):', error);
         res.status(500).json({ error: 'Internal server error' });
     }
 });
 
 /**
- * @description 新增監控錢包 (v6 版)
+ * @description 新增平台錢包 (v7 版)
  */
 router.post('/wallets', authMiddleware, async (req, res) => {
-    const { name, chain_type, address, is_deposit, is_payout, is_bonus, is_collection, is_opener_a, is_opener_b } = req.body;
+    // (★★★ v7 修改：獲取新欄位 ★★★)
+    const { name, chain_type, address, is_gas_reserve, is_collection, is_opener_a, is_opener_b, is_active } = req.body;
     if (!name || !chain_type || !address) {
         return res.status(400).json({ error: 'Name, chain_type, and address are required.' });
     }
-    // (★★★ v6 移除：Ethers 驗證，因為 TRON/SOL 地址格式不同 ★★★)
 
     try {
+        // (★★★ v7 修改：插入 platform_wallets ★★★)
         const result = await db.query(
-            `INSERT INTO monitored_wallets (name, chain_type, address, is_deposit, is_payout, is_bonus, is_collection, is_opener_a, is_opener_b) 
-             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING *`,
-            [name, chain_type, address, !!is_deposit, !!is_payout, !!is_bonus, !!is_collection, !!is_opener_a, !!is_opener_b]
+            `INSERT INTO platform_wallets (name, chain_type, address, is_gas_reserve, is_collection, is_opener_a, is_opener_b, is_active) 
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING *`,
+            [name, chain_type, address, !!is_gas_reserve, !!is_collection, !!is_opener_a, !!is_opener_b, !!is_active]
         );
         console.log(`[Admin Wallets] Wallet ${result.rows[0].id} created by ${req.user.username}`);
         res.status(201).json(result.rows[0]);
     } catch (error) {
         if (error.code === '23505') { return res.status(409).json({ error: 'Wallet address already exists.' }); }
-        console.error('[Admin Wallets] Error creating wallet (v6):', error);
+        console.error('[Admin Wallets] Error creating wallet (v7):', error);
         res.status(500).json({ error: 'Internal server error' });
     }
 });
 
 /**
- * @description 更新監控錢包 (v6 版)
+ * @description 更新平台錢包 (v7 版)
  */
 router.put('/wallets/:id', authMiddleware, async (req, res) => {
     const { id } = req.params;
-    const { name, chain_type, address, is_deposit, is_payout, is_bonus, is_collection, is_opener_a, is_opener_b } = req.body;
+    // (★★★ v7 修改：獲取新欄位 ★★★)
+    const { name, chain_type, address, is_gas_reserve, is_collection, is_opener_a, is_opener_b, is_active } = req.body;
     if (!name || !chain_type || !address) { return res.status(400).json({ error: 'Fields are required.' }); }
 
     try {
+        // (★★★ v7 修改：更新 platform_wallets ★★★)
         const result = await db.query(
-            `UPDATE monitored_wallets SET 
-             name = $1, chain_type = $2, address = $3, is_deposit = $4, is_payout = $5, is_bonus = $6, is_collection = $7, is_opener_a = $8, is_opener_b = $9
-             WHERE id = $10 RETURNING *`,
-            [name, chain_type, address, !!is_deposit, !!is_payout, !!is_bonus, !!is_collection, !!is_opener_a, !!is_opener_b, id]
+            `UPDATE platform_wallets SET 
+             name = $1, chain_type = $2, address = $3, 
+             is_gas_reserve = $4, is_collection = $5, 
+             is_opener_a = $6, is_opener_b = $7, is_active = $8
+             WHERE id = $9 RETURNING *`,
+            [name, chain_type, address, !!is_gas_reserve, !!is_collection, !!is_opener_a, !!is_opener_b, !!is_active, id]
         );
         if (result.rows.length === 0) {
             return res.status(404).json({ error: 'Wallet not found.' });
@@ -587,16 +689,16 @@ router.put('/wallets/:id', authMiddleware, async (req, res) => {
         res.status(200).json(result.rows[0]);
     } catch (error) {
         if (error.code === '23505') { return res.status(409).json({ error: 'Wallet address already exists.' }); }
-        console.error(`[Admin Wallets] Error updating wallet ${id} (v6):`, error);
+        console.error(`[Admin Wallets] Error updating wallet ${id} (v7):`, error);
         res.status(500).json({ error: 'Internal server error' });
     }
 });
 
-// ( /wallets/:id 刪除路由不變 )
+// (★★★ v7 修改：刪除 platform_wallets ★★★)
 router.delete('/wallets/:id', authMiddleware, async (req, res) => {
     const { id } = req.params;
     try {
-        const result = await db.query('DELETE FROM monitored_wallets WHERE id = $1 RETURNING id', [id]);
+        const result = await db.query('DELETE FROM platform_wallets WHERE id = $1 RETURNING id', [id]); // (查詢 platform_wallets)
         if (result.rows.length === 0) { return res.status(404).json({ error: 'Wallet not found.' }); }
         console.log(`[Admin Wallets] Wallet ${id} deleted by ${req.user.username}`);
         res.status(204).send();

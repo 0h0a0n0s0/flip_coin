@@ -12,8 +12,6 @@ const adminRoutes = require('./routes/admin');
 const adminIpWhitelistMiddleware = require('./middleware/adminIpWhitelistMiddleware');
 const { createProxyMiddleware } = require('http-proxy-middleware');
 const { customAlphabet } = require('nanoid');
-
-// (★★★ v6 Auth 新增 ★★★)
 const passport = require('passport');
 const LocalStrategy = require('passport-local').Strategy;
 const bcrypt = require('bcryptjs');
@@ -22,6 +20,10 @@ const { Strategy: JwtStrategy, ExtractJwt } = require('passport-jwt');
 
 // (★★★ 1. 導入 KmsService ★★★)
 const { getKmsInstance } = require('./services/KmsService.js');
+const TronListener = require('./services/TronListener.js');
+const { getTronCollectionInstance } = require('./services/TronCollectionService.js');
+const { getGameOpenerInstance } = require('./services/GameOpenerService.js');
+const { getBetQueueInstance } = require('./services/BetQueueService.js');
 
 // --- 全局變數 ---
 const nanoid = customAlphabet('ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789', 8);
@@ -29,10 +31,7 @@ let userLevelsCache = {};
 let settingsCache = {};
 module.exports.getSettingsCache = () => { return settingsCache; };
 
-const provider = new ethers.JsonRpcProvider(process.env.SEPOLIA_RPC_URL);
-module.exports.provider = provider;
-
-// (★★★ 2. 立即初始化 KmsService ★★★)
+// (★★★ 立即初始化 KmsService ★★★)
 let kmsService;
 try {
     kmsService = getKmsInstance(); // (這將觸發 KmsService.js 中的 console.log)
@@ -41,6 +40,27 @@ try {
     console.error("Ensure MASTER_MNEMONIC is set in .env file.");
     process.exit(1); // 如果 KMS 失敗 (例如 .env 遺失)，必須停止服務
 }
+
+// (★★★ 初始化 Collection Service ★★★)
+let tronCollectionService;
+try {
+    tronCollectionService = getTronCollectionInstance();
+} catch (error) {
+    console.error("CRITICAL: FAILED TO INITIALIZE TronCollectionService.", error.message);
+    process.exit(1); 
+}
+
+// (★★★ 初始化 GameOpener ★★★)
+let gameOpenerService;
+try {
+    gameOpenerService = getGameOpenerInstance();
+} catch (error) {
+    console.error("CRITICAL: FAILED TO INITIALIZE GameOpenerService.", error.message);
+    process.exit(1);
+}
+
+// (★★★ M5 延後：BetQueue 需要 io 和 settingsCache，在 listen 時才初始化 ★★★)
+let betQueueService;
 
 // --- Express 實例 ---
 const app = express();
@@ -61,11 +81,13 @@ app.use(passport.initialize());
 
 // 策略 1：本地註冊 (local-signup)
 passport.use('local-signup', new LocalStrategy({
+    // ... (config 不變)
     usernameField: 'username',
     passwordField: 'password',
     passReqToCallback: true 
 }, async (req, username, password, done) => {
     try {
+        // ... (1. 檢查用戶名, 2. 密碼加密, 3. KMS 獲取地址 不變) ...
         // 1. 檢查用戶名
         const existingUser = await db.query('SELECT 1 FROM users WHERE username = $1', [username]);
         if (existingUser.rows.length > 0) {
@@ -76,7 +98,7 @@ passport.use('local-signup', new LocalStrategy({
         const salt = await bcrypt.genSalt(10);
         const password_hash = await bcrypt.hash(password, salt);
         
-        // (★★★ 3. v7 核心修改：從 KMS 獲取新地址和索引 ★★★)
+        // ( 3. v7 核心修改：從 KMS 獲取新地址和索引 )
         const { 
             deposit_path_index, 
             evm_deposit_address, 
@@ -91,7 +113,7 @@ passport.use('local-signup', new LocalStrategy({
             if (existingId.rows.length === 0) isUserIdUnique = true;
         } while (!isUserIdUnique);
         
-        // (★★★ 4. v7 核心修改：生成 invite_code (保留 v6 邏輯) ★★★)
+        // ( 4. v7 核心修改：生成 invite_code (保留 v6 邏輯) )
         const newInviteCode = await generateUniqueInviteCode();
 
         // 5. 獲取 IP
@@ -113,8 +135,17 @@ passport.use('local-signup', new LocalStrategy({
             ]
         );
         
+        const newUser = newUserResult.rows[0];
         console.log(`[v7 Auth] New user registered: ${username} (User ID: ${newUserId}, Path: ${deposit_path_index})`);
-        return done(null, newUserResult.rows[0]);
+
+        // (★★★ M3 關鍵：觸發地址激活 ★★★)
+        // (我們非同步執行，不需要等待激活完成)
+        if (tron_deposit_address && tronCollectionService) {
+            tronCollectionService.activateAddress(tron_deposit_address)
+                .catch(err => console.error(`[v7 Activate] Async activation failed for ${tron_deposit_address}:`, err.message));
+        }
+
+        return done(null, newUser);
 
     } catch (error) {
         console.error("[v7 signup] Error:", error);
@@ -203,9 +234,10 @@ v1Router.get(/^(?!\/api\/).*$/, (req, res) => {
 });
 app.use('/', v1Router);
 
-// --- Socket.IO (不變) ---
-let connectedUsers = {}; 
+// --- Socket.IO ---
+let connectedUsers = {}; // (★★★ 保持這個 Map ★★★)
 io.use(async (socket, next) => {
+    // ... (socket.io auth 邏輯不變) ...
     const token = socket.handshake.auth.token;
     if (!token) {
         return next(new Error('Authentication error: No token'));
@@ -226,11 +258,11 @@ io.use(async (socket, next) => {
 io.on('connection', (socket) => { 
     const userId = socket.user_id;
     console.log(`[Socket.io] User connected: ${userId} (Socket: ${socket.id})`);
-    connectedUsers[userId] = socket.id;
+    connectedUsers[userId] = socket.id; // (★★★ 關鍵：儲存 socket id ★★★)
     socket.on('disconnect', () => {
         console.log(`[Socket.io] User disconnected: ${userId} (Socket: ${socket.id})`);
         if (connectedUsers[userId] === socket.id) {
-            delete connectedUsers[userId];
+            delete connectedUsers[userId]; // (★★★ 關鍵：移除 socket id ★★★)
         }
     });
 });
@@ -280,8 +312,35 @@ function v1ApiRouter(router, passport) {
 
     // ( /api/v1/bets 佔位符 )
     router.post('/api/v1/bets', passport.authenticate('jwt', { session: false }), async (req, res) => {
-        console.log(`[v6 Bets] User ${req.user.user_id} requested to bet:`, req.body);
-        res.status(501).json({ error: 'Betting logic not yet implemented.' });
+        const { choice, amount } = req.body;
+        const user = req.user; // (來自 passport.authenticate)
+
+        // 1. 基本驗證
+        if (choice !== 'head' && choice !== 'tail') {
+            return res.status(400).json({ error: 'Invalid choice.' });
+        }
+        const betAmount = parseFloat(amount);
+        if (isNaN(betAmount) || betAmount <= 0) {
+             return res.status(400).json({ error: 'Invalid bet amount.' });
+        }
+        // (v7.1 待辦：可在此處加入最小/最大投注額驗證)
+
+        if (!betQueueService) {
+             return res.status(503).json({ error: 'Betting service is not ready.' });
+        }
+        
+        try {
+            // 2. (★★★ 關鍵：加入隊列並等待結算 ★★★)
+            const settledBet = await betQueueService.addBetToQueue(user, choice, betAmount);
+            // 3. 返回結算結果
+            res.status(200).json(settledBet);
+            
+        } catch (error) {
+            // (BetQueueService 內部已處理退款)
+            console.error(`[v7 API] Bet failed for user ${user.user_id}:`, error.message);
+            // (返回由 BetQueueService reject 的錯誤)
+            res.status(400).json({ error: error.message || 'Bet processing failed.' });
+        }
     });
 
 
@@ -306,13 +365,49 @@ function v1ApiRouter(router, passport) {
     });
 }
 
-// --- 啟動伺服器 (★★★ v7 移除：所有 v1 服務 ★★★) ---
+// (★★★ 載入系統設定 ★★★)
+async function loadSettings() {
+    try {
+        console.log("[v7 Settings] Loading system settings...");
+        const result = await db.query('SELECT key, value FROM system_settings');
+        settingsCache = result.rows.reduce((acc, row) => {
+            acc[row.key] = { value: row.value };
+            return acc;
+        }, {});
+        console.log(`[v7 Settings] Loaded ${Object.keys(settingsCache).length} settings.`);
+    } catch (error) {
+         console.error("[v7 Settings] CRITICAL: Failed to load system settings:", error);
+    }
+}
+
+
+// --- 啟動伺服器 ---
 httpServer.listen(PORT, async () => { 
-    // (KMS 已在頂部初始化)
     console.log(`Server (with Socket.io) is listening on port ${PORT}`);
+
+    // (★★★ M5 新增：先載入設定 ★★★)
+    await loadSettings();
+    // (未來可加入 loadUserLevels() )
+
+    // (★★★ M5 新增：在獲取 io 和 settings 後，才初始化 BetQueue ★★★)
+    betQueueService = getBetQueueInstance(
+        io, 
+        connectedUsers, 
+        gameOpenerService, 
+        settingsCache
+    );
+
+    // (M2/M3：啟動 TRON 服務)
+    try {
+        const tronListener = new TronListener(io, connectedUsers);
+        tronListener.start();
+    } catch (listenerError) { /* ... */ }
     
-    // (v6/v7 中，這些由後台 API 觸發，而不是啟動時)
-    // await loadSettings(); 
-    // await loadUserLevels(); 
-    // setInterval(retryPendingPayouts, 60000); 
+    if (tronCollectionService) {
+        console.log(`[v7 Collect] Starting collection service timer (Interval: 10 minutes)`);
+        tronCollectionService.collectFunds().catch(err => console.error("[v7 Collect] Initial run failed:", err));
+        setInterval(() => {
+            tronCollectionService.collectFunds().catch(err => console.error("[v7 Collect] Timed run failed:", err));
+        }, 10 * 60 * 1000); 
+    }
 });

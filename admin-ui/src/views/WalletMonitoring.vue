@@ -1,7 +1,6 @@
 <template>
   <div class="wallet-monitoring-container">
-    <h2>錢包監控</h2>
-    <p class="page-description">管理平台用於 充值、提現、開獎、歸集 的熱錢包地址。</p>
+    <h2>平台錢包管理</h2> <p class="page-description">管理平台用於 充值、提現、開獎、歸集 的熱錢包地址。</p>
 
     <el-card shadow="never" class="action-card">
        <el-button type="primary" @click="handleAdd">新增錢包</el-button>
@@ -30,15 +29,22 @@
         <el-table-column prop="name" label="钱包名称" width="180" />
         <el-table-column prop="chain_type" label="公鏈類型" width="120" />
         <el-table-column prop="address" label="钱包地址" />
+        
         <el-table-column label="功能" width="350">
           <template #default="scope">
-            <el-tag v-if="scope.row.is_deposit" type="success" effect="dark" class="fn-tag">充值</el-tag>
-            <el-tag v-if="scope.row.is_payout" type="warning" effect="dark" class="fn-tag">提現</el-tag>
-            <el-tag v-if="scope.row.is_bonus" type="info" effect="dark" class="fn-tag">獎金</el-tag>
+            <el-tag v-if="scope.row.is_gas_reserve" type="success" effect="dark" class="fn-tag">Gas 儲備</el-tag>
             <el-tag v-if="scope.row.is_collection" type="danger" effect="dark" class="fn-tag">歸集</el-tag>
             <el-tag v-if="scope.row.is_opener_a" class="fn-tag">開獎A</el-tag>
             <el-tag v-if="scope.row.is_opener_b" class="fn-tag">開獎B</el-tag>
           </template>
+        </el-table-column>
+        
+        <el-table-column prop="is_active" label="狀態" width="100">
+           <template #default="scope">
+             <el-tag :type="scope.row.is_active ? 'success' : 'danger'">
+               {{ scope.row.is_active ? '啟用' : '禁用' }}
+             </el-tag>
+           </template>
         </el-table-column>
         
         <el-table-column label="操作" width="100" fixed="right">
@@ -70,14 +76,20 @@
         <el-divider />
         
         <el-form-item label="錢包功能" prop="functions">
-           <el-checkbox v-model="walletForm.is_deposit" label="充值 (用戶入金)" />
-           <el-checkbox v-model="walletForm.is_payout" label="提現 (用戶出金)" />
-           <el-checkbox v-model="walletForm.is_bonus" label="獎金 (等級/活動)" />
-           <el-checkbox v-model="walletForm.is_collection" label="歸集 (最終收款)" />
+           <el-checkbox v-model="walletForm.is_gas_reserve" label="Gas 儲備 (TRX/BNB)" />
+           <el-checkbox v-model="walletForm.is_collection" label="歸集 (USDT)" />
         </el-form-item>
          <el-form-item label="開獎功能" prop="opener">
            <el-checkbox v-model="walletForm.is_opener_a" label="開獎地址 A (支付方)" />
            <el-checkbox v-model="walletForm.is_opener_b" label="開獎地址 B (接收方)" />
+        </el-form-item>
+        <el-form-item label="錢包狀態" prop="is_active">
+           <el-switch
+              v-model="walletForm.is_active"
+              active-text="啟用"
+              inactive-text="禁用"
+              inline-prompt
+            />
         </el-form-item>
 
       </el-form>
@@ -100,27 +112,29 @@ export default {
          tableData: [],
          totalItems: 0,
          pagination: { page: 1, limit: 10 },
-         // (★★★ v6 修改：searchParams ★★★)
+         // (v6 修改：searchParams)
          searchParams: { name: '', chain_type: '', address: '' },
          
          dialogVisible: false,
          dialogTitle: '',
          submitLoading: false,
          
-         // (★★★ v6 修改：walletForm ★★★)
+         // (★★★ v7 修改：walletForm ★★★)
          walletForm: { 
-           id: null, name: '', chain_type: 'BSC', address: '',
-           is_deposit: false, is_payout: false, is_bonus: false, is_collection: false,
-           is_opener_a: false, is_opener_b: false
+           id: null, name: '', chain_type: 'TRC20', address: '',
+           is_gas_reserve: false, 
+           is_collection: false,
+           is_opener_a: false, 
+           is_opener_b: false,
+           is_active: true
          },
          
-         // (★★★ v6 修改：formRules ★★★)
+         // (v6 修改：formRules)
          formRules: {
              name: [{ required: true, message: '请输入钱包名称', trigger: 'blur' }],
              chain_type: [{ required: true, message: '请选择公鏈類型', trigger: 'change' }],
              address: [
                  { required: true, message: '请输入钱包地址', trigger: 'blur' },
-                 // (移除 0x 驗證)
              ],
          }
      }
@@ -129,7 +143,7 @@ export default {
       this.fetchWallets();
   },
   methods: {
-      // (★★★ v6 修改：fetchWallets ★★★)
+      // (v6 修改：fetchWallets)
       async fetchWallets() {
           if (this.loading) return;
           this.loading = true;
@@ -140,10 +154,10 @@ export default {
                   chain_type: this.searchParams.chain_type || undefined, // (v6 修改)
                   address: this.searchParams.address || undefined,
               };
+              // (★★★ v7 注意：API 名稱不變，但後端路由會查詢新表 ★★★)
               const response = await this.$api.getWallets(params);
               this.tableData = response.list;
               this.totalItems = response.total;
-              // (★★★ v6 移除：餘額查詢 ★★★)
           } catch (error) { console.error('Failed to fetch wallets:', error); }
           finally { this.loading = false; }
       },
@@ -160,29 +174,34 @@ export default {
           this.pagination.page = newPage;
           this.fetchWallets();
       },
-      // (★★★ v6 修改：handleAdd ★★★)
+      // (★★★ v7 修改：handleAdd ★★★)
       getEmptyForm() {
         return { 
-           id: null, name: '', chain_type: 'BSC', address: '',
-           is_deposit: false, is_payout: false, is_bonus: false, is_collection: false,
-           is_opener_a: false, is_opener_b: false
+           id: null, name: '', chain_type: 'TRC20', address: '',
+           is_gas_reserve: false, 
+           is_collection: false,
+           is_opener_a: false, 
+           is_opener_b: false,
+           is_active: true
          };
       },
       handleAdd() {
-          this.dialogTitle = '新增監控錢包';
+          this.dialogTitle = '新增平台錢包';
           Object.assign(this.walletForm, this.getEmptyForm());
           this.dialogVisible = true;
           this.$nextTick(() => { this.$refs.walletFormRef?.clearValidate(); });
       },
-      // (★★★ v6 修改：handleEdit ★★★)
+      // (★★★ v7 修改：handleEdit ★★★)
       handleEdit(row) {
-          this.dialogTitle = '編輯監控錢包';
+          this.dialogTitle = '編輯平台錢包';
           // (複製所有欄位)
           Object.assign(this.walletForm, {
              id: row.id, name: row.name, chain_type: row.chain_type, address: row.address,
-             is_deposit: row.is_deposit, is_payout: row.is_payout, is_bonus: row.is_bonus, 
+             is_gas_reserve: row.is_gas_reserve, 
              is_collection: row.is_collection,
-             is_opener_a: row.is_opener_a, is_opener_b: row.is_opener_b
+             is_opener_a: row.is_opener_a, 
+             is_opener_b: row.is_opener_b,
+             is_active: row.is_active
           });
           this.dialogVisible = true;
           this.$nextTick(() => { this.$refs.walletFormRef?.clearValidate(); });
@@ -194,7 +213,7 @@ export default {
               if (valid) {
                   this.submitLoading = true;
                   try {
-                      // (walletForm 已包含所有新欄位)
+                      // (walletForm 已包含所有 v7 欄位)
                       if (this.walletForm.id) {
                           await this.$api.updateWallet(this.walletForm.id, this.walletForm);
                           ElMessage.success('錢包更新成功');
@@ -219,7 +238,6 @@ export default {
               } catch (error) { console.error('Failed to delete wallet:', error); }
           }).catch(() => {});
       },
-      // (★★★ v6 移除：formatType, formatCurrency ★★★)
   }
 }
 </script>
@@ -230,7 +248,6 @@ export default {
 .table-card { margin-bottom: 20px; }
 .pagination-container { margin-top: 20px; display: flex; justify-content: flex-end; }
 .el-form-item { margin-bottom: 10px; }
-/* (★★★ v6 新增 ★★★) */
 .fn-tag {
   margin-right: 5px;
 }

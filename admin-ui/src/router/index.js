@@ -4,7 +4,8 @@ import { createRouter, createWebHistory } from 'vue-router'
 import Login from '../views/Login.vue'
 import Layout from '../views/Layout.vue' 
 import Dashboard from '../views/Dashboard.vue' 
-import UserManagement from '../views/UserManagement.vue' 
+import UserManagement from '../views/UserManagement.vue'
+import UserDepositAddresses from '../views/UserDepositAddresses.vue'
 import BetManagement from '../views/BetManagement.vue'
 import ReportManagement from '../views/ReportManagement.vue'
 import WalletMonitoring from '../views/WalletMonitoring.vue'
@@ -37,6 +38,12 @@ const routes = [
         path: 'users',
         name: 'UserManagement',
         component: UserManagement,
+        meta: { requiresAuth: true }
+      },
+      {
+        path: 'users/deposit-addresses',
+        name: 'UserDepositAddresses',
+        component: UserDepositAddresses,
         meta: { requiresAuth: true }
       },
       {

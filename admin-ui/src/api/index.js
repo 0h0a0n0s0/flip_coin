@@ -79,6 +79,17 @@ export function getReferrals(inviteCode) {
     });
 }
 
+/**
+ * @description 獲取用戶充值地址列表 (分頁/搜尋)
+ */
+export function getUserDepositAddresses(params) {
+    return request({
+        url: '/api/admin/users/deposit-addresses',
+        method: 'get',
+        params: params,
+    });
+}
+
 // --- Bet Management ---
 /**
  * @description 獲取注单管理列表 (分頁/搜尋)
