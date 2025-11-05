@@ -25,10 +25,6 @@
 </template>
 
 <script>
-// (★★★ 修改 ★★★)
-// 我們不再需要 ElMessage，因為 request.js 攔截器會自動處理錯誤提示
-// import { ElMessage } from 'element-plus' 
-
 export default {
   name: 'LoginView',
   data() {
@@ -36,41 +32,34 @@ export default {
       loading: false,
       loginForm: {
         username: 'admin',
-        password: 'admin123',
+        password: '', // (★★★ 錯誤修復：移除寫死的密碼，改為空字串 ★★★)
       },
     };
   },
   methods: {
-    // (★★★ v2 關鍵修改 ★★★)
-    // 替換 handleLogin 為真實 API 呼叫
     async handleLogin() {
       if (this.loading) return;
       this.loading = true;
 
+      // (★★★ 新增：檢查密碼是否為空 ★★★)
+      if (!this.loginForm.username || !this.loginForm.password) {
+          // (我們使用 ElMessage，因為 request.js 攔截器不會攔截*未發出*的請求)
+          this.$message.error('帳號和密碼不能為空');
+          this.loading = false;
+          return;
+      }
+
       try {
-        // (★★★ 關鍵 ★★★)
-        // 呼叫我們在 main.js 中掛載的全局 API
-        // $api.login() 會返回 request.js 處理過的 response.data
         const responseData = await this.$api.login(this.loginForm);
 
         if (responseData && responseData.token) {
-            // (★★★ 關鍵 ★★★)
-            // 登入成功
-            console.log("登入成功，收到 Token:", responseData.token);
-            
-            // 1. 將 Token 儲存到 localStorage
             localStorage.setItem('admin_token', responseData.token);
-            
-            // 2. 跳轉到儀表板頁面 (我們稍後建立)
             this.$router.push('/dashboard'); 
-
         } else {
-            // (理論上不會走到這裡，因為 request.js 會攔截錯誤)
              console.error('登入失敗，但未拋出錯誤。');
         }
 
       } catch (error) {
-        // (錯誤會被 request.js 攔截並自動彈出 ElMessage 提示)
         console.error('Login failed (handled by interceptor):', error);
       } finally {
         this.loading = false;
@@ -81,6 +70,7 @@ export default {
 </script>
 
 <style scoped>
+/* ... (樣式不變) ... */
 .login-container {
   display: flex;
   justify-content: center;

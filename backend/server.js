@@ -81,46 +81,57 @@ app.use(passport.initialize());
 
 // 策略 1：本地註冊 (local-signup)
 passport.use('local-signup', new LocalStrategy({
-    // ... (config 不變)
     usernameField: 'username',
     passwordField: 'password',
     passReqToCallback: true 
 }, async (req, username, password, done) => {
+    
+    const client = await db.pool.connect(); 
+    
     try {
-        // ... (1. 檢查用戶名, 2. 密碼加密, 3. KMS 獲取地址 不變) ...
-        // 1. 檢查用戶名
-        const existingUser = await db.query('SELECT 1 FROM users WHERE username = $1', [username]);
+        // (開始事務)
+        await client.query('BEGIN');
+
+        // (★★★ M-Fix 5: 在事務開頭鎖定 users 表 ★★★)
+        // (這將防止並發註冊時的 race condition)
+        await client.query('LOCK TABLE users IN EXCLUSIVE MODE');
+
+        // 1. 檢查用戶名 (使用 client)
+        const existingUser = await client.query('SELECT 1 FROM users WHERE username = $1', [username]);
         if (existingUser.rows.length > 0) {
+            await client.query('ROLLBACK'); // (回滾事務)
+            client.release();
             return done(null, false, { message: 'Username already taken.' });
         }
         
-        // 2. 密碼加密
+        // 2. 密碼加密 (DB 無關)
         const salt = await bcrypt.genSalt(10);
         const password_hash = await bcrypt.hash(password, salt);
         
-        // ( 3. v7 核心修改：從 KMS 獲取新地址和索引 )
+        // 3. v7 核心修改：從 KMS 獲取新地址和索引 (使用 client)
+        // (現在 KmsService.js 中的查詢是安全的，因為表已被鎖定)
         const { 
             deposit_path_index, 
             evm_deposit_address, 
             tron_deposit_address 
-        } = await kmsService.getNewDepositWallets();
+        } = await kmsService.getNewDepositWallets(client); // (傳入 client)
 
-        // 4. 生成唯一 user_id (v6 邏輯)
+        // 4. 生成唯一 user_id (v6 邏輯) (使用 client)
         let newUserId, isUserIdUnique = false;
         do {
             newUserId = Math.floor(10000000 + Math.random() * 90000000).toString();
-            const existingId = await db.query('SELECT 1 FROM users WHERE user_id = $1', [newUserId]);
+            const existingId = await client.query('SELECT 1 FROM users WHERE user_id = $1', [newUserId]); 
             if (existingId.rows.length === 0) isUserIdUnique = true;
         } while (!isUserIdUnique);
         
-        // ( 4. v7 核心修改：生成 invite_code (保留 v6 邏輯) )
-        const newInviteCode = await generateUniqueInviteCode();
+        // 4. v7 核心修改：生成 invite_code (保留 v6 邏輯) (使用 client)
+        const newInviteCode = await generateUniqueInviteCode(client); // (傳入 client)
 
-        // 5. 獲取 IP
+        // 5. 獲取 IP (DB 無關)
         const clientIp = req.headers['x-real-ip'] || req.ip;
 
-        // 6. 插入新用戶 (使用 v7 init.sql 的新欄位)
-        const newUserResult = await db.query(
+        // 6. 插入新用戶 (使用 client)
+        const newUserResult = await client.query(
             `INSERT INTO users (
                 username, password_hash, user_id, invite_code,
                 deposit_path_index, evm_deposit_address, tron_deposit_address, 
@@ -135,11 +146,13 @@ passport.use('local-signup', new LocalStrategy({
             ]
         );
         
+        // (★★★ 提交事務，釋放鎖定 ★★★)
+        await client.query('COMMIT'); 
+        
         const newUser = newUserResult.rows[0];
         console.log(`[v7 Auth] New user registered: ${username} (User ID: ${newUserId}, Path: ${deposit_path_index})`);
 
-        // (★★★ M3 關鍵：觸發地址激活 ★★★)
-        // (我們非同步執行，不需要等待激活完成)
+        // (M3 關鍵：觸發地址激活)
         if (tron_deposit_address && tronCollectionService) {
             tronCollectionService.activateAddress(tron_deposit_address)
                 .catch(err => console.error(`[v7 Activate] Async activation failed for ${tron_deposit_address}:`, err.message));
@@ -148,8 +161,11 @@ passport.use('local-signup', new LocalStrategy({
         return done(null, newUser);
 
     } catch (error) {
-        console.error("[v7 signup] Error:", error);
-        return done(error);
+        console.error("[v7 signup] Transaction Error:", error);
+        await client.query('ROLLBACK'); 
+        return done(error); // (這將導致 500 錯誤)
+    } finally {
+        client.release(); 
     }
 }));
 
@@ -200,12 +216,13 @@ passport.use('jwt', new JwtStrategy({
 
 // --- 輔助函數 (★★★ v7 保留 ★★★) ---
 // (這個是生成*邀請碼*，KMS Service 負責*錢包地址*)
-async function generateUniqueInviteCode() {
+async function generateUniqueInviteCode(client) { // (★★★ 接收 client ★★★)
     let inviteCode;
     let isUnique = false;
     do {
         inviteCode = nanoid();
-        const existing = await db.query('SELECT 1 FROM users WHERE invite_code = $1', [inviteCode]);
+        // (★★★ 使用 client 查詢 ★★★)
+        const existing = await client.query('SELECT 1 FROM users WHERE invite_code = $1', [inviteCode]);
         if (existing.rows.length === 0) isUnique = true;
     } while (!isUnique);
     return inviteCode;

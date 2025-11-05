@@ -225,7 +225,6 @@ async function handleRegister() {
         notyf.success('註冊成功！已自動登入。');
         hideRegisterModal();
         
-        // (直接設定 token 和 user)
         localStorage.setItem('jwt_token', token);
         jwtToken = token;
         currentUser = user;
@@ -235,7 +234,18 @@ async function handleRegister() {
         await renderHistory(token);
         
     } catch (error) {
-        notyf.error(`註冊失敗：${error.message}`);
+        // (★★★ M-Fix 2 修改 ★★★)
+        // 檢查是否是 400 (Bad Request)
+        if (error.status === 400) {
+            // 業務邏輯錯誤 (例如 "Username already taken.")
+            notyf.open({
+                type: 'warning', // (使用黃色警告)
+                message: `${error.message}` // (直接顯示後端訊息)
+            });
+        } else {
+            // 500 伺服器錯誤或網路錯誤
+            notyf.error(`註冊失敗：${error.message}`);
+        }
     } finally {
         btn.disabled = false;
         btn.innerText = originalText;
@@ -270,7 +280,18 @@ async function handleLogin() {
         await renderHistory(token);
         
     } catch (error) {
-         notyf.error(`登入失敗：${error.message}`);
+         // (★★★ M-Fix 2 修改 ★★★)
+         // 檢查是否是 401 (Unauthorized)
+        if (error.status === 401) {
+            // 業務邏輯錯誤 (例如 "Invalid credentials." 或 "Account is disabled.")
+            notyf.open({
+                type: 'warning', // (使用黃色警告)
+                message: `${error.message}` // (直接顯示後端訊息)
+            });
+        } else {
+            // 500 伺服器錯誤或網路錯誤
+            notyf.error(`登入失敗：${error.message}`);
+        }
     } finally {
         btn.disabled = false;
         btn.innerText = originalText;
@@ -423,19 +444,25 @@ async function handleConfirmBet() {
         updateUI(); 
         
         // (顯示硬幣結果)
-        const outcome = (settledBet.tx_hash.slice(-1).parseInt(16) % 2 === 0) ? 'head' : 'tail';
+        const outcome = (parseInt(settledBet.tx_hash.slice(-1), 16) % 2 === 0) ? 'head' : 'tail';
         showCoinResult(outcome); // (假設 showCoinResult 會停止動畫)
 
     } catch (error) {
-        // (API 失敗 = 下注失敗，餘額已在後端退回)
-        console.error('Bet failed:', error.message);
-        notyf.error(`下注失敗：${error.message}`);
+        // (API 失敗 = 下注失敗)
+        console.warn('Bet failed:', error.message); // (改用 warn)
         
-        // (如果失敗，也停止動畫)
+        // (★★★ M-Fix 2 修改 ★★★)
+        // (400 餘額不足, 401 Token 過期)
+        if (error.status === 400 || error.status === 401) {
+             notyf.open({
+                type: 'warning',
+                message: `下注失敗：${error.message}`
+            });
+        } else {
+            notyf.error(`下注失敗：${error.message}`);
+        }
+        
         document.getElementById('coin-flipper').classList.remove('flipping');
-        
-        // (如果失敗原因是餘額不足等，Socket.IO 不會更新餘額，
-        // 但如果失敗是*中途*失敗(如鏈上錯誤)，後端會發 Socket 通知退款)
         
     } finally {
         isBetting = false;

@@ -32,13 +32,14 @@ class KmsService {
         // 3. 初始化 TronWeb (僅用於地址計算，不需私鑰)
         this.tronWeb = new TronWeb({
             fullHost: 'https://api.trongrid.io', // 使用公共節點
-            // (不需要私鑰)
+            headers: { 'TRON-PRO-API-KEY': process.env.TRONGRID_API_KEY || '' }
         });
         
         console.log("✅ [v7] KmsService initialized successfully.");
     }
 
     /**
+     * (★★★ M-Fix 6 修復 ★★★)
      * 派生指定索引的 EVM (0x...) 錢包
      * @param {number} index - 用戶的 deposit_path_index
      * @returns {{address: string, privateKey: string}}
@@ -47,19 +48,23 @@ class KmsService {
         // 1. 派生子節點
         const childNode = this.masterNode.derive(`${EVM_PATH}/${index}`);
         
-        // 2. 獲取私鑰 (Buffer)
-        const privateKeyBuffer = childNode.getWallet().getPrivateKey();
+        // 2. 獲取私鑰 (Buffer) (★★★ 錯誤修復：使用 .privateKey ★★★)
+        const privateKeyBuffer = childNode.privateKey;
         
-        // 3. 獲取錢包地址 (0x...)
-        const address = childNode.getWallet().getAddressString();
+        // 3. 轉換私鑰為 Hex 字串 (★★★ 警告：極度敏感 ★★★)
+        const privateKeyHex = privateKeyBuffer.toString('hex');
         
-        // 4. 轉換私鑰為 Hex 字串 (★★★ 警告：極度敏感 ★★★)
-        const privateKey = privateKeyBuffer.toString('hex');
+        // 4. (★★★ 錯誤修復：使用 ethers.Wallet 派生地址 ★★★)
+        // (我們需要 '0x' 前綴來標準化私鑰)
+        const wallet = new ethers.Wallet('0x' + privateKeyHex); 
+        const address = wallet.address;
         
-        return { address, privateKey };
+        // (返回帶 0x 前綴的私鑰)
+        return { address, privateKey: '0x' + privateKeyHex };
     }
 
     /**
+     * (★★★ M-Fix 6 修復 ★★★)
      * 派生指定索引的 TRON (T...) 錢包
      * @param {number} index - 用戶的 deposit_path_index
      * @returns {{address: string, privateKey: string}}
@@ -68,8 +73,8 @@ class KmsService {
         // 1. 派生 TRON 子節點
         const childNode = this.masterNode.derive(`${TRON_PATH}/${index}`);
         
-        // 2. 獲取私鑰 (Buffer)
-        const privateKeyBuffer = childNode.getWallet().getPrivateKey();
+        // 2. 獲取私鑰 (Buffer) (★★★ 錯誤修復：使用 .privateKey ★★★)
+        const privateKeyBuffer = childNode.privateKey;
         
         // 3. 轉換私鑰為 Hex 字串 (★★★ 警告：極度敏感 ★★★)
         const privateKey = privateKeyBuffer.toString('hex');
@@ -82,6 +87,7 @@ class KmsService {
     
     /**
      * (供歸集服務使用) 根據路徑索引獲取特定鏈的私鑰
+     * (★★★ M-Fix 6 修復：現在此函數可以正常工作了 ★★★)
      * @param {string} chainType - 'EVM' or 'TRC20'
      * @param {number} index - deposit_path_index
      * @returns {string} Private Key (Hex)
@@ -99,13 +105,16 @@ class KmsService {
 
     /**
      * (供註冊時使用) 獲取下一組可用的新充值地址
+     * (★★★ M-Fix 6 修復：現在此函數可以正常工作了 ★★★)
+     * @param {object} client - The pg transaction client
      * @returns {Promise<{ deposit_path_index: number, evm_deposit_address: string, tron_deposit_address: string }>}
      */
-    async getNewDepositWallets() {
-        // 1. 查找當前最大的索引
-        // (我們使用 PostgreSQL 的 COALESCE 來處理 DB 為空的情況)
-        const result = await db.query('SELECT MAX(deposit_path_index) FROM users');
-        const maxIndex = result.rows[0].max || 0; // 如果是 null，則為 0
+    async getNewDepositWallets(client) { 
+        // 1. 查找當前最大的索引 (M-Fix 5 已修復)
+        const result = await client.query(
+            'SELECT MAX(deposit_path_index) FROM users'
+        );
+        const maxIndex = result.rows[0].max || 0; 
         
         const newIndex = maxIndex + 1;
 
@@ -117,7 +126,7 @@ class KmsService {
 
         console.log(`[KMS] Generated new wallet set for index ${newIndex}: EVM (${evmWallet.address}), TRON (${tronWallet.address})`);
         
-        // 4. 返回索引和地址 (★★★ 絕不返回私鑰 ★★★)
+        // 4. 返回索引和地址
         return {
             deposit_path_index: newIndex,
             evm_deposit_address: evmWallet.address,

@@ -17,34 +17,55 @@ async function request(endpoint, options = {}) {
         ...options,
     };
 
-    // (如果提供了 token，加入到 Authorization 標頭)
     if (options.token) {
         config.headers['Authorization'] = `Bearer ${options.token}`;
     }
 
     try {
-        const response = await fetch(url, config);
+        const response = await fetch(url, config); // 1. 發出請求
+
+        // 2. 嘗試獲取 JSON (無論狀態如何)
+        let data;
         const contentType = response.headers.get("content-type");
-
         if (contentType && contentType.includes("application/json")) {
-            const data = await response.json();
-            if (!response.ok) {
-                // 優先使用後端 JSON 中的 error 訊息
-                throw new Error(data.error || 'Request failed with status ' + response.status);
+            try {
+                data = await response.json();
+            } catch (e) {
+                // (如果 response.ok 為 false 且 body 為空，.json() 會失敗)
+                data = null; 
             }
-            return data;
         }
 
-        // 處理非 JSON 回應
+        // 3. 檢查回應狀態
         if (!response.ok) {
-            const textResponse = await response.text();
-            throw new Error(`Server returned non-JSON response: ${textResponse}`);
+            // (我們有 HTTP 錯誤 4xx 或 5xx)
+            const errorMessage = data?.error || `Request failed with status ${response.status}`;
+            
+            // 建立一個包含 status 的自定義錯誤
+            const error = new Error(errorMessage);
+            error.status = response.status; // (★★★ 關鍵：將 status 附加到錯誤物件)
+            error.data = data; 
+            throw error; // (此 throw 將被下面的 catch 捕獲)
         }
-        return response.text();
+
+        // 4. 成功 (response.ok)
+        return data || response.text(); // 返回 JSON 數據或文本
 
     } catch (error) {
-        console.error(`API Error on ${endpoint}:`, error.message);
-        // (不再 alert，讓呼叫者 (app.js) 去 catch)
+        // 5. 統一處理所有錯誤 (網路錯誤 或 上面拋出的 HTTP 錯誤)
+        
+        // (★★★ 關鍵：區分 4xx 和 5xx ★★★)
+        if (error.status >= 400 && error.status < 500) {
+            // 4xx 錯誤 (例如：400 帳號重複, 401 未登入, 403 被禁止)
+            // 這是可預期的業務邏輯錯誤，使用 console.warn
+            // console.warn(`[API Validation] ${endpoint} (${error.status}): ${error.message}`);
+        } else {
+            // 5xx 錯誤 (伺服器內部錯誤) 或 網路錯誤 (fetch 失敗, error.status 為 undefined)
+            // 這是系統級錯誤，使用 console.error
+            console.error(`[API Error] ${endpoint}:`, error.message);
+        }
+
+        // (★★★ 關鍵：將帶有 status 的錯誤拋出給 app.js ★★★)
         throw error; 
     }
 }
@@ -87,35 +108,6 @@ export function getUserInfo(token) {
     });
 }
 
-/**
- * (★★★ v6 新增：更新用戶昵稱 ★★★)
- * (注意：這個 API 尚未在後端 v1Router 實作，我們先定義)
- * @param {string} token 
- * @param {string} nickname
- * @returns {Promise<object>}
- */
-export function updateNickname(token, nickname) {
-    return request('/users/nickname', {
-        method: 'PATCH',
-        token: token,
-        body: JSON.stringify({ nickname }),
-    });
-}
-
-/**
- * (★★★ v6 新增：綁定推薦碼 ★★★)
- * (注意：這個 API 尚未在後端 v1Router 實作，我們先定義)
- * @param {string} token 
- * @param {string} referrerCode
- * @returns {Promise<object>}
- */
-export function bindReferrer(token, referrerCode) {
-    return request('/users/bind-referrer', {
-        method: 'POST',
-        token: token,
-        body: JSON.stringify({ referrerCode }),
-    });
-}
 
 /**
  * (★★★ v6 修改：使用 token 驗證 ★★★)

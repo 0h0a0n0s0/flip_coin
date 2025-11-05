@@ -48,15 +48,6 @@ export function updateUserStatus(userId, status) {
         data: { status }
     });
 }
-/**
- * @description 查詢錢包餘額
- */
-export function getUserBalance(walletAddress) {
-    return request({
-        url: `/api/admin/users/balance/${walletAddress}`,
-        method: 'get',
-    });
-}
 
 /**
  * @description (管理員) 更新用戶資料

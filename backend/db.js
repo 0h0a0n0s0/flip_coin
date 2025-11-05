@@ -8,4 +8,5 @@ const pool = new Pool({
 
 module.exports = {
     query: (text, params) => pool.query(text, params),
+    pool: pool // (★★★ M-Fix 4: 導出 pool ★★★)
 };

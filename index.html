@@ -70,12 +70,14 @@
     <div class="modal-content">
         <span id="closeLoginModalBtn" class="modal-close">&times;</span>
         <h2>登入</h2>
-        <div class="modal-body">
-            <label for="loginUsernameInput">帳號</label>
-            <input type="text" id="loginUsernameInput" class="input-field" placeholder="請輸入帳號">
-            <label for="loginPasswordInput">密碼</label>
-            <input type="password" id="loginPasswordInput" class="input-field" placeholder="請輸入密碼">
-        </div>
+        <form id="loginForm">
+            <div class="modal-body">
+                <label for="loginUsernameInput">帳號</label>
+                <input type="text" id="loginUsernameInput" class="input-field" placeholder="請輸入帳號" autocomplete="username">
+                <label for="loginPasswordInput">密碼</label>
+                <input type="password" id="loginPasswordInput" class="input-field" placeholder="請輸入密碼" autocomplete="current-password">
+            </div>
+        </form>
         <div class="modal-footer">
             <button id="cancelLoginBtn" class="btn btn-secondary">取消</button>
             <button id="confirmLoginBtn" class="btn btn-primary">登入</button>
@@ -87,14 +89,16 @@
     <div class="modal-content">
         <span id="closeRegisterModalBtn" class="modal-close">&times;</span>
         <h2>註冊</h2>
-        <div class="modal-body">
-            <label for="registerUsernameInput">帳號 (3-20 字元)</label>
-            <input type="text" id="registerUsernameInput" class="input-field" placeholder="請輸入帳號">
-            <label for="registerPasswordInput">密碼 (至少 6 位)</label>
-            <input type="password" id="registerPasswordInput" class="input-field" placeholder="請輸入密碼">
-            <label for="registerPasswordConfirmInput">確認密碼</label>
-            <input type="password" id="registerPasswordConfirmInput" class="input-field" placeholder="請再次輸入密碼">
-        </div>
+        <form id="registerForm">
+            <div class="modal-body">
+                <label for="registerUsernameInput">帳號 (3-20 字元)</label>
+                <input type="text" id="registerUsernameInput" class="input-field" placeholder="請輸入帳號" autocomplete="username">
+                <label for="registerPasswordInput">密碼 (至少 6 位)</label>
+                <input type="password" id="registerPasswordInput" class="input-field" placeholder="請輸入密碼" autocomplete="new-password">
+                <label for="registerPasswordConfirmInput">確認密碼</label>
+                <input type="password" id="registerPasswordConfirmInput" class="input-field" placeholder="請再次輸入密碼" autocomplete="new-password">
+            </div>
+        </form>
         <div class="modal-footer">
             <button id="cancelRegisterBtn" class="btn btn-secondary">取消</button>
             <button id="confirmRegisterBtn" class="btn btn-primary">註冊</button>

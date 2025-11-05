@@ -7,42 +7,6 @@ const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const authMiddleware = require('../middleware/auth');
 
-// ★★★ (v2 新增) 臨時用 - 強制重設管理員密碼 ★★★
-router.post('/register-temp', async (req, res) => {
-    const { username, password } = req.body;
-    if (!username || !password) {
-        return res.status(400).json({ error: 'Username and password required.' });
-    }
-
-    try {
-        // 1. (關鍵) 使用當前環境的 bcryptjs 立即生成一個新雜湊值
-        const saltRounds = 10;
-        console.log(`[Admin Temp] 1. 收到請求，為 '${username}' 生成新密碼...`);
-        const newHash = bcrypt.hashSync(password, saltRounds);
-        console.log(`[Admin Temp] 2. 新雜湊值已生成: ${newHash}`);
-
-        // 2. 將這個新雜湊值更新到資料庫
-        const result = await db.query(
-            'UPDATE admin_users SET password_hash = $1 WHERE username = $2 RETURNING id',
-            [newHash, username]
-        );
-
-        if (result.rows.length === 0) {
-            console.log(`[Admin Temp] 3. 失敗: 用戶 '${username}' 不存在。`);
-            return res.status(404).json({ error: 'User not found.' });
-        }
-
-        console.log(`[Admin Temp] 3. 成功: 用戶 ID ${result.rows[0].id} 的密碼已更新。`);
-        res.status(200).json({ 
-            message: `User '${username}' password updated successfully with new hash.` 
-        });
-
-    } catch (error) {
-        console.error('[Admin Temp] CRITICAL ERROR:', error);
-        res.status(500).json({ error: 'Internal server error' });
-    }
-});
-
 /**
  * @description 後台管理員登入 (★★★ 帶有詳細除錯日誌 ★★★)
  * @route POST /api/admin/login
