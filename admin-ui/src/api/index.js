@@ -1,11 +1,8 @@
-// 檔案: admin-ui/src/api/index.js
+// 檔案: admin-ui/src/api/index.js (★★★ v7.3 RBAC 擴充版 ★★★)
 
 import request from '@/utils/request';
 
 // --- Auth ---
-/**
- * @description 管理員登入
- */
 export function login(data) {
     return request({
         url: '/api/admin/login',
@@ -13,11 +10,16 @@ export function login(data) {
         data: data,
     });
 }
+// (★★★ Y-A: 新增：獲取當前用戶權限 ★★★)
+export function getMyPermissions() {
+    return request({
+        url: '/api/admin/my-permissions', // (我們將在下一步的 server.js 中新增此路由)
+        method: 'get',
+    });
+}
+
 
 // --- Dashboard ---
-/**
- * @description 獲取儀表板統計數據
- */
 export function getDashboardStats() {
     return request({
         url: '/api/admin/stats',
@@ -26,21 +28,13 @@ export function getDashboardStats() {
 }
 
 // --- User Management ---
-/**
- * @description 獲取用戶列表 (v6 版)
- */
 export function getUsers(params) {
     return request({
         url: '/api/admin/users',
         method: 'get',
-        params: params, // (params 內容已在 vue 檔案中更新)
+        params: params,
     });
 }
-
-
-/**
- * @description 更新用戶狀態 (禁用投注)
- */
 export function updateUserStatus(userId, status) {
     return request({
         url: `/api/admin/users/${userId}/status`,
@@ -48,31 +42,19 @@ export function updateUserStatus(userId, status) {
         data: { status }
     });
 }
-
-/**
- * @description (管理員) 更新用戶資料
- */
-export function updateUser(userId, data) { // (★★★ v6 新增 ★★★)
+export function updateUser(userId, data) {
     return request({
         url: `/api/admin/users/${userId}`,
         method: 'put',
         data: data // { nickname, level, referrer_code, balance }
     });
 }
-
-/**
- * @description 根據邀請碼獲取推薦用戶列表
- */
 export function getReferrals(inviteCode) {
     return request({
         url: `/api/admin/users/by-referrer/${inviteCode}`,
         method: 'get',
     });
 }
-
-/**
- * @description 獲取用戶充值地址列表 (分頁/搜尋)
- */
 export function getUserDepositAddresses(params) {
     return request({
         url: '/api/admin/users/deposit-addresses',
@@ -82,9 +64,6 @@ export function getUserDepositAddresses(params) {
 }
 
 // --- Bet Management ---
-/**
- * @description 獲取注单管理列表 (分頁/搜尋)
- */
 export function getBets(params) {
     return request({
         url: '/api/admin/bets',
@@ -94,52 +73,37 @@ export function getBets(params) {
 }
 
 // --- Report Management ---
-/**
- * @description 獲取盈虧報表
- */
 export function getProfitLossReport(params) {
     return request({
         url: '/api/admin/reports/profit-loss',
         method: 'get',
-        params: params, // { userQuery, dateRange }
+        params: params,
     });
 }
 
 // --- Wallet Monitoring ---
-/**
- * @description 獲取監控錢包列表 (含餘額)
- */
 export function getWallets(params) { 
     return request({
         url: '/api/admin/wallets',
         method: 'get',
-        params, // (params 內容 {name, chain_type, address})
+        params,
     });
 }
-/**
- * @description 新增監控錢包
- */
-export function addWallet(data) { // (★★★ 確保此函數存在 ★★★)
+export function addWallet(data) {
     return request({
         url: '/api/admin/wallets',
         method: 'post',
         data,
     });
 }
-/**
- * @description 更新監控錢包
- */
-export function updateWallet(id, data) { // (★★★ 確保此函數存在 ★★★)
+export function updateWallet(id, data) {
     return request({
         url: `/api/admin/wallets/${id}`,
         method: 'put',
         data,
     });
 }
-/**
- * @description 刪除監控錢包
- */
-export function deleteWallet(id) { // (★★★ 確保此函數存在 ★★★)
+export function deleteWallet(id) {
     return request({
         url: `/api/admin/wallets/${id}`,
         method: 'delete',
@@ -147,19 +111,13 @@ export function deleteWallet(id) { // (★★★ 確保此函數存在 ★★★
 }
 
 // --- System Settings ---
-/**
- * @description 獲取所有系統設定
- */
-export function getSettings() { // (★★★ 確保此函數存在 ★★★)
+export function getSettings() {
     return request({
         url: '/api/admin/settings',
         method: 'get',
     });
 }
-/**
- * @description 更新單個系統設定
- */
-export function updateSetting(key, value) { // (★★★ 確保此函數存在 ★★★)
+export function updateSetting(key, value) {
     return request({
         url: `/api/admin/settings/${key}`,
         method: 'put',
@@ -167,22 +125,19 @@ export function updateSetting(key, value) { // (★★★ 確保此函數存在 
     });
 }
 
-// ★★★ (v2 新增) 阻擋地區 API ★★★
 export function getBlockedRegions() {
     return request({
         url: '/api/admin/blocked-regions',
         method: 'get',
     });
 }
-
 export function addBlockedRegion(data) {
     return request({
         url: '/api/admin/blocked-regions',
         method: 'post',
-        data, // { ip_range: string, description?: string }
+        data,
     });
 }
-
 export function deleteBlockedRegion(id) {
     return request({
         url: `/api/admin/blocked-regions/${id}`,
@@ -190,14 +145,12 @@ export function deleteBlockedRegion(id) {
     });
 }
 
-// ★★★ (v2 新增) 用戶等級 API ★★★
 export function getUserLevels() {
     return request({
         url: '/api/admin/user-levels',
         method: 'get',
     });
 }
-
 export function addUserLevel(data) {
     return request({
         url: '/api/admin/user-levels',
@@ -205,7 +158,6 @@ export function addUserLevel(data) {
         data,
     });
 }
-
 export function updateUserLevel(level, data) {
     return request({
         url: `/api/admin/user-levels/${level}`,
@@ -213,7 +165,6 @@ export function updateUserLevel(level, data) {
         data,
     });
 }
-
 export function deleteUserLevel(level) {
     return request({
         url: `/api/admin/user-levels/${level}`,
@@ -221,14 +172,13 @@ export function deleteUserLevel(level) {
     });
 }
 
-// ★★★ (v2 新增) 後台帳號管理 API ★★★
+// --- 後台帳號管理 API ---
 export function getAdminAccounts() {
     return request({
         url: '/api/admin/accounts',
         method: 'get',
     });
 }
-
 export function addAdminAccount(data) {
     return request({
         url: '/api/admin/accounts',
@@ -236,15 +186,13 @@ export function addAdminAccount(data) {
         data,
     });
 }
-
 export function updateAdminAccount(id, data) {
     return request({
         url: `/api/admin/accounts/${id}`,
         method: 'put',
-        data,
+        data, // (★★★ Y-B: 注意：前端將傳送 role_id ★★★)
     });
 }
-
 export function deleteAdminAccount(id) {
     return request({
         url: `/api/admin/accounts/${id}`,
@@ -267,6 +215,71 @@ export function addIpToWhitelist(data) {
 export function deleteIpFromWhitelist(id) {
     return request({
         url: `/api/admin/ip-whitelist/${id}`,
+        method: 'delete'
+    });
+}
+
+// (★★★ Y-C: 新增 RBAC 相關 API ★★★)
+/**
+ * @description 獲取所有權限組 (Roles)
+ */
+export function getRoles() {
+    return request({
+        url: '/api/admin/roles',
+        method: 'get'
+    });
+}
+
+/**
+ * @description 獲取單一權限組的詳細資料 (包含 permission_ids)
+ */
+export function getRoleDetails(id) {
+    return request({
+        url: `/api/admin/roles/${id}`,
+        method: 'get'
+    });
+}
+
+/**
+ * @description 獲取所有可用的權限 (Permissions) (已按 category 分組)
+ */
+export function getAllPermissions() {
+    return request({
+        url: '/api/admin/permissions',
+        method: 'get'
+    });
+}
+
+/**
+ * @description 新增權限組
+ */
+export function addRole(data) {
+    // data: { name, description, permission_ids: [...] }
+    return request({
+        url: '/api/admin/roles',
+        method: 'post',
+        data
+    });
+}
+
+/**
+ * @description 更新權限組
+ */
+export function updateRole(id, data) {
+    // data: { name, description, permission_ids: [...] }
+    return request({
+        url: `/api/admin/roles/${id}`,
+        method: 'put',
+        data
+    });
+}
+
+/**
+ * @description 刪除權限組
+ */
+export function deleteRole(id) {
+    return request({
+        url: `/api/admin/roles/${id}`,
         method: 'delete'
     });
 }

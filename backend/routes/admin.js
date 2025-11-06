@@ -1,4 +1,5 @@
-// 檔案: backend/routes/admin.js (新檔案)
+// 檔案: backend/routes/admin.js (★★★ v7.2 欄位修復版 ★★★)
+
 const { ethers } = require('ethers');
 const express = require('express');
 const router = express.Router();
@@ -6,13 +7,14 @@ const db = require('../db');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const authMiddleware = require('../middleware/auth');
+const checkPermission = require('../middleware/checkPermissionMiddleware');
+const superAdminOnly = checkPermission(['super_admin']);
 
 /**
- * @description 後台管理員登入 (★★★ 帶有詳細除錯日誌 ★★★)
+ * @description 後台管理員登入 (★★★ 偵錯日誌已移除 ★★★)
  * @route POST /api/admin/login
  */
 router.post('/login', async (req, res) => {
-    // (移除之前的 DEBUG 日誌)
     const { username, password } = req.body;
     if (!username || !password) {
         return res.status(400).json({ error: 'Username and password are required.' });
@@ -54,15 +56,41 @@ router.post('/login', async (req, res) => {
     }
 });
 
-// -------------------------------------------------------------------
-// ★★★ (v2 新增) 儀表板 - 獲取統計數據 (受保護) ★★★
-// -------------------------------------------------------------------
+/**
+ * @description 獲取當前登入用戶的所有權限 (用於前端 UI 顯示/隱藏)
+ * @route GET /api/admin/my-permissions
+ */
+router.get('/my-permissions', authMiddleware, async (req, res) => {
+    if (!req.user || !req.user.role_id) {
+        console.warn(`[RBAC] Denied /my-permissions: User object or role_id not found in request.`);
+        return res.status(403).json({ error: 'Forbidden: User role not found (old token?).' });
+    }
+    const { role_id } = req.user;
+    try {
+        const query = `
+            SELECT DISTINCT ap.resource, ap.action
+            FROM admin_role_permissions arp
+            JOIN admin_permissions ap ON arp.permission_id = ap.id
+            WHERE arp.role_id = $1;
+        `;
+        const result = await db.query(query, [role_id]);
+        const permissionsMap = result.rows.reduce((acc, perm) => {
+            acc[`${perm.resource}:${perm.action}`] = true;
+            return acc;
+        }, {});
+        res.status(200).json(permissionsMap);
+    } catch (error) {
+        console.error(`[RBAC] Error fetching permissions for RoleID ${role_id}:`, error);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
 /**
  * @description 獲取核心統計數據 (範例)
  * @route GET /api/admin/stats
  * @access Private (需要 Token)
  */
-router.get('/stats', authMiddleware, async (req, res) => {
+router.get('/stats', authMiddleware, checkPermission('dashboard', 'read'), async (req, res) => {
     console.log(`[Admin Stats] User ${req.user.username} is requesting stats...`);
     try {
         const userCountResult = await db.query('SELECT COUNT(*) FROM users');
@@ -86,18 +114,18 @@ router.get('/stats', authMiddleware, async (req, res) => {
     }
 });
 
-// --- 用戶管理 (★★★ v6 重構 ★★★) ---
+// --- 用戶管理  ---
 /**
- * @description 獲取用戶列表 (v6 版)
+ * @description 獲取用戶列表
  * @params query {
  * (★★★ 移除 walletAddress, 新增 username, balance ★★★)
  * }
  */
-router.get('/users', authMiddleware, async (req, res) => {
+router.get('/users', authMiddleware, checkPermission('users', 'read'), async (req, res) => {
     const { 
         page = 1, limit = 10,
         userId,
-        username, // (★★★ v6 新增 ★★★)
+        username,
         dateRange, 
         nickname, 
         status,
@@ -113,14 +141,30 @@ router.get('/users', authMiddleware, async (req, res) => {
         let paramIndex = 1;
 
         if (userId) { params.push(`%${userId}%`); whereClauses.push(`user_id ILIKE $${paramIndex++}`); }
-        if (username) { params.push(`%${username}%`); whereClauses.push(`username ILIKE $${paramIndex++}`); } // (★★★ v6 新增 ★★★)
-        if (dateRange) { /* ... (不變) ... */ }
+        if (username) { params.push(`%${username}%`); whereClauses.push(`username ILIKE $${paramIndex++}`); }
+        
+        // (省略 dateRange 和 activityDateRange 的程式碼，它們保持不變)
+        if (dateRange) { 
+            try {
+                const [startDate, endDate] = JSON.parse(dateRange);
+                params.push(startDate); whereClauses.push(`created_at >= $${paramIndex++}`);
+                params.push(endDate); whereClauses.push(`created_at <= $${paramIndex++}`);
+            } catch (e) {}
+        }
+        
         if (nickname) { params.push(nickname); whereClauses.push(`nickname = $${paramIndex++}`); }
         if (status) { params.push(status); whereClauses.push(`status = $${paramIndex++}`); }
         if (inviteCode) { params.push(inviteCode); whereClauses.push(`invite_code = $${paramIndex++}`); }
         if (referrerCode) { params.push(referrerCode); whereClauses.push(`referrer_code = $${paramIndex++}`); }
         if (lastLoginIp) { params.push(lastLoginIp); whereClauses.push(`last_login_ip = $${paramIndex++}`); }
-        if (activityDateRange) { /* ... (不變) ... */ }
+
+        if (activityDateRange) {
+             try {
+                const [startDate, endDate] = JSON.parse(activityDateRange);
+                params.push(startDate); whereClauses.push(`last_activity_at >= $${paramIndex++}`);
+                params.push(endDate); whereClauses.push(`last_activity_at <= $${paramIndex++}`);
+            } catch (e) {}
+        }
         
         const whereSql = whereClauses.length > 0 ? `WHERE ${whereClauses.join(' AND ')}` : '';
         const countSql = `SELECT COUNT(*) FROM users ${whereSql}`;
@@ -131,11 +175,9 @@ router.get('/users', authMiddleware, async (req, res) => {
             return res.status(200).json({ total: 0, list: [] });
         }
 
-        // (★★★ v6 修改：SELECT 欄位更新 ★★★)
         const dataSql = `
             SELECT 
-                id, user_id, username, balance, -- (v6 新增)
-                wallet_address, chain_type, -- (v6 新增)
+                id, user_id, username, balance,
                 current_streak, max_streak, created_at,
                 nickname, level, invite_code, referrer_code, status,
                 last_login_ip, last_activity_at
@@ -152,73 +194,81 @@ router.get('/users', authMiddleware, async (req, res) => {
 
         res.status(200).json({ total: total, list: dataResult.rows });
     } catch (error) {
-        console.error('[Admin Users] Error fetching users (v6):', error);
+        // (★★★ 500 錯誤會在這裡被捕獲並記錄 ★★★)
+        console.error('[Admin Users] Error fetching users (v7.2):', error);
         res.status(500).json({ error: 'Internal server error' });
     }
 });
 
-/**
- * @description (管理員) 更新用戶資料 (★★★ v6 重構：新增 balance ★★★)
- */
-router.put('/users/:id', authMiddleware, async (req, res) => {
-    const { id } = req.params;
-    const { nickname, level, referrer_code, balance } = req.body; // (★★★ v6 新增 balance ★★★)
-    
-    try {
-        const updates = [];
-        const params = [];
-        let paramIndex = 1;
 
-        if (nickname !== undefined) {
-            if (nickname.length > 50) { return res.status(400).json({ error: 'Nickname is too long (max 50 chars).' }); }
-            updates.push(`nickname = $${paramIndex++}`);
-            params.push(nickname);
+/**
+ * @description (管理員) 更新用戶資料
+ */
+router.put('/users/:id', authMiddleware, async (req, res, next) => {
+    // (這是一個特例，我們需要基於 req.body 內容進行動態權限檢查)
+    const { id } = req.params;
+    const { nickname, level, referrer_code, balance } = req.body;
+    const { role_id, username } = req.user;
+
+    try {
+        // 1. 檢查基礎權限 ('update_info')
+        const hasInfoPerm = await db.query(
+            `SELECT 1 FROM admin_role_permissions arp
+             JOIN admin_permissions ap ON arp.permission_id = ap.id
+             WHERE arp.role_id = $1 AND ap.resource = 'users' AND ap.action = 'update_info' LIMIT 1`,
+            [role_id]
+        );
+        if (hasInfoPerm.rows.length === 0) {
+            console.warn(`[RBAC] Denied: User ${username} (RoleID: ${role_id}) tried to access users:update_info.`);
+            return res.status(403).json({ error: 'Forbidden: You do not have permission to update user info.' });
         }
-        if (level !== undefined) {
-            const newLevel = parseInt(level, 10);
-            if (isNaN(newLevel) || newLevel <= 0) { return res.status(400).json({ error: 'Invalid level. Must be a positive integer.' }); }
-            const levelExists = await db.query('SELECT 1 FROM user_levels WHERE level = $1', [newLevel]);
-            if (levelExists.rows.length === 0) { return res.status(400).json({ error: `Level ${newLevel} does not exist in system settings.` }); }
-            updates.push(`level = $${paramIndex++}`);
-            params.push(newLevel);
-        }
-        if (referrer_code !== undefined) {
-            if (referrer_code === null || referrer_code === '') {
-                updates.push(`referrer_code = $${paramIndex++}`);
-                params.push(null);
-            } else {
-                const referrerExists = await db.query('SELECT 1 FROM users WHERE invite_code = $1', [referrer_code]);
-                if (referrerExists.rows.length === 0) { return res.status(400).json({ error: 'Invalid referrer code. Code does not exist.' }); }
-                const selfCheck = await db.query('SELECT 1 FROM users WHERE id = $1 AND invite_code = $2', [id, referrer_code]);
-                 if (selfCheck.rows.length > 0) { return res.status(400).json({ error: 'Cannot set referrer code to own invite code.' }); }
-                updates.push(`referrer_code = $${paramIndex++}`);
-                params.push(referrer_code);
+
+        // 2. 如果請求中包含 'balance'，則 *額外* 檢查 'update_balance' 權限
+        if (balance !== undefined) {
+            const hasBalancePerm = await db.query(
+                `SELECT 1 FROM admin_role_permissions arp
+                 JOIN admin_permissions ap ON arp.permission_id = ap.id
+                 WHERE arp.role_id = $1 AND ap.resource = 'users' AND ap.action = 'update_balance' LIMIT 1`,
+                [role_id]
+            );
+            if (hasBalancePerm.rows.length === 0) {
+                console.warn(`[RBAC] Denied: User ${username} (RoleID: ${role_id}) tried to access users:update_balance.`);
+                return res.status(403).json({ error: 'Forbidden: You do not have permission to update user balance.' });
             }
         }
         
-        // (★★★ v6 新增：手動調整餘額 ★★★)
+        // 3. (權限檢查通過) 執行更新邏輯
+        // ... (更新邏輯保持不變) ...
+        const updates = []; const params = []; let paramIndex = 1;
+        if (nickname !== undefined) { updates.push(`nickname = $${paramIndex++}`); params.push(nickname); }
+        if (level !== undefined) {
+            const newLevel = parseInt(level, 10);
+            if (isNaN(newLevel) || newLevel <= 0) { return res.status(400).json({ error: 'Invalid level.' }); }
+            const levelExists = await db.query('SELECT 1 FROM user_levels WHERE level = $1', [newLevel]);
+            if (levelExists.rows.length === 0) { return res.status(400).json({ error: `Level ${newLevel} does not exist.` }); }
+            updates.push(`level = $${paramIndex++}`); params.push(newLevel);
+        }
+        if (referrer_code !== undefined) {
+            if (referrer_code === null || referrer_code === '') {
+                updates.push(`referrer_code = $${paramIndex++}`); params.push(null);
+            } else {
+                const referrerExists = await db.query('SELECT 1 FROM users WHERE invite_code = $1', [referrer_code]);
+                if (referrerExists.rows.length === 0) { return res.status(400).json({ error: 'Invalid referrer code.' }); }
+                const selfCheck = await db.query('SELECT 1 FROM users WHERE id = $1 AND invite_code = $2', [id, referrer_code]);
+                if (selfCheck.rows.length > 0) { return res.status(400).json({ error: 'Cannot set self as referrer.' }); }
+                updates.push(`referrer_code = $${paramIndex++}`); params.push(referrer_code);
+            }
+        }
         if (balance !== undefined) {
             const newBalance = parseFloat(balance);
-             if (isNaN(newBalance) || newBalance < 0) {
-                 return res.status(400).json({ error: 'Invalid balance. Must be a non-negative number.' });
-             }
-             updates.push(`balance = $${paramIndex++}`);
-             params.push(newBalance);
-             // (★★★ 待辦：手動調餘額是否要寫入 platform_transactions？目前先不寫)
+            if (isNaN(newBalance) || newBalance < 0) { return res.status(400).json({ error: 'Invalid balance.' }); }
+            updates.push(`balance = $${paramIndex++}`); params.push(newBalance);
         }
-
-        if (updates.length === 0) {
-            return res.status(400).json({ error: 'No valid fields provided for update.' });
-        }
-
+        if (updates.length === 0) { return res.status(400).json({ error: 'No valid fields provided for update.' }); }
         params.push(id); 
         const updateSql = `UPDATE users SET ${updates.join(', ')} WHERE id = $${paramIndex} RETURNING *`;
         const result = await db.query(updateSql, params);
-
-        if (result.rows.length === 0) {
-            return res.status(404).json({ error: 'User not found.' });
-        }
-
+        if (result.rows.length === 0) { return res.status(404).json({ error: 'User not found.' }); }
         console.log(`[Admin Users] User ID ${result.rows[0].id} updated by ${req.user.username}`);
         res.status(200).json(result.rows[0]);
 
@@ -235,12 +285,13 @@ router.put('/users/:id', authMiddleware, async (req, res) => {
  * @route GET /api/admin/users/by-referrer/:invite_code
  * @access Private (需要 Token)
  */
-router.get('/users/by-referrer/:invite_code', authMiddleware, async (req, res) => {
+router.get('/users/by-referrer/:invite_code', authMiddleware, checkPermission('users', 'read'), async (req, res) => {
     const { invite_code } = req.params;
 
     try {
+        // (★★★ 移除 wallet_address ★★★)
         const result = await db.query(
-            'SELECT user_id, nickname, wallet_address FROM users WHERE referrer_code = $1 ORDER BY created_at DESC',
+            'SELECT user_id, nickname, created_at FROM users WHERE referrer_code = $1 ORDER BY created_at DESC',
             [invite_code]
         );
         
@@ -252,14 +303,14 @@ router.get('/users/by-referrer/:invite_code', authMiddleware, async (req, res) =
     }
 });
 
-// ★★★ (v2 新增) 用戶管理 - 更新用戶狀態 (禁用投注) ★★★
+// ★★★用戶管理 - 更新用戶狀態 (禁用投注) ★★★
 /**
  * @description 更新用戶狀態 (例如 'active' 或 'banned')
  * @route PATCH /api/admin/users/:id/status
  * @access Private (需要 Token)
  * @body { status: string }
  */
-router.patch('/users/:id/status', authMiddleware, async (req, res) => {
+router.patch('/users/:id/status', authMiddleware, checkPermission('users', 'update_status'), async (req, res) => {
     const { id } = req.params; // 要更新的用戶 DB ID
     const { status } = req.body; // 新的狀態 ('active' or 'banned')
 
@@ -289,56 +340,11 @@ router.patch('/users/:id/status', authMiddleware, async (req, res) => {
 });
 
 /**
- * @description 根據邀請碼查詢推薦的用戶列表
- * @route GET /api/admin/users/by-referrer/:invite_code
- * @access Private (需要 Token)
- */
-router.get('/users/by-referrer/:invite_code', authMiddleware, async (req, res) => {
-    const { invite_code } = req.params;
-
-    try {
-        const result = await db.query(
-            'SELECT user_id, nickname, wallet_address FROM users WHERE referrer_code = $1 ORDER BY created_at DESC',
-            [invite_code]
-        );
-        
-        res.status(200).json(result.rows);
-
-    } catch (error) {
-        console.error(`[Admin Users] Error fetching referrals for code ${invite_code}:`, error);
-        res.status(500).json({ error: 'Internal server error' });
-    }
-});
-
-router.patch('/users/:id/status', authMiddleware, async (req, res) => {
-    // ... (此路由保持不變) ...
-    const { id } = req.params;
-    const { status } = req.body;
-    if (!status) {
-        return res.status(400).json({ error: 'Status is required.' });
-    }
-    try {
-        const result = await db.query(
-            'UPDATE users SET status = $1 WHERE id = $2 RETURNING id, status',
-            [status, id]
-        );
-        if (result.rows.length === 0) {
-            return res.status(404).json({ error: 'User not found.' });
-        }
-        console.log(`[Admin Users] User ID ${result.rows[0].id} status updated to ${result.rows[0].status} by ${req.user.username}`);
-        res.status(200).json(result.rows[0]);
-    } catch (error) {
-        console.error('[Admin Users] Error updating user status:', error);
-        res.status(500).json({ error: 'Internal server error' });
-    }
-});
-
-/**
- * @description 獲取用戶充值地址列表 (v7)
+ * @description 獲取用戶充值地址列表
  * @route GET /api/admin/users/deposit-addresses
  * @access Private
  */
-router.get('/users/deposit-addresses', authMiddleware, async (req, res) => {
+router.get('/users/deposit-addresses', authMiddleware, checkPermission('users_addresses', 'read'), async (req, res) => {
     const { 
         page = 1, limit = 10,
         userId, username, 
@@ -390,13 +396,14 @@ router.get('/users/deposit-addresses', authMiddleware, async (req, res) => {
     }
 });
 
-// --- 注單管理 (★★★ v6 重構 ★★★) ---
-router.get('/bets', authMiddleware, async (req, res) => {
+
+
+// --- 注單管理  ---
+router.get('/bets', authMiddleware, checkPermission('bets', 'read'), async (req, res) => {
     const {
         page = 1, limit = 10,
         betId, userId, 
         status, dateRange
-        // (★★★ v6 移除：walletAddress ★★★)
     } = req.query;
 
     try {
@@ -406,12 +413,16 @@ router.get('/bets', authMiddleware, async (req, res) => {
 
         if (betId) { params.push(`%${betId}%`); whereClauses.push(`b.id::text ILIKE $${paramIndex++}`); }
         if (userId) { params.push(`%${userId}%`); whereClauses.push(`b.user_id ILIKE $${paramIndex++}`); }
-        // (★★★ v6 移除：walletAddress 搜尋 ★★★)
         if (status) { params.push(status); whereClauses.push(`b.status = $${paramIndex++}`); }
-        if (dateRange) { /* ... (不變) ... */ }
+        if (dateRange) { 
+            try {
+                const [startDate, endDate] = JSON.parse(dateRange);
+                params.push(startDate); whereClauses.push(`b.bet_time >= $${paramIndex++}`);
+                params.push(endDate); whereClauses.push(`b.bet_time <= $${paramIndex++}`);
+            } catch (e) {}
+        }
         
         const whereSql = whereClauses.length > 0 ? `WHERE ${whereClauses.join(' AND ')}` : '';
-        // (★★★ v6 修改：不再需要 JOIN users 表 ★★★)
         const fromSql = 'FROM bets b';
 
         const countSql = `SELECT COUNT(b.id) ${fromSql} ${whereSql}`;
@@ -421,7 +432,6 @@ router.get('/bets', authMiddleware, async (req, res) => {
             return res.status(200).json({ total: 0, list: [] });
         }
 
-        // (★★★ v6 修改：SELECT 欄位 ★★★)
         const dataSql = `
             SELECT 
                 b.id, b.user_id,
@@ -446,8 +456,8 @@ router.get('/bets', authMiddleware, async (req, res) => {
     }
 });
 
-// --- 盈虧報表 (★★★ v6 重構 ★★★) ---
-router.get('/reports/profit-loss', authMiddleware, async (req, res) => {
+// --- 盈虧報表 ---
+router.get('/reports/profit-loss', authMiddleware, checkPermission('reports', 'read'), async (req, res) => {
     const { userQuery, dateRange } = req.query; 
     if (!dateRange) { return res.status(400).json({ error: 'Date range is required.' }); }
     
@@ -470,16 +480,13 @@ router.get('/reports/profit-loss', authMiddleware, async (req, res) => {
         if (userQuery && userQuery.toLowerCase() !== 'system') {
             betParams.push(`%${userQuery}%`);
             const userFilterIndex = betParamIndex++;
-            // (★★★ v6 修改：JOIN users 表並使用 username ★★★)
             betWhereClauses.push(`(u.user_id ILIKE $${userFilterIndex} OR u.username ILIKE $${userFilterIndex})`);
         }
         
         const betWhereSql = `WHERE ${betWhereClauses.join(' AND ')}`;
-        // (★★★ v6 修改：JOIN users 表 ★★★)
         const betJoinSql = 'FROM bets b JOIN users u ON b.user_id = u.user_id';
 
         // --- 2. 查詢 Bets 相關數據 (投注, 派獎) ---
-        // (★★★ v6 修改：移除 prize_gas_fee ★★★)
         const betReportSql = `
             SELECT
                 COALESCE(SUM(b.amount), 0) AS total_bet,
@@ -518,7 +525,6 @@ router.get('/reports/profit-loss', authMiddleware, async (req, res) => {
         const bonusJoinSql = 'FROM platform_transactions pt JOIN users u ON pt.user_id = u.user_id';
 
         // --- 4. 查詢其他支出 (獎金, 提現, Gas) ---
-        // (★★★ v6 修改：Gas Fee 來自 platform_transactions ★★★)
         const bonusReportSql = `
             SELECT
                 COALESCE(SUM(CASE WHEN pt.type = 'level_up_reward' THEN pt.amount ELSE 0 END), 0) AS bonus_level,
@@ -537,7 +543,7 @@ router.get('/reports/profit-loss', authMiddleware, async (req, res) => {
         const bonus_level = parseFloat(bonusData.bonus_level);
         const bonus_event = parseFloat(bonusData.bonus_event);
         const bonus_commission = parseFloat(bonusData.bonus_commission);
-        const total_gas_fee = parseFloat(bonusData.total_gas_fee); // (★★★ v6 修改 ★★★)
+        const total_gas_fee = parseFloat(bonusData.total_gas_fee);
         
         const platform_profit = total_bet - total_payout; 
         const platform_net_profit = total_bet - total_payout - bonus_level - bonus_event - bonus_commission - total_gas_fee;
@@ -556,11 +562,11 @@ router.get('/reports/profit-loss', authMiddleware, async (req, res) => {
 });
 
 
-// --- 錢包監控 (★★★ v7 重構：對應 platform_wallets 表 ★★★) ---
+// --- 錢包監控 ---
 /**
- * @description 獲取平台錢包列表 (v7 版)
+ * @description 獲取平台錢包列表 
  */
-router.get('/wallets', authMiddleware, async (req, res) => {
+router.get('/wallets', authMiddleware, checkPermission('wallets', 'read'), async (req, res) => {
     const { 
         page = 1, limit = 10,
         name, 
@@ -577,7 +583,7 @@ router.get('/wallets', authMiddleware, async (req, res) => {
         if (chain_type) { params.push(chain_type); whereClauses.push(`chain_type = $${paramIndex++}`); } 
         if (address) { params.push(address); whereClauses.push(`LOWER(address) = LOWER($${paramIndex++})`); }
         
-        // (★★★ v7 修改：查詢 platform_wallets ★★★)
+        // (★★★ 查詢 platform_wallets ★★★)
         const whereSql = whereClauses.length > 0 ? `WHERE ${whereClauses.join(' AND ')}` : '';
         const countSql = `SELECT COUNT(*) FROM platform_wallets ${whereSql}`;
         const countResult = await db.query(countSql, params);
@@ -587,7 +593,7 @@ router.get('/wallets', authMiddleware, async (req, res) => {
             return res.status(200).json({ total: 0, list: [] });
         }
 
-        // (★★★ v7 修改：查詢 platform_wallets ★★★)
+        // (★★★ 查詢 platform_wallets ★★★)
         const dataSql = `SELECT * FROM platform_wallets ${whereSql} ORDER BY created_at DESC LIMIT $${paramIndex++} OFFSET $${paramIndex++}`;
         const offset = (page - 1) * limit;
         params.push(limit); params.push(offset);
@@ -602,17 +608,17 @@ router.get('/wallets', authMiddleware, async (req, res) => {
 });
 
 /**
- * @description 新增平台錢包 (v7 版)
+ * @description 新增平台錢包 
  */
-router.post('/wallets', authMiddleware, async (req, res) => {
-    // (★★★ v7 修改：獲取新欄位 ★★★)
+router.post('/wallets', authMiddleware, checkPermission('wallets', 'cud'), async (req, res) => {
+    // (★★★ 獲取新欄位 ★★★)
     const { name, chain_type, address, is_gas_reserve, is_collection, is_opener_a, is_opener_b, is_active } = req.body;
     if (!name || !chain_type || !address) {
         return res.status(400).json({ error: 'Name, chain_type, and address are required.' });
     }
 
     try {
-        // (★★★ v7 修改：插入 platform_wallets ★★★)
+        // (★★★ 插入 platform_wallets ★★★)
         const result = await db.query(
             `INSERT INTO platform_wallets (name, chain_type, address, is_gas_reserve, is_collection, is_opener_a, is_opener_b, is_active) 
              VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING *`,
@@ -628,16 +634,16 @@ router.post('/wallets', authMiddleware, async (req, res) => {
 });
 
 /**
- * @description 更新平台錢包 (v7 版)
+ * @description 更新平台錢包
  */
-router.put('/wallets/:id', authMiddleware, async (req, res) => {
+router.put('/wallets/:id', authMiddleware, checkPermission('wallets', 'cud'), async (req, res) => {
     const { id } = req.params;
-    // (★★★ v7 修改：獲取新欄位 ★★★)
+    // (★★★ 獲取新欄位 ★★★)
     const { name, chain_type, address, is_gas_reserve, is_collection, is_opener_a, is_opener_b, is_active } = req.body;
     if (!name || !chain_type || !address) { return res.status(400).json({ error: 'Fields are required.' }); }
 
     try {
-        // (★★★ v7 修改：更新 platform_wallets ★★★)
+        // (★★★ 更新 platform_wallets ★★★)
         const result = await db.query(
             `UPDATE platform_wallets SET 
              name = $1, chain_type = $2, address = $3, 
@@ -658,8 +664,8 @@ router.put('/wallets/:id', authMiddleware, async (req, res) => {
     }
 });
 
-// (★★★ v7 修改：刪除 platform_wallets ★★★)
-router.delete('/wallets/:id', authMiddleware, async (req, res) => {
+// (★★★ 刪除 platform_wallets ★★★)
+router.delete('/wallets/:id', authMiddleware, checkPermission('wallets', 'cud'), async (req, res) => {
     const { id } = req.params;
     try {
         const result = await db.query('DELETE FROM platform_wallets WHERE id = $1 RETURNING id', [id]); // (查詢 platform_wallets)
@@ -672,8 +678,8 @@ router.delete('/wallets/:id', authMiddleware, async (req, res) => {
     }
 });
 
-// --- 系統設定 (★★★ v6 修改：加入鏈開關 ★★★) ---
-router.get('/settings', authMiddleware, async (req, res) => {
+// --- 系統設定 ---
+router.get('/settings', authMiddleware, checkPermission('settings_game', 'read'), async (req, res) => {
     try {
         const result = await db.query('SELECT key, value, description FROM system_settings');
         const settings = result.rows.reduce((acc, row) => {
@@ -686,7 +692,7 @@ router.get('/settings', authMiddleware, async (req, res) => {
         res.status(500).json({ error: 'Internal server error' });
     }
 });
-router.put('/settings/:key', authMiddleware, async (req, res) => {
+router.put('/settings/:key', authMiddleware, checkPermission('settings_game', 'update'), async (req, res) => {
     const { key } = req.params;
     const { value } = req.body;
     if (value === undefined || value === null) { return res.status(400).json({ error: 'Value is required.' }); }
@@ -697,7 +703,7 @@ router.put('/settings/:key', authMiddleware, async (req, res) => {
         const numValue = parseInt(value, 10);
         if (isNaN(numValue) || numValue <= 0) { return res.status(400).json({ error: 'PAYOUT_MULTIPLIER must be a positive integer.' }); }
     }
-    // (★★★ v6 新增：驗證鏈開關 ★★★)
+    // (★★★ 驗證鏈開關 ★★★)
     if (key.startsWith('ALLOW_')) {
         if (value.toString() !== 'true' && value.toString() !== 'false') {
             return res.status(400).json({ error: 'Value must be true or false string.' });
@@ -721,13 +727,13 @@ router.put('/settings/:key', authMiddleware, async (req, res) => {
     }
 });
 
-// ★★★ (v2 新增) 系統設定 - 阻擋地區 API ★★★
+// ★★★ 系統設定 - 阻擋地區 API ★★★
 /**
  * @description 獲取阻擋地區列表 (不分頁，一次全取)
  * @route GET /api/admin/blocked-regions
  * @access Private
  */
-router.get('/blocked-regions', authMiddleware, async (req, res) => {
+router.get('/blocked-regions', authMiddleware, checkPermission('settings_regions', 'read'), async (req, res) => {
     try {
         // (通常阻擋列表不會非常大，先不加分頁)
         const result = await db.query('SELECT id, ip_range::text, description, created_at FROM blocked_regions ORDER BY created_at DESC');
@@ -745,7 +751,7 @@ router.get('/blocked-regions', authMiddleware, async (req, res) => {
  * @access Private
  * @body { ip_range: string, description?: string }
  */
-router.post('/blocked-regions', authMiddleware, async (req, res) => {
+router.post('/blocked-regions', authMiddleware, checkPermission('settings_regions', 'cud'), async (req, res) => {
     const { ip_range, description } = req.body;
     if (!ip_range) {
         return res.status(400).json({ error: 'IP range (CIDR format) is required.' });
@@ -777,7 +783,7 @@ router.post('/blocked-regions', authMiddleware, async (req, res) => {
  * @route DELETE /api/admin/blocked-regions/:id
  * @access Private
  */
-router.delete('/blocked-regions/:id', authMiddleware, async (req, res) => {
+router.delete('/blocked-regions/:id', authMiddleware, checkPermission('settings_regions', 'cud'), async (req, res) => {
     const { id } = req.params;
     try {
         const result = await db.query('DELETE FROM blocked_regions WHERE id = $1 RETURNING id', [id]);
@@ -792,13 +798,13 @@ router.delete('/blocked-regions/:id', authMiddleware, async (req, res) => {
     }
 });
 
-// ★★★ (v2 新增) 系統設定 - 用戶等級 CRUD API ★★★
+// ★★★ 系統設定 - 用戶等級 CRUD API ★★★
 /**
  * @description 獲取所有用戶等級設定
  * @route GET /api/admin/user-levels
  * @access Private
  */
-router.get('/user-levels', authMiddleware, async (req, res) => {
+router.get('/user-levels', authMiddleware, checkPermission('settings_levels', 'read'), async (req, res) => {
     try {
         // 按等級排序
         const result = await db.query('SELECT * FROM user_levels ORDER BY level ASC');
@@ -815,7 +821,7 @@ router.get('/user-levels', authMiddleware, async (req, res) => {
  * @access Private
  * @body { level, name, max_bet_amount, required_bets_for_upgrade, min_bet_amount_for_upgrade, upgrade_reward_amount }
  */
-router.post('/user-levels', authMiddleware, async (req, res) => {
+router.post('/user-levels', authMiddleware, checkPermission('settings_levels', 'cud'), async (req, res) => {
     const { level, name, max_bet_amount, required_bets_for_upgrade, min_bet_amount_for_upgrade, upgrade_reward_amount } = req.body;
     // (簡單驗證)
     if (!level || level <= 0 || !max_bet_amount || max_bet_amount < 0 || required_bets_for_upgrade < 0 || min_bet_amount_for_upgrade < 0 || upgrade_reward_amount < 0) {
@@ -846,7 +852,7 @@ router.post('/user-levels', authMiddleware, async (req, res) => {
  * @access Private
  * @body { name, max_bet_amount, required_bets_for_upgrade, min_bet_amount_for_upgrade, upgrade_reward_amount }
  */
-router.put('/user-levels/:level', authMiddleware, async (req, res) => {
+router.put('/user-levels/:level', authMiddleware, checkPermission('settings_levels', 'cud'), async (req, res) => {
     const level = parseInt(req.params.level, 10);
     const { name, max_bet_amount, required_bets_for_upgrade, min_bet_amount_for_upgrade, upgrade_reward_amount } = req.body;
     if (isNaN(level) || level <= 0 || !max_bet_amount || max_bet_amount < 0 || required_bets_for_upgrade < 0 || min_bet_amount_for_upgrade < 0 || upgrade_reward_amount < 0) {
@@ -877,7 +883,7 @@ router.put('/user-levels/:level', authMiddleware, async (req, res) => {
  * @route DELETE /api/admin/user-levels/:level
  * @access Private
  */
-router.delete('/user-levels/:level', authMiddleware, async (req, res) => {
+router.delete('/user-levels/:level', authMiddleware, checkPermission('settings_levels', 'cud'), async (req, res) => {
     const level = parseInt(req.params.level, 10);
      if (isNaN(level) || level <= 0) {
         return res.status(400).json({ error: 'Invalid level.' });
@@ -901,90 +907,67 @@ router.delete('/user-levels/:level', authMiddleware, async (req, res) => {
     }
 });
 
-// ★★★ (v2 新增) 後台管理 - 帳號管理 CRUD API ★★★
+// ★★★ 後台管理 - 帳號管理 CRUD API ★★★
 /**
  * @description 獲取後台帳號列表
  * @route GET /api/admin/accounts
  * @access Private (未來應限制為 super_admin)
  */
-router.get('/accounts', authMiddleware, async (req, res) => {
+router.get('/accounts', authMiddleware, checkPermission('admin_accounts', 'read'), async (req, res) => {
     try {
-        // (不發送 password_hash)
-        const result = await db.query('SELECT id, username, role, status, created_at FROM admin_users ORDER BY id ASC');
+        // (★★★ Y-6: JOIN admin_roles 獲取角色名稱 ★★★)
+        const result = await db.query(`
+            SELECT u.id, u.username, u.status, u.created_at, u.role_id, r.name as role_name 
+            FROM admin_users u
+            LEFT JOIN admin_roles r ON u.role_id = r.id
+            ORDER BY u.id ASC
+        `);
         res.status(200).json(result.rows);
-    } catch (error) {
-        console.error('[Admin Accounts] Error fetching accounts:', error);
-        res.status(500).json({ error: 'Internal server error' });
-    }
+    } catch (error) { console.error('[Admin Accounts] Error fetching accounts:', error); res.status(500).json({ error: 'Internal server error' }); }
 });
-
-/**
- * @description 新增後台帳號
- * @route POST /api/admin/accounts
- * @access Private
- */
-router.post('/accounts', authMiddleware, async (req, res) => {
-    const { username, password, role, status } = req.body;
-    if (!username || !password || !role || !status) {
-        return res.status(400).json({ error: 'Username, password, role, and status are required.' });
+router.post('/accounts', authMiddleware, checkPermission('admin_accounts', 'cud'), async (req, res) => {
+    // (★★★ Y-7: 欄位改為 role_id ★★★)
+    const { username, password, role_id, status } = req.body;
+    if (!username || !password || !role_id || !status) {
+        return res.status(400).json({ error: 'Username, password, role_id, and status are required.' });
     }
     try {
-        // (密碼加密)
         const salt = await bcrypt.genSalt(10);
         const password_hash = await bcrypt.hash(password, salt);
-
         const result = await db.query(
-            'INSERT INTO admin_users (username, password_hash, role, status) VALUES ($1, $2, $3, $4) RETURNING id, username, role, status, created_at',
-            [username, password_hash, role, status]
+            'INSERT INTO admin_users (username, password_hash, role_id, status) VALUES ($1, $2, $3, $4) RETURNING id, username, role_id, status, created_at',
+            [username, password_hash, role_id, status]
         );
         console.log(`[Admin Accounts] Account ${username} created by ${req.user.username}`);
         res.status(201).json(result.rows[0]);
-    } catch (error) {
-        if (error.code === '23505') { return res.status(409).json({ error: 'Username already exists.' }); }
-        console.error('[Admin Accounts] Error creating account:', error);
-        res.status(500).json({ error: 'Internal server error' });
-    }
+    } catch (error) { if (error.code === '23505') { return res.status(409).json({ error: 'Username already exists.' }); } console.error('[Admin Accounts] Error creating account:', error); res.status(500).json({ error: 'Internal server error' }); }
 });
-
-/**
- * @description 更新後台帳號
- * @route PUT /api/admin/accounts/:id
- * @access Private
- */
-router.put('/accounts/:id', authMiddleware, async (req, res) => {
+router.put('/accounts/:id', authMiddleware, checkPermission('admin_accounts', 'cud'), async (req, res) => {
     const { id } = req.params;
-    const { username, password, role, status } = req.body; // (password 是可選的)
-    if (!username || !role || !status) {
-        return res.status(400).json({ error: 'Username, role, and status are required.' });
+    // (★★★ Y-7: 欄位改為 role_id ★★★)
+    const { username, password, role_id, status } = req.body;
+    if (!username || !role_id || !status) {
+        return res.status(400).json({ error: 'Username, role_id, and status are required.' });
     }
-
     try {
         let result;
         if (password) {
-            // (如果提供了密碼，則更新密碼)
             const salt = await bcrypt.genSalt(10);
             const password_hash = await bcrypt.hash(password, salt);
             result = await db.query(
-                'UPDATE admin_users SET username = $1, role = $2, status = $3, password_hash = $4 WHERE id = $5 RETURNING id, username, role, status',
-                [username, role, status, password_hash, id]
+                'UPDATE admin_users SET username = $1, role_id = $2, status = $3, password_hash = $4 WHERE id = $5 RETURNING id, username, role_id, status',
+                [username, role_id, status, password_hash, id]
             );
         } else {
-            // (如果沒提供密碼，則不更新密碼)
             result = await db.query(
-                'UPDATE admin_users SET username = $1, role = $2, status = $3 WHERE id = $4 RETURNING id, username, role, status',
-                [username, role, status, id]
+                'UPDATE admin_users SET username = $1, role_id = $2, status = $3 WHERE id = $4 RETURNING id, username, role_id, status',
+                [username, role_id, status, id]
             );
         }
-        if (result.rows.length === 0) {
-            return res.status(404).json({ error: 'Account not found.' });
-        }
+        if (result.rows.length === 0) { return res.status(404).json({ error: 'Account not found.' }); }
         console.log(`[Admin Accounts] Account ID ${id} updated by ${req.user.username}`);
         res.status(200).json(result.rows[0]);
-    } catch (error) {
-        if (error.code === '23505') { return res.status(409).json({ error: 'Username already exists.' }); }
-        console.error(`[Admin Accounts] Error updating account ${id}:`, error);
-        res.status(500).json({ error: 'Internal server error' });
-    }
+    } catch (error) { if (error.code === '23505') { return res.status(409).json({ error: 'Username already exists.' }); } console.error(`[Admin Accounts] Error updating account ${id}:`, error); res.status(500).json({ error: 'Internal server error' }); }
 });
 
 /**
@@ -992,7 +975,7 @@ router.put('/accounts/:id', authMiddleware, async (req, res) => {
  * @route DELETE /api/admin/accounts/:id
  * @access Private
  */
-router.delete('/accounts/:id', authMiddleware, async (req, res) => {
+router.delete('/accounts/:id', authMiddleware, checkPermission('admin_accounts', 'cud'), async (req, res) => {
     const { id } = req.params;
     const currentUserId = req.user.id; // (從 JWT 獲取)
 
@@ -1018,7 +1001,7 @@ router.delete('/accounts/:id', authMiddleware, async (req, res) => {
     }
 });
 
-router.get('/ip-whitelist', authMiddleware, async (req, res) => {
+router.get('/ip-whitelist', authMiddleware, checkPermission('admin_ip_whitelist', 'read'), async (req, res) => {
     try {
         const result = await db.query('SELECT id, ip_range::text, description, created_at FROM admin_ip_whitelist ORDER BY created_at DESC');
         res.status(200).json(result.rows);
@@ -1028,7 +1011,7 @@ router.get('/ip-whitelist', authMiddleware, async (req, res) => {
     }
 });
 
-router.post('/ip-whitelist', authMiddleware, async (req, res) => {
+router.post('/ip-whitelist', authMiddleware, checkPermission('admin_ip_whitelist', 'cud'), async (req, res) => {
     const { ip_range, description } = req.body;
     if (!ip_range) {
         return res.status(400).json({ error: 'IP range (CIDR format) is required.' });
@@ -1047,7 +1030,7 @@ router.post('/ip-whitelist', authMiddleware, async (req, res) => {
     }
 });
 
-router.delete('/ip-whitelist/:id', authMiddleware, async (req, res) => {
+router.delete('/ip-whitelist/:id', authMiddleware, checkPermission('admin_ip_whitelist', 'cud'), async (req, res) => {
     const { id } = req.params;
     try {
         const result = await db.query('DELETE FROM admin_ip_whitelist WHERE id = $1 RETURNING id', [id]);
@@ -1058,6 +1041,184 @@ router.delete('/ip-whitelist/:id', authMiddleware, async (req, res) => {
     } catch (error) { 
         console.error(`[Admin IP Whitelist] Error deleting IP ${id}:`, error);
         res.status(500).json({ error: 'Internal server error' }); 
+    }
+});
+
+/**
+ * @description 獲取所有權限組 (Roles) 列表
+ * @route GET /api/admin/roles
+ */
+router.get('/roles', authMiddleware, checkPermission('admin_permissions', 'read'), async (req, res) => {
+    try {
+        const result = await db.query('SELECT * FROM admin_roles ORDER BY id ASC');
+        res.status(200).json(result.rows);
+    } catch (error) {
+        console.error('[Admin RBAC] Error fetching roles:', error);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+/**
+ * @description 獲取所有可用的權限 (Permissions) 列表 (用於前端渲染)
+ * @route GET /api/admin/permissions
+ */
+router.get('/permissions', authMiddleware, checkPermission('admin_permissions', 'read'), async (req, res) => {
+    try {
+        const result = await db.query('SELECT * FROM admin_permissions ORDER BY category, resource, action');
+        // (按 category 分組，方便前端渲染)
+        const permissionsByCategory = result.rows.reduce((acc, perm) => {
+            if (!acc[perm.category]) {
+                acc[perm.category] = [];
+            }
+            acc[perm.category].push(perm);
+            return acc;
+        }, {});
+        res.status(200).json(permissionsByCategory);
+    } catch (error) {
+        console.error('[Admin RBAC] Error fetching permissions:', error);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+/**
+ * @description 獲取單一權限組及其擁有的權限 ID
+ * @route GET /api/admin/roles/:id
+ */
+router.get('/roles/:id', authMiddleware, checkPermission('admin_permissions', 'read'), async (req, res) => {
+    const { id } = req.params;
+    try {
+        const roleResult = await db.query('SELECT * FROM admin_roles WHERE id = $1', [id]);
+        if (roleResult.rows.length === 0) {
+            return res.status(404).json({ error: 'Role not found.' });
+        }
+        const role = roleResult.rows[0];
+        
+        const permsResult = await db.query('SELECT permission_id FROM admin_role_permissions WHERE role_id = $1', [id]);
+        // (將權限 ID 拍平為一個陣列)
+        role.permission_ids = permsResult.rows.map(r => r.permission_id);
+        
+        res.status(200).json(role);
+    } catch (error) {
+        console.error(`[Admin RBAC] Error fetching role ${id}:`, error);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+/**
+ * @description 新增權限組
+ * @route POST /api/admin/roles
+ */
+router.post('/roles', authMiddleware, checkPermission('admin_permissions', 'update'), async (req, res) => {
+    const { name, description, permission_ids = [] } = req.body;
+    if (!name) {
+        return res.status(400).json({ error: 'Role name is required.' });
+    }
+
+    const client = await db.pool.connect();
+    try {
+        await client.query('BEGIN');
+        // 1. 建立 Role
+        const roleResult = await client.query(
+            'INSERT INTO admin_roles (name, description) VALUES ($1, $2) RETURNING *',
+            [name, description || null]
+        );
+        const newRole = roleResult.rows[0];
+
+        // 2. 綁定權限
+        if (permission_ids.length > 0) {
+            const values = permission_ids.map((permId, i) => `($1, $${i + 2})`).join(', ');
+            await client.query(
+                `INSERT INTO admin_role_permissions (role_id, permission_id) VALUES ${values}`,
+                [newRole.id, ...permission_ids]
+            );
+        }
+        
+        await client.query('COMMIT');
+        res.status(201).json(newRole);
+    } catch (error) {
+        await client.query('ROLLBACK');
+        if (error.code === '23505') { return res.status(409).json({ error: 'Role name already exists.' }); }
+        console.error('[Admin RBAC] Error creating role:', error);
+        res.status(500).json({ error: 'Internal server error' });
+    } finally {
+        client.release();
+    }
+});
+
+/**
+ * @description 更新權限組
+ * @route PUT /api/admin/roles/:id
+ */
+router.put('/roles/:id', authMiddleware, checkPermission('admin_permissions', 'update'), async (req, res) => {
+    const { id } = req.params;
+    const { name, description, permission_ids = [] } = req.body;
+    if (!name) {
+        return res.status(400).json({ error: 'Role name is required.' });
+    }
+    // (安全機制：不允許修改 Super Admin (ID 1))
+    if (parseInt(id, 10) === 1) {
+        return res.status(403).json({ error: 'Cannot modify the Super Admin role.' });
+    }
+
+    const client = await db.pool.connect();
+    try {
+        await client.query('BEGIN');
+        // 1. 更新 Role 基本資料
+        const roleResult = await client.query(
+            'UPDATE admin_roles SET name = $1, description = $2 WHERE id = $3 RETURNING *',
+            [name, description || null, id]
+        );
+        if (roleResult.rows.length === 0) {
+            await client.query('ROLLBACK');
+            return res.status(404).json({ error: 'Role not found.' });
+        }
+        
+        // 2. 刪除所有舊權限
+        await client.query('DELETE FROM admin_role_permissions WHERE role_id = $1', [id]);
+
+        // 3. 綁定新權限
+        if (permission_ids.length > 0) {
+            const values = permission_ids.map((permId, i) => `($1, $${i + 2})`).join(', ');
+            await client.query(
+                `INSERT INTO admin_role_permissions (role_id, permission_id) VALUES ${values}`,
+                [id, ...permission_ids]
+            );
+        }
+        
+        await client.query('COMMIT');
+        res.status(200).json(roleResult.rows[0]);
+    } catch (error) {
+        await client.query('ROLLBACK');
+        if (error.code === '23505') { return res.status(409).json({ error: 'Role name already exists.' }); }
+        console.error(`[Admin RBAC] Error updating role ${id}:`, error);
+        res.status(500).json({ error: 'Internal server error' });
+    } finally {
+        client.release();
+    }
+});
+
+/**
+ * @description 刪除權限組
+ * @route DELETE /api/admin/roles/:id
+ */
+router.delete('/roles/:id', authMiddleware, checkPermission('admin_permissions', 'update'), async (req, res) => {
+    const { id } = req.params;
+    // (安全機制：不允許刪除 Super Admin / Admin / Operator (ID 1, 2, 3))
+    if ([1, 2, 3].includes(parseInt(id, 10))) {
+        return res.status(403).json({ error: 'Cannot delete default system roles.' });
+    }
+    
+    // (註：刪除 role 會透過 ON DELETE CASCADE 自動刪除 role_permissions, 
+    // 並透過 ON DELETE SET NULL 將 admin_users.role_id 設為 null)
+    try {
+        const result = await db.query('DELETE FROM admin_roles WHERE id = $1 RETURNING id', [id]);
+        if (result.rows.length === 0) {
+            return res.status(404).json({ error: 'Role not found.' });
+        }
+        res.status(204).send();
+    } catch (error) {
+        console.error(`[Admin RBAC] Error deleting role ${id}:`, error);
+        res.status(500).json({ error: 'Internal server error' });
     }
 });
 

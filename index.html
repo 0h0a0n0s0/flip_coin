@@ -117,16 +117,33 @@
         </div>
         
         <div id="pc_content_info" class="modal-tab-content active">
-            <div class_alias="modal-body"> <ul class="pc-info-list">
-                    <li><span>用戶 ID:</span> <strong id="pc_userId">...</strong></li>
-                    <li><span>用戶帳號:</span> <strong id="pc_username">...</strong></li>
-                    <li><span>用戶等級:</span> <strong id="pc_level">...</strong></li>
-                    <li><span>最高連勝:</span> <strong id="pc_maxStreak">...</strong></li>
-                    <li><span>我的邀請碼:</span> <strong id="pc_inviteCode">...</strong></li>
-                    <li><span>推薦人邀請碼:</span> <strong id="pc_referrerCode">...</strong></li>
-                </ul>
-            </div>
-        </div>
+          <div class_alias="modal-body"> 
+              <ul class="pc-info-list">
+                  <li><span>用戶 ID:</span> <strong id="pc_userId">...</strong></li>
+                  <li><span>用戶帳號:</span> <strong id="pc_username">...</strong></li>
+                  <li><span>用戶等級:</span> <strong id="pc_level">...</strong></li>
+                  <li><span>最高連勝:</span> <strong id="pc_maxStreak">...</strong></li>
+                  <li><span>我的邀請碼:</span> <strong id="pc_inviteCode">...</strong></li>
+                  <li><span>推薦人邀請碼:</span> <strong id="pc_referrerCode">...</strong></li>
+              </ul>
+
+              <div class="pc-form-section">
+                  <h4>修改暱稱</h4>
+                  <div class="form-group">
+                      <input type="text" id="pc_nicknameInput" class="input-field" placeholder="輸入新的暱稱 (50字內)">
+                      <button id="pc_saveNicknameBtn" class="btn-small btn-primary">儲存</button>
+                  </div>
+              </div>
+
+              <div class="pc-form-section" id="pc_referrerSection">
+                  <h4>綁定推薦人</h4>
+                  <div class="form-group">
+                      <input type="text" id="pc_referrerInput" class="input-field" placeholder="輸入推薦人的邀請碼 (綁定後無法修改)">
+                      <button id="pc_bindReferrerBtn" class="btn-small btn-primary">綁定</button>
+                  </div>
+              </div>
+              </div>
+      </div>
 
         <div id="pc_content_deposit" class="modal-tab-content">
             <div class="modal-body">

@@ -1,24 +1,51 @@
--- 檔案: init.sql (★★★ v7.1 HD 錢包架構 ★★★)
+-- 檔案: init.sql (★★★ v7.4 最終修復版 ★★★)
+
+-- (刪除舊表)
+DROP TABLE IF EXISTS users CASCADE;
+DROP TABLE IF EXISTS bets CASCADE;
+DROP TABLE IF EXISTS platform_transactions CASCADE;
+DROP TABLE IF EXISTS admin_users CASCADE;
+DROP TABLE IF EXISTS platform_wallets CASCADE;
+DROP TABLE IF EXISTS system_settings CASCADE;
+DROP TABLE IF EXISTS blocked_regions CASCADE;
+DROP TABLE IF EXISTS user_levels CASCADE;
+DROP TABLE IF EXISTS admin_ip_whitelist CASCADE;
+DROP TABLE IF EXISTS admin_roles CASCADE;
+DROP TABLE IF EXISTS admin_permissions CASCADE;
+DROP TABLE IF EXISTS admin_role_permissions CASCADE;
+
+-- (建立 RBAC 相關新表)
+CREATE TABLE admin_roles (
+    id SERIAL PRIMARY KEY,
+    name VARCHAR(50) UNIQUE NOT NULL,
+    description TEXT,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+CREATE TABLE admin_permissions (
+    id SERIAL PRIMARY KEY,
+    resource VARCHAR(50) NOT NULL,
+    action VARCHAR(50) NOT NULL,
+    description TEXT,
+    category VARCHAR(50) NOT NULL DEFAULT 'General',
+    UNIQUE(resource, action)
+);
+CREATE TABLE admin_role_permissions (
+    role_id INT NOT NULL REFERENCES admin_roles(id) ON DELETE CASCADE,
+    permission_id INT NOT NULL REFERENCES admin_permissions(id) ON DELETE CASCADE,
+    PRIMARY KEY (role_id, permission_id)
+);
 
 -- ----------------------------
--- v7: 建立用戶表 (HD 錢包)
+-- 建立 users
 -- ----------------------------
 CREATE TABLE users (
     id SERIAL PRIMARY KEY,
     username VARCHAR(50) UNIQUE NOT NULL, 
     password_hash VARCHAR(100) NOT NULL, 
-    balance NUMERIC NOT NULL DEFAULT 0, -- 平台餘額 (USDT)
-    
-    -- (★★★ v7 HD 錢包索引 ★★★)
-    -- (我們使用同一個索引派生所有鏈的地址，例如 /.../index)
+    balance NUMERIC NOT NULL DEFAULT 0,
     deposit_path_index INT UNIQUE, 
-    
-    -- (★★★ v7 充值地址 ★★★)
-    -- (我們儲存地址是為了 "高效監聽" 方案，加快反向查詢)
-    evm_deposit_address VARCHAR(42) UNIQUE, -- (BSC, ETH, Polygon)
-    tron_deposit_address VARCHAR(255) UNIQUE, -- (TRC20)
-    -- (未來可新增 sol_deposit_address)
-
+    evm_deposit_address VARCHAR(42) UNIQUE,
+    tron_deposit_address VARCHAR(255) UNIQUE,
     user_id VARCHAR(8) UNIQUE NOT NULL, 
     current_streak INT NOT NULL DEFAULT 0,
     max_streak INT NOT NULL DEFAULT 0,
@@ -32,14 +59,11 @@ CREATE TABLE users (
     last_level_up_time TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
--- (為高效監聽器建立索引)
 CREATE INDEX idx_users_evm_deposit_address ON users(evm_deposit_address);
 CREATE INDEX idx_users_tron_deposit_address ON users(tron_deposit_address);
 
-
 -- ----------------------------
--- v6: 建立投注記錄表 (不變)
--- (開獎 tx_hash 來自平台輪巡地址)
+-- 建立 bets
 -- ----------------------------
 CREATE TABLE bets (
     id SERIAL PRIMARY KEY,
@@ -56,17 +80,17 @@ CREATE TABLE bets (
 );
 
 -- ----------------------------
--- v6: 建立資金流水表 (不變)
+-- 建立 platform_transactions
 -- ----------------------------
 CREATE TABLE platform_transactions (
     id SERIAL PRIMARY KEY,
     user_id VARCHAR(8) NOT NULL, 
-    type VARCHAR(50) NOT NULL, -- ( 'deposit', 'withdraw', 'level_up_reward', 'commission' )
-    chain VARCHAR(20) NULL, -- ( 'TRC20', 'BSC' )
+    type VARCHAR(50) NOT NULL, 
+    chain VARCHAR(20) NULL,
     amount NUMERIC NOT NULL DEFAULT 0, 
     gas_fee NUMERIC NOT NULL DEFAULT 0, 
     tx_hash VARCHAR(255) UNIQUE, 
-    status VARCHAR(20) NOT NULL DEFAULT 'completed', -- ( 'pending', 'completed', 'failed' )
+    status VARCHAR(20) NOT NULL DEFAULT 'completed',
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (user_id) REFERENCES users(user_id) ON DELETE SET NULL
@@ -74,51 +98,37 @@ CREATE TABLE platform_transactions (
 CREATE INDEX idx_platform_transactions_type ON platform_transactions(type);
 CREATE INDEX idx_platform_transactions_user_id ON platform_transactions(user_id);
 
-
 -- ----------------------------
--- v2: 建立後台管理員表 (不變)
+-- 建立 admin_users (已重構)
 -- ----------------------------
 CREATE TABLE admin_users (
     id SERIAL PRIMARY KEY,
     username VARCHAR(50) UNIQUE NOT NULL,
     password_hash VARCHAR(100) NOT NULL,
-    role VARCHAR(50) NOT NULL DEFAULT 'admin',
+    role_id INT REFERENCES admin_roles(id) ON DELETE SET NULL, -- (使用 role_id)
     status VARCHAR(20) NOT NULL DEFAULT 'active',
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
-INSERT INTO admin_users (username, password_hash, role)
-VALUES ('admin', '$2a$10$E.M9.xQJ3.K/T.Xgs83V9uM.KkNwG.fW1y.H.xP.j/b1L.rYqKz7m', 'super_admin');
+
 
 -- ----------------------------
--- v7: 建立平台功能錢包表
--- (取代 v6 的 monitored_wallets)
--- (注意：私鑰儲存在 .env 中，這裡只儲存地址和功能)
+-- 建立 platform_wallets
 -- ----------------------------
 CREATE TABLE platform_wallets (
     id SERIAL PRIMARY KEY,
     name VARCHAR(100) NOT NULL, 
-    chain_type VARCHAR(20) NOT NULL, -- ( 'BSC', 'TRC20', 'ETH', 'POLYGON', 'SOL' )
+    chain_type VARCHAR(20) NOT NULL,
     address VARCHAR(255) UNIQUE NOT NULL,
-    
-    -- (功能標籤)
-    is_gas_reserve BOOLEAN NOT NULL DEFAULT false, -- (是否為 Gas 儲備錢包 (TRX, BNB...))
-    is_collection BOOLEAN NOT NULL DEFAULT false, -- (是否為資金歸集地址 (USDT))
-    
-    is_opener_a BOOLEAN NOT NULL DEFAULT false, -- (是否為開獎地址 A)
-    is_opener_b BOOLEAN NOT NULL DEFAULT false, -- (是否為開獎地址 B)
-    
-    is_active BOOLEAN NOT NULL DEFAULT true, -- (是否啟用)
+    is_gas_reserve BOOLEAN NOT NULL DEFAULT false,
+    is_collection BOOLEAN NOT NULL DEFAULT false,
+    is_opener_a BOOLEAN NOT NULL DEFAULT false,
+    is_opener_b BOOLEAN NOT NULL DEFAULT false,
+    is_active BOOLEAN NOT NULL DEFAULT true,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
--- (範例：你可以手動將 .env 中的錢包地址加入這裡)
--- INSERT INTO platform_wallets (name, chain_type, address, is_gas_reserve) 
--- VALUES ('TRON Gas Wallet', 'TRC20', 'T...', true);
--- INSERT INTO platform_wallets (name, chain_type, address, is_collection) 
--- VALUES ('TRON Collection Wallet', 'TRC20', 'T...', true);
-
 
 -- ----------------------------
--- v2: 系統設定表 (不變)
+-- 建立 system_settings
 -- ----------------------------
 CREATE TABLE system_settings (
     key VARCHAR(50) PRIMARY KEY,
@@ -126,15 +136,9 @@ CREATE TABLE system_settings (
     description TEXT,
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
-INSERT INTO system_settings (key, value, description) 
-VALUES ('PAYOUT_MULTIPLIER', '2', '派獎倍數 (整數)'); 
-INSERT INTO system_settings (key, value, description) 
-VALUES ('ALLOW_BSC', 'true', '是否開放 BSC 充值 (true/false)');
-INSERT INTO system_settings (key, value, description) 
-VALUES ('ALLOW_TRC20', 'true', '是否開放 TRC20 充值 (true/false)');
 
 -- ----------------------------
--- v2: 阻擋地區表 (不變)
+-- 建立 blocked_regions
 -- ----------------------------
 CREATE TABLE blocked_regions (
     id SERIAL PRIMARY KEY,
@@ -144,7 +148,7 @@ CREATE TABLE blocked_regions (
 );
 
 -- ----------------------------
--- v2: 用戶等級設定表 (不變)
+-- 建立 user_levels
 -- ----------------------------
 CREATE TABLE user_levels (
     level INT PRIMARY KEY CHECK (level > 0),
@@ -156,11 +160,9 @@ CREATE TABLE user_levels (
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
-INSERT INTO user_levels (level, name, max_bet_amount, required_bets_for_upgrade, min_bet_amount_for_upgrade, upgrade_reward_amount) 
-VALUES (1, 'Level 1', 100, 10, 0.01, 0.005); 
 
 -- ----------------------------
--- v2: 後台 IP 白名單表 (不變)
+-- 建立 admin_ip_whitelist
 -- ----------------------------
 CREATE TABLE admin_ip_whitelist (
     id SERIAL PRIMARY KEY,
@@ -168,7 +170,83 @@ CREATE TABLE admin_ip_whitelist (
     description TEXT,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
+
+
+-- ----------------------------------------------------
+-- (插入 RBAC 基礎數據)
+-- ----------------------------------------------------
+
+-- 1. 插入權限組
+INSERT INTO admin_roles (id, name, description) VALUES
+(1, 'Super Admin', '擁有所有權限的超級管理員'),
+(2, 'Admin', '管理員 (管理用戶和注單)'),
+(3, 'Operator', '營運人員 (僅可讀取報表)');
+
+-- 2. 插入所有可用權限點
+INSERT INTO admin_permissions (resource, action, category, description) VALUES
+('dashboard', 'read', 'General', '讀取儀表板'),
+('users', 'read', 'UserManagement', '讀取用戶列表'),
+('users', 'update_status', 'UserManagement', '更新用戶狀態 (禁用/啟用)'),
+('users', 'update_info', 'UserManagement', '編輯用戶資料 (暱稱, 等級, 推薦人)'),
+('users', 'update_balance', 'UserManagement', '編輯用戶餘額 (高風險)'),
+('users_addresses', 'read', 'UserManagement', '讀取用戶充值地址'),
+('bets', 'read', 'BetManagement', '讀取注單列表'),
+('reports', 'read', 'ReportManagement', '讀取盈虧報表'),
+('wallets', 'read', 'ReportManagement', '讀取錢包監控列表'),
+('wallets', 'cud', 'ReportManagement', '新增/修改/刪除 錢包 (高風險)'),
+('admin_accounts', 'read', 'System', '讀取後台帳號列表'),
+('admin_accounts', 'cud', 'System', '新增/修改/刪除 後台帳號'),
+('admin_permissions', 'read', 'System', '讀取權限組列表'),
+('admin_permissions', 'update', 'System', '更新權限組權限'),
+('admin_ip_whitelist', 'read', 'System', '讀取後台 IP 白名單'),
+('admin_ip_whitelist', 'cud', 'System', '新增/刪除 後台 IP 白名單'),
+('settings_game', 'read', 'System', '讀取遊戲參數'),
+('settings_game', 'update', 'System', '更新遊戲參數'),
+('settings_regions', 'read', 'System', '讀取阻擋地區'),
+('settings_regions', 'cud', 'System', '新增/刪G 阻擋地區'),
+('settings_levels', 'read', 'System', '讀取用戶等級'),
+('settings_levels', 'cud', 'System', '新增/修改/刪除 用戶等級');
+
+
+-- 3. 綁定 'Super Admin' (Role ID 1) 的權限 (全選)
+INSERT INTO admin_role_permissions (role_id, permission_id)
+SELECT 1, id FROM admin_permissions;
+
+-- 4. 綁定 'Admin' (Role ID 2) 的權限 (管理用戶/注單/報表)
+INSERT INTO admin_role_permissions (role_id, permission_id)
+SELECT 2, id FROM admin_permissions WHERE resource IN 
+('dashboard', 'users', 'users_addresses', 'bets', 'reports', 'wallets');
+
+-- 5. 綁定 'Operator' (Role ID 3) 的權限 (僅可讀取)
+INSERT INTO admin_role_permissions (role_id, permission_id)
+SELECT 3, id FROM admin_permissions WHERE action = 'read' 
+AND resource IN ('dashboard', 'users', 'users_addresses', 'bets', 'reports', 'wallets');
+
+-- ----------------------------------------------------
+-- (插入初始數據)
+-- ----------------------------------------------------
+
+-- 1. 插入 'admin' 帳號並指定為 'Super Admin' (Role ID 1)
+-- (★★★ 關鍵修復：使用 (role_id) 並傳入 (1) ★★★)
+INSERT INTO admin_users (username, password_hash, role_id, status)
+VALUES ('admin', '$2b$10$AcqgPjrFH7EoZv6Fv0LJ4OMmPbiTom7QrSSTjE6oK92.2JgFs63Wq', 1, 'active'); 
+-- (↑↑↑ 警告：這是我從您的日誌 [log4.txt, source 33] 複製的 HASH。如果您換了新 HASH，請替換這裡。)
+
+
+-- 2. 插入 Level 1
+INSERT INTO user_levels (level, name, max_bet_amount, required_bets_for_upgrade, min_bet_amount_for_upgrade, upgrade_reward_amount) 
+VALUES (1, 'Level 1', 100, 10, 0.01, 0.005); 
+
+-- 3. 插入系統設定
+INSERT INTO system_settings (key, value, description) 
+VALUES ('PAYOUT_MULTIPLIER', '2', '派獎倍數 (整數)'); 
+INSERT INTO system_settings (key, value, description) 
+VALUES ('ALLOW_BSC', 'true', '是否開放 BSC 充值 (true/false)');
+INSERT INTO system_settings (key, value, description) 
+VALUES ('ALLOW_TRC20', 'true', '是否開放 TRC20 充值 (true/false)');
+
+-- 4. 插入本地 IP 到白名單
 INSERT INTO admin_ip_whitelist (ip_range, description) VALUES ('127.0.0.1/32', 'Localhost Access');
 INSERT INTO admin_ip_whitelist (ip_range, description) VALUES ('::1/128', 'Localhost IPv6 Access');
 INSERT INTO admin_ip_whitelist (ip_range, description) VALUES ('192.168.65.1/32', 'Docker Host IP (Local Dev)');
-INSERT INTO admin_ip_whitelist (ip_range, description) VALUES ('125.229.37.48/32', 'My Public IP');
+INSERT INTO admin_ip_whitelist (ip_range, description) VALUES ('125.229.37.48/32', 'My Public IP'); -- (請確認這是您的 IP)

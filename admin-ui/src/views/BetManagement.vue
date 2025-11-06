@@ -3,7 +3,7 @@
     <h2>注单管理</h2>
 
     <el-card shadow="never" class="search-card">
-      <el-form :inline="true" :model="searchParams" @submit.native.prevent="handleSearch">
+      <el-form :inline="true" :model="searchParams" @submit.native.prevent="handleSearch" class="search-form">
         
         <el-form-item label="注单编号">
           <el-input v-model="searchParams.betId" placeholder="注单编号 (模糊)" clearable></el-input>
@@ -100,6 +100,7 @@
 </template>
 
 <script>
+// ( ... <script> 標籤內的邏輯保持不變 ... )
 export default {
   name: 'BetManagementView',
   data() {
@@ -114,18 +115,15 @@ export default {
       searchParams: {
         betId: '',
         userId: '',
-        // walletAddress: '', // (v6 移除)
         status: '',
         dateRange: null, 
       },
     };
   },
   created() {
-    // (★★★ v6 移除：prize_pending 查詢 ★★★)
     this.fetchBets();
   },
   methods: {
-    // (★★★ v6 修改：fetchBets ★★★)
     async fetchBets() {
       if (this.loading) return;
       this.loading = true;
@@ -134,7 +132,6 @@ export default {
           ...this.pagination,
           betId: this.searchParams.betId || undefined,
           userId: this.searchParams.userId || undefined, 
-          // walletAddress: this.searchParams.walletAddress || undefined, // (v6 移除)
           status: this.searchParams.status || undefined,
           dateRange: this.searchParams.dateRange ? JSON.stringify(this.searchParams.dateRange) : undefined,
         };
@@ -158,7 +155,6 @@ export default {
       catch (e) { return isoString; }
     },
     
-    // (★★★ v6 修改：formatStatus ★★★)
     formatStatus(status) {
       const map = {
         'pending': '處理中', 'won': '中獎', 'lost': '未中獎',
@@ -167,7 +163,6 @@ export default {
       return map[status] || status;
     },
     
-    // (★★★ v6 修改：getStatusTagType ★★★)
     getStatusTagType(status) {
       const map = {
         'pending': 'info', 'won': 'success', 'lost': 'danger',
@@ -188,14 +183,14 @@ export default {
       try {
         const num = parseFloat(value);
         if (isNaN(num)) return 'N/A';
-        return num.toFixed(2); // (USDT 顯示到小數點後 2 位)
+        return num.toFixed(2);
       } catch (e) {
         return 'N/A';
       }
     },
     
     formatPrize(row) {
-      if (row.status === 'won') { // (★★★ v6 修改：移除 prize_pending ★★★)
+      if (row.status === 'won') {
         try {
             const betAmount = parseFloat(row.amount);
             const multiplier = parseInt(row.payout_multiplier, 10) || 2; 
@@ -216,12 +211,22 @@ export default {
 .table-card { margin-bottom: 20px; }
 .pagination-container { margin-top: 20px; display: flex; justify-content: flex-end; }
 .el-form-item { margin-bottom: 10px; }
-/* (★★★ v6 新增：Hash 連結樣式 ★★★) */
 .tx-link {
   color: #409EFF;
   text-decoration: none;
 }
 .tx-link:hover {
   text-decoration: underline;
+}
+
+/* (★★★ 修改 2: 新增 CSS 規則 ★★★) */
+.search-form :deep(.el-input) {
+  width: 180px;
+}
+.search-form :deep(.el-select) {
+  width: 180px;
+}
+.search-form :deep(.el-date-picker) {
+  width: 240px;
 }
 </style>

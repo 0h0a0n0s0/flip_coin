@@ -3,7 +3,7 @@
     <h2>營運管理 (盈虧報表)</h2>
 
     <el-card shadow="never" class="search-card">
-      <el-form :inline="true" :model="searchParams" @submit.native.prevent="handleSearch">
+      <el-form :inline="true" :model="searchParams" @submit.native.prevent="handleSearch" class="search-form">
         <el-form-item label="用户ID/钱包地址">
           <el-input 
             v-model="searchParams.userQuery" 
@@ -39,29 +39,29 @@
       <div v-if="reportData" class="report-grid">
         <div class="report-item"> 
           <div class="report-label">投注 (總額)</div>
-          <div class="report-value">{{ formatCurrency(reportData.total_bet) }} ETH</div>
+          <div class="report-value">{{ formatCurrency(reportData.total_bet) }} USDT</div>
         </div>
         
         <div class="report-item"> 
           <div class="report-label">派奖 (總額)</div>
-          <div class="report-value">{{ formatCurrency(reportData.total_payout) }} ETH</div>
+           <div class="report-value">{{ formatCurrency(reportData.total_payout) }} USDT</div>
         </div>
         <div class="report-item info">
           <div class="report-label">用户等级奖金</div>
-          <div class="report-value">{{ formatCurrency(reportData.bonus_level) }} ETH</div>
+           <div class="report-value">{{ formatCurrency(reportData.bonus_level) }} USDT</div>
         </div>
         <div class="report-item info">
           <div class="report-label">活动奖金</div>
-          <div class="report-value">{{ formatCurrency(reportData.bonus_event) }} ETH</div>
+           <div class="report-value">{{ formatCurrency(reportData.bonus_event) }} USDT</div>
         </div>
         <div class="report-item info">
           <div class="report-label">反佣</div>
-          <div class="report-value">{{ formatCurrency(reportData.bonus_commission) }} ETH</div>
+           <div class="report-value">{{ formatCurrency(reportData.bonus_commission) }} USDT</div>
         </div>
         
         <div class="report-item gas-fee">
           <div class="report-label">總手續費 (Gas)</div>
-          <div class="report-value">{{ formatCurrency(reportData.total_gas_fee) }} ETH</div>
+           <div class="report-value">{{ formatCurrency(reportData.total_gas_fee) }} USDT</div>
         </div>
 
         <div :class="['report-item', reportData.platform_profit >= 0 ? 'profit' : 'loss']"> 
@@ -75,7 +75,7 @@
               <el-icon><InfoFilled /></el-icon>
             </el-tooltip>
           </div>
-          <div class="report-value">{{ formatCurrency(reportData.platform_profit) }} ETH</div>
+           <div class="report-value">{{ formatCurrency(reportData.platform_profit) }} USDT</div>
         </div>
         
         <div :class="['report-item', 'net-profit', reportData.platform_net_profit >= 0 ? 'profit' : 'loss']"> 
@@ -89,7 +89,7 @@
               <el-icon><InfoFilled /></el-icon>
             </el-tooltip>
           </div>
-          <div class="report-value">{{ formatCurrency(reportData.platform_net_profit) }} ETH</div>
+           <div class="report-value">{{ formatCurrency(reportData.platform_net_profit) }} USDT</div>
         </div>
       </div>
       
@@ -100,6 +100,7 @@
 </template>
 
 <script>
+// ( ... <script> 標籤內的邏輯保持不變 ... )
 import { ElMessage } from 'element-plus';
 import { InfoFilled } from '@element-plus/icons-vue';
 
@@ -137,7 +138,6 @@ export default {
           userQuery: this.searchParams.userQuery.trim(),
         };
 
-        // (★★★ 2. API 會返回新欄位 ★★★)
         const response = await this.$api.getProfitLossReport(params);
         this.reportData = response;
 
@@ -148,7 +148,6 @@ export default {
       }
     },
     
-    // (★★★ 3. 修正 formatCurrency ★★★)
     formatCurrency(value) {
       if (value === null || value === undefined) return '0.00';
       if (typeof value !== 'number') {
@@ -159,22 +158,20 @@ export default {
            return '0.00';
         }
       }
-      // (顯示正負號)
-      return value.toFixed(8); 
+      // (★★★ 修正：v7 應為 USDT，顯示 2 位小數 ★★★)
+      return value.toFixed(2); 
     }
   },
 };
 </script>
 
 <style scoped>
-/* (★★★ 4. 新增樣式 ★★★) */
 .search-card { margin-bottom: 20px; }
 .form-tip { font-size: 12px; color: #909399; margin-top: 5px; }
 .result-card { margin-bottom: 20px; }
 
 .report-grid {
   display: grid;
-  /* (調整網格，容納更多欄位) */
   grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
   gap: 20px;
 }
@@ -189,19 +186,17 @@ export default {
   font-size: 14px;
   color: #606266;
   margin-bottom: 12px;
-  /* (★★★ 5. 新增 Flex 佈局 ★★★) */
   display: flex;
   justify-content: center;
   align-items: center;
-  gap: 5px; /* 圖標和文字的間距 */
+  gap: 5px; 
 }
-/* (★★★ 6. 新增 icon 樣式 ★★★) */
 .report-label .el-icon {
-  cursor: help; /* 提示用戶可以懸停 */
+  cursor: help; 
   color: #909399;
 }
 .report-value {
-  font-size: 22px; /* (稍微縮小字體) */
+  font-size: 22px;
   font-weight: bold;
 }
 .report-desc {
@@ -213,11 +208,11 @@ export default {
 /* 顏色 */
 .report-item .report-value { color: #303133; } 
 .report-item.info .report-value { color: #909399; } 
-.report-item.gas-fee .report-value { color: #E6A23C; } /* (手續費 橘色) */
+.report-item.gas-fee .report-value { color: #E6A23C; }
 
 /* 盈虧顏色 */
-.report-item.profit .report-value { color: #67c23a; } /* 綠色 (盈利) */
-.report-item.loss .report-value { color: #f56c6c; } /* 紅色 (虧損) */
+.report-item.profit .report-value { color: #67c23a; } 
+.report-item.loss .report-value { color: #f56c6c; } 
 
 /* 淨營利 醒目提示 */
 .report-item.net-profit {
@@ -234,4 +229,14 @@ export default {
    background-color: #f0f9eb;
 }
 
+/* (★★★ 修改 2: 新增 CSS 規則 ★★★) */
+.search-form :deep(.el-input) {
+  width: 180px;
+}
+.search-form :deep(.el-select) {
+  width: 180px;
+}
+.search-form :deep(.el-date-picker) {
+  width: 240px;
+}
 </style>

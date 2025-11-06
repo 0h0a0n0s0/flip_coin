@@ -3,7 +3,7 @@
     <h2>用戶管理</h2>
 
     <el-card shadow="never" class="search-card">
-      <el-form :inline="true" :model="searchParams" @submit.native.prevent="handleSearch">
+      <el-form :inline="true" :model="searchParams" @submit.native.prevent="handleSearch" class="search-form">
         
         <el-form-item label="用户ID">
           <el-input v-model="searchParams.userId" placeholder="用户ID (模糊)" clearable></el-input>
@@ -84,9 +84,6 @@
            </template>
         </el-table-column>
         <el-table-column prop="referrer_code" label="推荐人邀请码" width="130" />
-        
-        <el-table-column prop="wallet_address" label="提現錢包" width="300" />
-        <el-table-column prop="chain_type" label="提現公鏈" width="100" />
         
         <el-table-column prop="last_login_ip" label="最新登入IP" width="150" />
         <el-table-column prop="last_activity_at" label="最新活动时间" width="180">
@@ -178,12 +175,20 @@
         width="700px"
         :close-on-click-modal="false"
     >
-      </el-dialog>
+        <el-table :data="referralData.list" v-loading="referralData.loading">
+            <el-table-column prop="user_id" label="用户ID" />
+            <el-table-column prop="nickname" label="昵称" />
+            <el-table-column prop="created_at" label="注册时间">
+                 <template #default="scope">{{ formatDateTime(scope.row.created_at) }}</template>
+            </el-table-column>
+        </el-table>
+    </el-dialog>
     
   </div>
 </template>
 
 <script>
+// ( ... <script> 標籤內的邏輯保持不變 ... )
 import { ElMessage } from 'element-plus';
 
 export default {
@@ -197,11 +202,9 @@ export default {
         page: 1,
         limit: 10,
       },
-      // (★★★ v6 修改：searchParams ★★★)
       searchParams: {
         userId: '',
-        username: '', // (v6 新增)
-        // walletAddress: '', // (v6 移除)
+        username: '', 
         dateRange: null, 
         nickname: '',
         status: '',
@@ -210,10 +213,6 @@ export default {
         lastLoginIp: '',
         activityDateRange: null, 
       },
-      
-      // (★★★ v6 移除：balanceDialog ★★★)
-      
-      // (★★★ v6 修改：editForm ★★★)
       editDialogVisible: false,
       editLoading: false,
       editForm: {
@@ -221,16 +220,14 @@ export default {
         nickname: '',
         level: 1,
         referrer_code: '',
-        balance: 0, // (v6 新增)
+        balance: 0, 
       },
       editFormRules: {
         nickname: [{ max: 50, message: '昵称长度不能超过 50 个字符', trigger: 'blur' }],
         level: [{ required: true, message: '等级不能为空' }, { type: 'integer', min: 1, message: '等级必须是正整数', trigger: 'blur' }],
         referrer_code: [{ max: 8, message: '邀请码长度不能超过 8 个字符', trigger: 'blur' }],
-        balance: [{ required: true, message: '餘額不能为空' }, { type: 'number', min: 0, message: '餘額必須是非負數', trigger: 'blur' }] // (v6 新增)
+        balance: [{ required: true, message: '餘額不能为空' }, { type: 'number', min: 0, message: '餘額必須是非負數', trigger: 'blur' }]
       },
-
-      // (推薦列表彈窗 不變)
       referralDialogVisible: false,
       referralData: {
         loading: false,
@@ -243,7 +240,6 @@ export default {
     this.fetchUsers();
   },
   methods: {
-    // (★★★ v6 修改：fetchUsers ★★★)
     async fetchUsers() {
       if (this.loading) return;
       this.loading = true;
@@ -251,8 +247,7 @@ export default {
         const params = {
           ...this.pagination,
           userId: this.searchParams.userId || undefined, 
-          username: this.searchParams.username || undefined, // (v6 新增)
-          // walletAddress: this.searchParams.walletAddress || undefined, // (v6 移除)
+          username: this.searchParams.username || undefined,
           dateRange: this.searchParams.dateRange ? JSON.stringify(this.searchParams.dateRange) : undefined,
           nickname: this.searchParams.nickname || undefined,
           status: this.searchParams.status || undefined,
@@ -271,38 +266,45 @@ export default {
       }
     },
     
-    // (handleStatusChange 不變)
-    async handleStatusChange(row) { /* ... (不變) ... */ },
+    async handleStatusChange(row) {
+        const newStatus = row.status;
+        const oldStatus = newStatus === 'active' ? 'banned' : 'active';
+        try {
+            await this.$api.updateUserStatus(row.id, newStatus);
+            ElMessage.success(`用戶 ${row.user_id} 狀態已更新為 ${newStatus}`);
+        } catch (error) {
+            console.error('Failed to update status:', error);
+            row.status = oldStatus; 
+        }
+    },
 
-    // (★★★ v6 移除：handleCheckBalance ★★★)
-
-    // (handleSearch, handleSizeChange, handlePageChange 函數不變)
     handleSearch() { this.pagination.page = 1; this.fetchUsers(); },
     handleSizeChange(newLimit) { this.pagination.limit = newLimit; this.pagination.page = 1; this.fetchUsers(); },
     handlePageChange(newPage) { this.pagination.page = newPage; this.fetchUsers(); },
     
-    // (formatDateTime 不變)
-    formatDateTime(isoString) { /* ... (不變) ... */ },
+    formatDateTime(isoString) { 
+        if (!isoString) return '';
+        try { return new Date(isoString).toLocaleString('zh-TW', { timeZone: 'Asia/Taipei' }); }
+        catch (e) { return isoString; }
+    },
     
-    // (★★★ v6 新增：formatCurrency ★★★)
     formatCurrency(value) {
       if (value === null || value === undefined) return '0.00';
       try {
         const num = parseFloat(value);
         if (isNaN(num)) return '0.00';
-        return num.toFixed(2); // (USDT 顯示到小數點後 2 位)
+        return num.toFixed(2);
       } catch (e) {
         return '0.00';
       }
     },
 
-    // (★★★ v6 修改：handleEdit ★★★)
     handleEdit(row) {
       this.editForm.currentUser = row;
       this.editForm.nickname = row.nickname || '';
       this.editForm.level = row.level;
       this.editForm.referrer_code = row.referrer_code || '';
-      this.editForm.balance = parseFloat(row.balance) || 0; // (v6 新增)
+      this.editForm.balance = parseFloat(row.balance) || 0; 
       
       this.editDialogVisible = true;
       this.$nextTick(() => {
@@ -310,7 +312,6 @@ export default {
       });
     },
 
-    // (★★★ v6 修改：handleSubmitEdit ★★★)
     async handleSubmitEdit() {
       const formEl = this.$refs.editFormRef;
       if (!formEl) return;
@@ -322,7 +323,7 @@ export default {
               nickname: this.editForm.nickname,
               level: this.editForm.level,
               referrer_code: this.editForm.referrer_code || null,
-              balance: this.editForm.balance, // (v6 新增)
+              balance: this.editForm.balance, 
             };
             await this.$api.updateUser(this.editForm.currentUser.id, dataToSubmit);
             ElMessage.success('用戶資料更新成功');
@@ -339,8 +340,21 @@ export default {
       });
     },
 
-    // (handleViewReferrals 不變)
-    async handleViewReferrals(row) { /* ... (不變) ... */ }
+    async handleViewReferrals(row) {
+        this.referralData.inviteCode = row.invite_code;
+        this.referralData.list = [];
+        this.referralData.loading = true;
+        this.referralDialogVisible = true;
+        try {
+            const referrals = await this.$api.getReferrals(row.invite_code);
+            this.referralData.list = referrals;
+        } catch (error) {
+             console.error('Failed to fetch referrals:', error);
+             ElMessage.error('載入推薦列表失敗');
+        } finally {
+            this.referralData.loading = false;
+        }
+    }
   },
 };
 </script>
@@ -351,4 +365,19 @@ export default {
 .pagination-container { margin-top: 20px; display: flex; justify-content: flex-end; }
 .el-form-item { margin-bottom: 10px; }
 .form-tip { font-size: 12px; color: #909399; margin-top: 5px; line-height: 1.2; }
+
+/* (★★★ 關鍵修復 ★★★) */
+.search-form :deep(.el-input) {
+  width: 180px;
+}
+
+/* (★★★ 關鍵修復：新增此規則以鎖定 el-select 的寬度 ★★★) */
+.search-form :deep(.el-select) {
+  width: 180px;
+}
+
+/* (日期範圍選擇器需要更寬) */
+.search-form :deep(.el-date-picker) {
+  width: 240px;
+}
 </style>

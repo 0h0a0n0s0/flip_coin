@@ -7,7 +7,7 @@
     </el-card>
 
     <el-card shadow="never" class="search-card">
-      <el-form :inline="true" :model="searchParams" @submit.native.prevent="handleSearch">
+      <el-form :inline="true" :model="searchParams" @submit.native.prevent="handleSearch" class="search-form">
         <el-form-item label="钱包名称"><el-input v-model="searchParams.name" placeholder="名称 (模糊)" clearable></el-input></el-form-item>
         <el-form-item label="公鏈類型">
           <el-select v-model="searchParams.chain_type" placeholder="选择公鏈" clearable>
@@ -102,6 +102,7 @@
 </template>
 
 <script>
+// ( ... <script> 標籤內的邏輯保持不變 ... )
 import { ElMessage, ElMessageBox } from 'element-plus';
 
 export default {
@@ -112,14 +113,12 @@ export default {
          tableData: [],
          totalItems: 0,
          pagination: { page: 1, limit: 10 },
-         // (v6 修改：searchParams)
          searchParams: { name: '', chain_type: '', address: '' },
          
          dialogVisible: false,
          dialogTitle: '',
          submitLoading: false,
          
-         // (★★★ v7 修改：walletForm ★★★)
          walletForm: { 
            id: null, name: '', chain_type: 'TRC20', address: '',
            is_gas_reserve: false, 
@@ -129,7 +128,6 @@ export default {
            is_active: true
          },
          
-         // (v6 修改：formRules)
          formRules: {
              name: [{ required: true, message: '请输入钱包名称', trigger: 'blur' }],
              chain_type: [{ required: true, message: '请选择公鏈類型', trigger: 'change' }],
@@ -143,7 +141,6 @@ export default {
       this.fetchWallets();
   },
   methods: {
-      // (v6 修改：fetchWallets)
       async fetchWallets() {
           if (this.loading) return;
           this.loading = true;
@@ -151,10 +148,9 @@ export default {
               const params = {
                   ...this.pagination,
                   name: this.searchParams.name || undefined,
-                  chain_type: this.searchParams.chain_type || undefined, // (v6 修改)
+                  chain_type: this.searchParams.chain_type || undefined,
                   address: this.searchParams.address || undefined,
               };
-              // (★★★ v7 注意：API 名稱不變，但後端路由會查詢新表 ★★★)
               const response = await this.$api.getWallets(params);
               this.tableData = response.list;
               this.totalItems = response.total;
@@ -174,7 +170,6 @@ export default {
           this.pagination.page = newPage;
           this.fetchWallets();
       },
-      // (★★★ v7 修改：handleAdd ★★★)
       getEmptyForm() {
         return { 
            id: null, name: '', chain_type: 'TRC20', address: '',
@@ -191,10 +186,8 @@ export default {
           this.dialogVisible = true;
           this.$nextTick(() => { this.$refs.walletFormRef?.clearValidate(); });
       },
-      // (★★★ v7 修改：handleEdit ★★★)
       handleEdit(row) {
           this.dialogTitle = '編輯平台錢包';
-          // (複製所有欄位)
           Object.assign(this.walletForm, {
              id: row.id, name: row.name, chain_type: row.chain_type, address: row.address,
              is_gas_reserve: row.is_gas_reserve, 
@@ -213,12 +206,11 @@ export default {
               if (valid) {
                   this.submitLoading = true;
                   try {
-                      // (walletForm 已包含所有 v7 欄位)
                       if (this.walletForm.id) {
                           await this.$api.updateWallet(this.walletForm.id, this.walletForm);
                           ElMessage.success('錢包更新成功');
                       } else {
-                          await this.$api.addWallet(this.walletForm);
+                          await this.addWallet(this.walletForm);
                           ElMessage.success('錢包新增成功');
                       }
                       this.dialogVisible = false;
@@ -243,6 +235,7 @@ export default {
 </script>
 
 <style scoped>
+.page-description { color: #909399; font-size: 14px; margin-bottom: 20px; }
 .action-card { margin-bottom: 20px; }
 .search-card { margin-bottom: 20px; }
 .table-card { margin-bottom: 20px; }
@@ -253,5 +246,13 @@ export default {
 }
 .el-checkbox {
   margin-right: 15px;
+}
+
+/* (★★★ 修改 2: 新增 CSS 規則 ★★★) */
+.search-form :deep(.el-input) {
+  width: 180px;
+}
+.search-form :deep(.el-select) {
+  width: 180px;
 }
 </style>

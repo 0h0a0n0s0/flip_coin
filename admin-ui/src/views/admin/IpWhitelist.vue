@@ -11,12 +11,12 @@
       </el-alert>
     </p>
     <el-card shadow="never" class="add-card">
-      <el-form ref="addFormRef" :model="addForm" :rules="addFormRules" :inline="true" @submit.native.prevent="handleAddIp">
+      <el-form ref="addFormRef" :model="addForm" :rules="addFormRules" :inline="true" @submit.native.prevent="handleAddIp" class="search-form">
         <el-form-item label="IP / CIDR" prop="ip_range">
-          <el-input v-model="addForm.ip_range" placeholder="例如: 123.123.123.123/32" style="width: 250px;"></el-input>
+          <el-input v-model="addForm.ip_range" placeholder="例如: 123.123.123.123/32"></el-input>
         </el-form-item>
         <el-form-item label="描述 (選填)">
-          <el-input v-model="addForm.description" placeholder="例如: 辦公室 IP" style="width: 200px;"></el-input>
+           <el-input v-model="addForm.description" placeholder="例如: 辦公室 IP"></el-input>
         </el-form-item>
         <el-form-item>
           <el-button type="primary" @click="handleAddIp" :loading="addLoading">新增</el-button>
@@ -41,6 +41,7 @@
   </div>
 </template>
 <script>
+// ( ... <script> 標籤內的邏輯保持不變 ... )
 import { ElMessage, ElMessageBox } from 'element-plus';
 export default {
   name: 'IpWhitelistView',
@@ -102,4 +103,9 @@ export default {
 .add-card { margin-bottom: 20px; }
 .table-card { margin-bottom: 20px; }
 .el-form-item { margin-bottom: 10px; }
+
+/* (★★★ 修改 4: 新增 CSS 規則 ★★★) */
+.search-form :deep(.el-input) {
+  width: 180px;
+}
 </style>

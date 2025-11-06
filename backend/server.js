@@ -316,6 +316,100 @@ function v1ApiRouter(router, passport) {
         res.status(200).json(req.user);
     });
 
+    // (★★★ PATCH /api/v1/users/nickname ★★★)
+    router.patch('/api/v1/users/nickname', passport.authenticate('jwt', { session: false }), async (req, res) => {
+        const { nickname } = req.body;
+        const userId = req.user.id; // (來自 JWT)
+
+        if (!nickname || nickname.trim().length === 0) {
+            return res.status(400).json({ error: 'Nickname cannot be empty.' });
+        }
+        if (nickname.length > 50) {
+            return res.status(400).json({ error: 'Nickname is too long (max 50 chars).' });
+        }
+
+        try {
+            const result = await db.query(
+                'UPDATE users SET nickname = $1 WHERE id = $2 RETURNING *',
+                [nickname.trim(), userId]
+            );
+            
+            const updatedUser = result.rows[0];
+            delete updatedUser.password_hash;
+            console.log(`[v7 API] User ${updatedUser.user_id} updated nickname to: ${updatedUser.nickname}`);
+            res.status(200).json(updatedUser);
+
+        } catch (error) {
+            console.error(`[v7 API] Error updating nickname for user ${userId}:`, error);
+            res.status(500).json({ error: 'Internal server error' });
+        }
+    });
+
+    // (★★★ POST /api/v1/users/bind-referrer ★★★)
+    router.post('/api/v1/users/bind-referrer', passport.authenticate('jwt', { session: false }), async (req, res) => {
+        const { referrer_code } = req.body;
+        const user = req.user; // (來自 JWT)
+
+        if (!referrer_code || referrer_code.trim().length === 0) {
+            return res.status(400).json({ error: 'Referrer code cannot be empty.' });
+        }
+        
+        // (開始事務)
+        const client = await db.pool.connect();
+        try {
+            await client.query('BEGIN');
+            
+            // 1. 再次檢查用戶是否已被綁定 (防止重複請求)
+            // (我們需要從 DB 獲取最新的 user record 並鎖定它)
+            const userCheckResult = await client.query(
+                'SELECT referrer_code, invite_code FROM users WHERE id = $1 FOR UPDATE', 
+                [user.id]
+            );
+            const currentUserData = userCheckResult.rows[0];
+
+            if (currentUserData.referrer_code) {
+                await client.query('ROLLBACK');
+                client.release();
+                return res.status(400).json({ error: 'Account already has a referrer.' });
+            }
+            
+            // 2. 檢查是否綁定自己
+            if (currentUserData.invite_code === referrer_code) {
+                await client.query('ROLLBACK');
+                client.release();
+                return res.status(400).json({ error: 'Cannot set referrer code to own invite code.' });
+            }
+
+            // 3. 檢查推薦人是否存在
+            const referrerExists = await client.query('SELECT 1 FROM users WHERE invite_code = $1', [referrer_code]);
+            if (referrerExists.rows.length === 0) {
+                await client.query('ROLLBACK');
+                client.release();
+                return res.status(400).json({ error: 'Invaerrer code. Code does not exist.' });
+            }
+            
+            // 4. 更新用戶的 referrer_code
+            const updateResult = await client.query(
+                'UPDATE users SET referrer_code = $1 WHERE id = $2 RETURNING *',
+                [referrer_code, user.id]
+            );
+            
+            await client.query('COMMIT');
+            
+            const updatedUser = updateResult.rows[0];
+            delete updatedUser.password_hash;
+            console.log(`[v7 API] User ${updatedUser.user_id} bound referrer to: ${updatedUser.referrer_code}`);
+            res.status(200).json(updatedUser);
+
+        } catch (error) {
+            await client.query('ROLLBACK');
+            console.error(`[v7 API] Error binding referrer for user ${user.id}:`, error);
+            res.status(500).json({ error: 'Internal server error' });
+        } finally {
+            client.release();
+        }
+    });
+
     // ( /api/v1/history )
     router.get('/api/v1/history', passport.authenticate('jwt', { session: false }), async (req, res) => {
         try {

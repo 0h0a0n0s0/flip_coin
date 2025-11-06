@@ -4,12 +4,12 @@
     <p class="page-description">在此處新增或刪除要阻擋的 IP 地址或 CIDR 範圍。</p>
 
     <el-card shadow="never" class="add-card">
-      <el-form ref="addFormRef" :model="addForm" :rules="addFormRules" :inline="true" @submit.native.prevent="handleAddRegion">
+      <el-form ref="addFormRef" :model="addForm" :rules="addFormRules" :inline="true" @submit.native.prevent="handleAddRegion" class="search-form">
         <el-form-item label="IP / CIDR" prop="ip_range">
-          <el-input v-model="addForm.ip_range" placeholder="例如: 1.2.3.4/32 或 1.2.3.0/24" style="width: 250px;"></el-input>
+          <el-input v-model="addForm.ip_range" placeholder="例如: 1.2.3.4/32 或 1.2.3.0/24"></el-input>
         </el-form-item>
         <el-form-item label="描述 (選填)">
-          <el-input v-model="addForm.description" placeholder="例如: 地區名稱" style="width: 200px;"></el-input>
+          <el-input v-model="addForm.description" placeholder="例如: 地區名稱"></el-input>
         </el-form-item>
         <el-form-item>
           <el-button type="primary" @click="handleAddRegion" :loading="addLoading">新增</el-button>
@@ -39,6 +39,7 @@
 </template>
 
 <script>
+// ( ... <script> 標籤內的邏輯保持不變 ... )
 import { ElMessage, ElMessageBox } from 'element-plus';
 
 export default {
@@ -55,7 +56,6 @@ export default {
            addFormRules: {
                ip_range: [
                    { required: true, message: '请输入 IP / CIDR', trigger: 'blur' },
-                   // (簡單的前端格式檢查，後端 也有驗證)
                    { pattern: /^([0-9]{1,3}\.){3}[0-9]{1,3}(\/([0-9]|[1-2][0-9]|3[0-2]))?$/, message: '格式錯誤，請使用 CIDR (e.g., 1.2.3.4/32 or 1.2.3.0/24)', trigger: 'blur' }
                ],
            }
@@ -125,8 +125,12 @@ export default {
 .form-tip {
   font-size: 12px;
   color: #909399;
-  /* margin-top: 5px; (inline 不需要) */
   display: block; /* 讓提示換行 */
   clear: both; /* 避免影響後面的元素 */
+}
+
+/* (★★★ 修改 4: 新增 CSS 規則 ★★★) */
+.search-form :deep(.el-input) {
+  width: 180px;
 }
 </style>

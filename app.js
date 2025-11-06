@@ -1,7 +1,7 @@
-// 檔案: app.js (★★★ v6.1 中心化 Auth 版 ★★★)
+// 檔案: app.js (★★★ v7-M-X 修改版 ★★★)
 
-// (★★★ v6 導入：只導入需要的 API ★★★)
 import { renderHistory } from './modules/history.js';
+// (★★★ 導入所有 api 函式 ★★★)
 import * as api from './modules/api.js'; 
 
 // --- Notyf 實例化 (不變) ---
@@ -22,7 +22,7 @@ const notyf = new Notyf({
     ]
 });
 
-// --- 全局狀態 (★★★ v6 修改 ★★★) ---
+// --- 全局狀態 ---
 let jwtToken = null;
 let currentUser = null;
 let socket = null;
@@ -35,21 +35,22 @@ let loginBtn, registerBtn, logoutBtn, userInfoDisplay, usernameDisplay, balanceD
 let loginModal, closeLoginModalBtn, cancelLoginBtn, confirmLoginBtn, loginUsernameInput, loginPasswordInput;
 // (註冊 Modal)
 let registerModal, closeRegisterModalBtn, cancelRegisterBtn, confirmRegisterBtn, registerUsernameInput, registerPasswordInput, registerPasswordConfirmInput;
-// (★★★ v7-M2 修改：個人中心 Modal ★★★)
+// (個人中心 Modal)
 let personalCenterBtn, personalCenterModal, closePersonalCenterModalBtn, pc_cancelBtn;
 // (Tab 1: Info)
 let pc_userId, pc_username, pc_level, pc_maxStreak, pc_inviteCode, pc_referrerCode;
+// (★★★ M-X 新增：個人中心表單元素 ★★★)
+let pc_nicknameInput, pc_saveNicknameBtn, pc_referrerSection, pc_referrerInput, pc_bindReferrerBtn;
 // (Tab 2: Deposit)
 let pc_tab_info, pc_tab_deposit, pc_content_info, pc_content_deposit;
 let pc_tron_address, pc_copy_tron_btn;
 
-let isBetting = false; // (防止重複下注)
+let isBetting = false; 
 
-// --- Socket 連線 (★★★ v6 修改 ★★★) ---
+// --- Socket 連線 (不變) ---
 function initializeSocket(token) {
     if (socket) socket.disconnect();
     
-    // (使用 token 進行 auth)
     socket = io('http://localhost:3000', {
         auth: {
             token: token
@@ -61,10 +62,8 @@ function initializeSocket(token) {
     });
     
     socket.on('connect_error', (err) => {
-        // ... (v6.1 已修復，不變) ...
         console.error('[Socket.io] Connection Error:', err.message);
         if (err.message === 'Authentication error: Invalid token') {
-            // Token 過期或無效，強制登出
             handleLogout();
             notyf.error('連線已過期，請重新登入。');
         }
@@ -72,7 +71,6 @@ function initializeSocket(token) {
     
     socket.on('bet_updated', (betData) => {
         console.log('[Socket.io] Received bet update (for history):', betData);
-        // (收到更新時，刷新歷史列表)
         if (jwtToken) {
             renderHistory(jwtToken);
         }
@@ -91,7 +89,6 @@ function initializeSocket(token) {
             currentUser = fullUser;
             updateUI();
             
-            // (★★★ M5 新增：如果不是正在下注時收到餘額更新，才提示充值到帳 ★★★)
             if (!isBetting) {
                 notyf.success(`帳戶已更新！新餘額: ${parseFloat(fullUser.balance).toFixed(2)} USDT`);
             }
@@ -104,7 +101,7 @@ function initializeSocket(token) {
     socket.on('disconnect', () => console.log('[Socket.io] Disconnected.'));
 }
 
-// --- 渲染排行榜 (★★★ v6 修改：顯示名稱 ★★★) ---
+// --- 渲染排行榜 (不變) ---
 function renderLeaderboardData(leaderboardData) {
     const listEl = document.getElementById('leaderboardList');
     if (!listEl) return; 
@@ -136,7 +133,7 @@ async function renderLeaderboard() {
     }
 }
 
-// --- UI 更新 (★★★ v6 重構 ★★★) ---
+// --- UI 更新 (★★★ 更新 Header 暱稱 ★★★) ---
 function updateUI() {
     if (currentUser && jwtToken) {
         // --- 登入狀態 ---
@@ -147,9 +144,8 @@ function updateUI() {
         personalCenterBtn.style.display = 'block';
         logoutBtn.style.display = 'block';
 
-        // (更新 Header 資訊)
+        // (★★★ M-X 修改：優先顯示暱稱 ★★★)
         usernameDisplay.innerText = currentUser.nickname || currentUser.username;
-        // (★★★ v7-M2 修改：確保 balance 是數字且格式化 ★★★)
         const balance = typeof currentUser.balance === 'string' 
             ? parseFloat(currentUser.balance) 
             : currentUser.balance;
@@ -191,7 +187,7 @@ function updateUI() {
     }
 }
 
-// --- Auth 處理函數 (★★★ v6 新增 ★★★) ---
+// --- Auth 處理函數 (不變) ---
 function showLoginModal() { loginModal.style.display = 'block'; }
 function hideLoginModal() { loginModal.style.display = 'none'; }
 function showRegisterModal() { registerModal.style.display = 'block'; }
@@ -234,16 +230,12 @@ async function handleRegister() {
         await renderHistory(token);
         
     } catch (error) {
-        // (★★★ M-Fix 2 修改 ★★★)
-        // 檢查是否是 400 (Bad Request)
         if (error.status === 400) {
-            // 業務邏輯錯誤 (例如 "Username already taken.")
             notyf.open({
-                type: 'warning', // (使用黃色警告)
-                message: `${error.message}` // (直接顯示後端訊息)
+                type: 'warning', 
+                message: `${error.message}` 
             });
         } else {
-            // 500 伺服器錯誤或網路錯誤
             notyf.error(`註冊失敗：${error.message}`);
         }
     } finally {
@@ -280,16 +272,12 @@ async function handleLogin() {
         await renderHistory(token);
         
     } catch (error) {
-         // (★★★ M-Fix 2 修改 ★★★)
-         // 檢查是否是 401 (Unauthorized)
         if (error.status === 401) {
-            // 業務邏輯錯誤 (例如 "Invalid credentials." 或 "Account is disabled.")
             notyf.open({
-                type: 'warning', // (使用黃色警告)
-                message: `${error.message}` // (直接顯示後端訊息)
+                type: 'warning',
+                message: `${error.message}`
             });
         } else {
-            // 500 伺服器錯誤或網路錯誤
             notyf.error(`登入失敗：${error.message}`);
         }
     } finally {
@@ -315,9 +303,8 @@ async function fetchUserInfo(token) {
         initializeSocket(token);
         await renderHistory(token);
     } catch (error) {
-        // Token 無效或過期
         console.error('Auto-login failed:', error.message);
-        handleLogout(); // 清除無效 token
+        handleLogout();
     }
 }
 
@@ -328,14 +315,12 @@ async function autoLogin() {
         jwtToken = savedToken;
         await fetchUserInfo(savedToken);
     } else {
-        // 沒有 token，正常顯示登出狀態
         updateUI(); 
     }
-    // (無論是否登入，都載入排行榜)
     await renderLeaderboard();
 }
 
-// --- 個人中心 (★★★ v6 新增 ★★★) ---
+// --- 個人中心 (★★★ 更新 UI 邏輯 ★★★) ---
 function showPersonalCenterModal() {
     if (!currentUser) return;
     
@@ -347,7 +332,18 @@ function showPersonalCenterModal() {
     pc_inviteCode.innerText = currentUser.invite_code || 'N/A';
     pc_referrerCode.innerText = currentUser.referrer_code || '(未綁定)';
     
-    // (★★★ v7-M2 新增：Tab 2: 填充充值資訊 ★★★)
+    // (★★★ M-X 新增：填充表單預設值 ★★★)
+    pc_nicknameInput.value = currentUser.nickname || '';
+    pc_referrerInput.value = ''; // (清空推薦碼輸入)
+    
+    // (★★★ M-X 新增：根據是否已綁定，決定是否顯示綁定區塊 ★★★)
+    if (currentUser.referrer_code) {
+        pc_referrerSection.style.display = 'none'; // (已綁定，隱藏)
+    } else {
+        pc_referrerSection.style.display = 'block'; // (未綁定，顯示)
+    }
+    
+    // (Tab 2: 填充充值資訊)
     pc_tron_address.value = currentUser.tron_deposit_address || '地址生成中...';
     
     // (重置 Tab 狀態為顯示 "基本資訊")
@@ -363,7 +359,7 @@ function hidePersonalCenterModal() {
     personalCenterModal.style.display = 'none';
 }
 
-// (★★★ v7-M2 新增：Tab 切換邏輯 ★★★)
+// (Tab 切換邏輯)
 function handlePcTabClick(tabName) {
     if (tabName === 'info') {
         pc_tab_info.classList.add('active');
@@ -377,7 +373,7 @@ function handlePcTabClick(tabName) {
         pc_content_deposit.classList.add('active');
     }
 }
-// (★★★ v7-M2 新增：複製地址邏輯 ★★★)
+// (複製地址邏輯)
 function copyTronAddress() {
     if (!navigator.clipboard) {
         notyf.error('您的瀏覽器不支持複製功能');
@@ -391,8 +387,71 @@ function copyTronAddress() {
     });
 }
 
+// (★★★ 儲存暱稱 ★★★)
+async function handleSaveNickname() {
+    const newNickname = pc_nicknameInput.value.trim();
+    if (newNickname.length > 50) {
+        notyf.error('暱稱長度不能超過 50 個字元');
+        return;
+    }
+    if (!newNickname || newNickname === (currentUser.nickname || '')) {
+        notyf.open({ type: 'warning', message: '暱稱未變更' });
+        return;
+    }
 
-// --- (★★★ M5 核心：實作下注功能 ★★★) ---
+    const btn = pc_saveNicknameBtn;
+    const originalText = btn.innerText;
+    btn.disabled = true;
+    btn.innerText = '儲存中...';
+
+    try {
+        const updatedUser = await api.updateNickname(jwtToken, newNickname);
+        currentUser = updatedUser; // (更新本地狀態)
+        updateUI(); // (更新 Header 顯示)
+        showPersonalCenterModal(); // (更新彈窗內的顯示)
+        notyf.success('暱稱更新成功！');
+    } catch (error) {
+        notyf.error(`更新失敗：${error.message}`);
+    } finally {
+        btn.disabled = false;
+        btn.innerText = originalText;
+    }
+}
+
+// (★★★ 綁定推薦人 ★★★)
+async function handleBindReferrer() {
+    const referrerCode = pc_referrerInput.value.trim();
+    if (!referrerCode) {
+        notyf.error('請輸入推薦碼');
+        return;
+    }
+    if (referrerCode === currentUser.invite_code) {
+        notyf.error('不能綁定自己的邀請碼');
+        return;
+    }
+
+    const btn = pc_bindReferrerBtn;
+    const originalText = btn.innerText;
+    btn.disabled = true;
+    btn.innerText = '綁定中...';
+
+    try {
+        const updatedUser = await api.bindReferrer(jwtToken, referrerCode);
+        currentUser = updatedUser; // (更新本地狀態)
+        updateUI(); // (更新 Header 顯示)
+        showPersonalCenterModal(); // (更新彈窗，將隱藏綁定區塊)
+        notyf.success('推薦人綁定成功！');
+    } catch (error) {
+        // (後端會返回 400 錯誤，例如推薦碼不存在或已綁定)
+        notyf.open({ type: 'warning', message: `綁定失敗：${error.message}` });
+    } finally {
+        btn.disabled = false;
+        btn.innerText = '綁定';
+    }
+}
+
+
+// --- (M5 核心：實作下注功能) (不變) ---
 async function handleConfirmBet() {
     if (isBetting) {
         notyf.error('正在處理上一筆下注，請稍候...');
@@ -422,37 +481,26 @@ async function handleConfirmBet() {
     notyf.success('注單已提交，正在等待鏈上開獎...');
 
     try {
-        // (★★★ 關鍵：調用 API 並等待完整的結算結果 ★★★)
         const settledBet = await api.placeBet(jwtToken, choice, amount);
         
-        // (API 成功返回 = 結算完成)
         console.log('Bet settled:', settledBet);
         
-        // (更新餘額 (註：Socket.IO 也會更新，但 API 回傳更快))
-        // (我們直接使用 API 返回的注單來判斷，因為 user_info_updated 可能延遲)
+        // (餘額更新將由 Socket.IO 的 'user_info_updated' 事件統一處理)
+        // (我們不再手動計算餘額，以避免狀態不一致)
+
         if (settledBet.status === 'won') {
-            const newBalance = parseFloat(currentUser.balance) - parseFloat(settledBet.amount) + (parseFloat(settledBet.amount) * settledBet.payout_multiplier);
-            currentUser.balance = newBalance;
-            notyf.success(`恭喜中獎！贏得 ${parseFloat(settledBet.amount) * settledBet.payout_multiplier} USDT`);
+            notyf.success(`恭喜中獎！`);
         } else if (settledBet.status === 'lost') {
-            currentUser.balance = parseFloat(currentUser.balance) - parseFloat(settledBet.amount);
             notyf.error('可惜，未中獎');
         }
         
-        // (觸發連勝/餘額 UI 更新)
-        // (後端 BetQueueService 會發送 'stats_updated' 和 'user_info_updated'，我們這裡手動更新以求即時)
-        updateUI(); 
-        
         // (顯示硬幣結果)
         const outcome = (parseInt(settledBet.tx_hash.slice(-1), 16) % 2 === 0) ? 'head' : 'tail';
-        showCoinResult(outcome); // (假設 showCoinResult 會停止動畫)
+        showCoinResult(outcome);
 
     } catch (error) {
-        // (API 失敗 = 下注失敗)
-        console.warn('Bet failed:', error.message); // (改用 warn)
+        console.warn('Bet failed:', error.message); 
         
-        // (★★★ M-Fix 2 修改 ★★★)
-        // (400 餘額不足, 401 Token 過期)
         if (error.status === 400 || error.status === 401) {
              notyf.open({
                 type: 'warning',
@@ -471,9 +519,6 @@ async function handleConfirmBet() {
     }
 }
 
-/**
- * (★★★ M5 新增：顯示硬幣結果的輔助函數 ★★★)
- */
 function showCoinResult(result) { // 'head' or 'tail'
     const coin = document.getElementById('coin-flipper');
     coin.classList.remove('flipping');
@@ -485,12 +530,11 @@ function showCoinResult(result) { // 'head' or 'tail'
         coin.classList.remove('show-head');
         coin.classList.add('show-tail');
     }
-    // (我們不再需要 v1 的 2 秒後重置，因為下次點擊會自動加上 flipping)
 }
 
-// --- 應用程式啟動器 (★★★ v7-M2 修改 ★★★) ---
+// --- 應用程式啟動器 (★★★ 獲取新 DOM ★★★) ---
 function initializeApp() {
-    console.log("✅ [v7-M2] App initializing...");
+    console.log("✅ [v7-M-X] App initializing...");
     // 獲取所有 DOM 元素
     confirmBetBtn = document.getElementById('confirmBetBtn'); 
     betAmountInput = document.getElementById('betAmount'); 
@@ -522,7 +566,7 @@ function initializeApp() {
     registerPasswordInput = document.getElementById('registerPasswordInput');
     registerPasswordConfirmInput = document.getElementById('registerPasswordConfirmInput');
     
-    // (★★★ v7-M2 修改：個人中心 Modal ★★★)
+    // (個人中心 Modal)
     personalCenterBtn = document.getElementById('personalCenterBtn');
     personalCenterModal = document.getElementById('personalCenterModal');
     closePersonalCenterModalBtn = document.getElementById('closePersonalCenterModalBtn');
@@ -534,6 +578,14 @@ function initializeApp() {
     pc_maxStreak = document.getElementById('pc_maxStreak');
     pc_inviteCode = document.getElementById('pc_inviteCode');
     pc_referrerCode = document.getElementById('pc_referrerCode');
+    
+    // (★★★ M-X 新增：獲取表單 DOM ★★★)
+    pc_nicknameInput = document.getElementById('pc_nicknameInput');
+    pc_saveNicknameBtn = document.getElementById('pc_saveNicknameBtn');
+    pc_referrerSection = document.getElementById('pc_referrerSection');
+    pc_referrerInput = document.getElementById('pc_referrerInput');
+    pc_bindReferrerBtn = document.getElementById('pc_bindReferrerBtn');
+
     // (Tab 2)
     pc_tab_info = document.getElementById('pc_tab_info');
     pc_tab_deposit = document.getElementById('pc_tab_deposit');
@@ -558,7 +610,7 @@ function initializeApp() {
     confirmLoginBtn.addEventListener('click', handleLogin);
     confirmRegisterBtn.addEventListener('click', handleRegister);
     
-    // (★★★ v7-M2 修改：綁定個人中心 ★★★)
+    // (綁定個人中心)
     personalCenterBtn.addEventListener('click', showPersonalCenterModal);
     closePersonalCenterModalBtn.addEventListener('click', hidePersonalCenterModal);
     pc_cancelBtn.addEventListener('click', hidePersonalCenterModal);
@@ -568,9 +620,12 @@ function initializeApp() {
     // (綁定複製按鈕)
     pc_copy_tron_btn.addEventListener('click', copyTronAddress);
 
+    // (★★★ M-X 新增：綁定個人中心表單事件 ★★★)
+    pc_saveNicknameBtn.addEventListener('click', handleSaveNickname);
+    pc_bindReferrerBtn.addEventListener('click', handleBindReferrer);
 
     // 綁定遊戲事件
-    confirmBetBtn.addEventListener('click', handleConfirmBet); // (目前是佔位符)
+    confirmBetBtn.addEventListener('click', handleConfirmBet);
     
     // (點擊 Modal 外部灰色區域也可關閉)
     window.addEventListener('click', (event) => {
@@ -580,10 +635,10 @@ function initializeApp() {
     });
 
     // 啟動 App
-    autoLogin(); // (會自動載入排行榜)
+    autoLogin();
 }
 
-// --- 程式入口 (v6 不變) ---
+// --- 程式入口 (不變) ---
 function waitForSocketIO() {
     if (typeof window.io !== 'undefined') {
         initializeApp();

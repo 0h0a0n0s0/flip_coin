@@ -1,11 +1,11 @@
 // 檔案: modules/api.js (★★★ v6.1 中心化 Auth 版 ★★★)
 
-// (★★★ v6 修改：API 路徑改為 /api/v1/ ★★★)
+// (★★★ API 路徑改為 /api/v1/ ★★★)
 const API_BASE_URL = '/api/v1'; 
 
 /**
  * 統一的錯誤處理和請求函數
- * (★★★ v6 修改：加入 token 參數 ★★★)
+ * (★★★ 加入 token 參數 ★★★)
  */
 async function request(endpoint, options = {}) {
     const url = `${API_BASE_URL}${endpoint}`;
@@ -71,7 +71,7 @@ async function request(endpoint, options = {}) {
 }
 
 /**
- * (★★★ v6 新增：傳統註冊 ★★★)
+ * (★★★ 傳統註冊 ★★★)
  * @param {string} username 
  * @param {string} password 
  * @returns {Promise<object>} { user, token }
@@ -84,7 +84,7 @@ export function register(username, password) {
 }
 
 /**
- * (★★★ v6 新增：傳統登入 ★★★)
+ * (★★★ 傳統登入 ★★★)
  * @param {string} username 
  * @param {string} password 
  * @returns {Promise<object>} { user, token }
@@ -97,7 +97,7 @@ export function login(username, password) {
 }
 
 /**
- * (★★★ v6 新增：獲取用戶資訊 ★★★)
+ * (★★★ 獲取用戶資訊 ★★★)
  * @param {string} token 
  * @returns {Promise<object>} user (包含 balance)
  */
@@ -110,7 +110,7 @@ export function getUserInfo(token) {
 
 
 /**
- * (★★★ v6 修改：使用 token 驗證 ★★★)
+ * (★★★ 使用 token 驗證 ★★★)
  * @param {string} token 
  * @returns {Promise<Array>} 歷史記錄陣列
  */
@@ -122,7 +122,7 @@ export function getHistory(token) {
 }
 
 /**
- * (★★★ v6 修改：公開 API，無需 token ★★★)
+ * (★★★ 公開 API，無需 token ★★★)
  * @returns {Promise<Array>} 排行榜陣列
  */
 export function getLeaderboard() {
@@ -130,7 +130,7 @@ export function getLeaderboard() {
 }
 
 /**
- * (★★★ v6 新增：中心化下注 ★★★)
+ * (★★★ 中心化下注 ★★★)
  * (v6.2 才會實作後端)
  * @param {string} token 
  * @param {string} choice 'head' or 'tail'
@@ -142,5 +142,33 @@ export function placeBet(token, choice, amount) {
         method: 'POST',
         token: token,
         body: JSON.stringify({ choice, amount }),
+    });
+}
+
+/**
+ * (★★★ 更新用戶暱稱 ★★★)
+ * @param {string} token
+ * @param {string} nickname
+ * @returns {Promise<object>} updated user
+ */
+export function updateNickname(token, nickname) {
+    return request('/users/nickname', { // (API 路由 /api/v1/users/nickname)
+        method: 'PATCH',
+        token: token,
+        body: JSON.stringify({ nickname }),
+    });
+}
+
+/**
+ * (★★★ 綁定推薦碼 ★★★)
+ * @param {string} token
+ * @param {string} referrerCode
+ * @returns {Promise<object>} updated user
+ */
+export function bindReferrer(token, referrerCode) {
+    return request('/users/bind-referrer', { // (API 路由 /api/v1/users/bind-referrer)
+        method: 'POST',
+        token: token,
+        body: JSON.stringify({ referrer_code: referrerCode }),
     });
 }

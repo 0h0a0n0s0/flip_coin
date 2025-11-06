@@ -4,7 +4,7 @@
     <p class="page-description">查看由 HD 錢包派生給所有用戶的專屬充值地址。</p>
 
     <el-card shadow="never" class="search-card">
-      <el-form :inline="true" :model="searchParams" @submit.native.prevent="handleSearch">
+      <el-form :inline="true" :model="searchParams" @submit.native.prevent="handleSearch" class="search-form">
         <el-form-item label="用户ID">
           <el-input v-model="searchParams.userId" placeholder="用户ID (模糊)" clearable></el-input>
         </el-form-item>
@@ -50,6 +50,7 @@
 </template>
 
 <script>
+// ( ... <script> 標籤內的邏輯保持不變 ... )
 export default {
   name: 'UserDepositAddressesView',
   data() {
@@ -86,7 +87,6 @@ export default {
           evmAddress: this.searchParams.evmAddress || undefined,
           pathIndex: this.searchParams.pathIndex || undefined,
         };
-        // (等待 API 實作)
         const response = await this.$api.getUserDepositAddresses(params); 
         this.tableData = response.list;
         this.totalItems = response.total;
@@ -109,4 +109,12 @@ export default {
 .table-card { margin-bottom: 20px; }
 .pagination-container { margin-top: 20px; display: flex; justify-content: flex-end; }
 .el-form-item { margin-bottom: 10px; }
+
+/* (★★★ 修改 2: 新增 CSS 規則 ★★★) */
+.search-form :deep(.el-input) {
+  width: 180px;
+}
+.search-form :deep(.el-select) {
+  width: 180px;
+}
 </style>
