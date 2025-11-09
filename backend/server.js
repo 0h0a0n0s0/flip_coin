@@ -474,6 +474,182 @@ function v1ApiRouter(router, passport) {
             res.status(500).json({ error: 'Internal server error fetching leaderboard' });
         }
     });
+        
+    /**
+     * @description (新) 設置初始提款密碼
+     * @body { login_password, new_password }
+     */
+    router.post('/api/v1/users/set-withdrawal-password', passport.authenticate('jwt', { session: false }), async (req, res) => {
+        const { login_password, new_password } = req.body;
+        const user = req.user;
+
+        if (!login_password || !new_password || new_password.length < 6) {
+            return res.status(400).json({ error: '登入密碼為必填，且新提款密碼長度至少 6 位' });
+        }
+
+        try {
+            // 1. 重新驗證登入密碼
+            const fullUser = await db.query('SELECT password_hash, has_withdrawal_password FROM users WHERE id = $1', [user.id]);
+            if (fullUser.rows[0].has_withdrawal_password) {
+                 return res.status(400).json({ error: '提款密碼已設置' });
+            }
+            
+            const isMatch = await bcrypt.compare(login_password, fullUser.rows[0].password_hash);
+            if (!isMatch) {
+                return res.status(401).json({ error: '登入密碼錯誤' });
+            }
+
+            // 2. 設置提款密碼
+            const salt = await bcrypt.genSalt(10);
+            const withdrawal_hash = await bcrypt.hash(new_password, salt);
+            
+            await db.query(
+                'UPDATE users SET withdrawal_password_hash = $1, has_withdrawal_password = true WHERE id = $2',
+                [withdrawal_hash, user.id]
+            );
+            
+            res.status(200).json({ message: '提款密碼設置成功' });
+        } catch (error) {
+            console.error(`[API v1] Error setting withdrawal pwd for ${user.user_id}:`, error);
+            res.status(500).json({ error: '伺服器內部錯誤' });
+        }
+    });
+
+    /**
+     * @description (新) 修改提款密碼
+     * @body { old_password, new_password }
+     */
+    router.patch('/api/v1/users/update-withdrawal-password', passport.authenticate('jwt', { session: false }), async (req, res) => {
+        const { old_password, new_password } = req.body;
+        const user = req.user;
+
+        if (!old_password || !new_password || new_password.length < 6) {
+            return res.status(400).json({ error: '舊密碼為必填，且新提款密碼長度至少 6 位' });
+        }
+
+        try {
+            // 1. 驗證舊的提款密碼
+            const fullUser = await db.query('SELECT withdrawal_password_hash FROM users WHERE id = $1', [user.id]);
+            if (!fullUser.rows[0].withdrawal_password_hash) {
+                 return res.status(400).json({ error: '尚未設置提款密碼' });
+            }
+
+            const isMatch = await bcrypt.compare(old_password, fullUser.rows[0].withdrawal_password_hash);
+            if (!isMatch) {
+                return res.status(401).json({ error: '舊提款密碼錯誤' });
+            }
+
+            // 2. 設置新密碼
+            const salt = await bcrypt.genSalt(10);
+            const withdrawal_hash = await bcrypt.hash(new_password, salt);
+            
+            await db.query(
+                'UPDATE users SET withdrawal_password_hash = $1 WHERE id = $2',
+                [withdrawal_hash, user.id]
+            );
+            
+            res.status(200).json({ message: '提款密碼修改成功' });
+        } catch (error) {
+            console.error(`[API v1] Error updating withdrawal pwd for ${user.user_id}:`, error);
+            res.status(500).json({ error: '伺服器內部錯誤' });
+        }
+    });
+    
+    /**
+     * @description (新) 請求提款
+     * @body { chain_type, address, amount, withdrawal_password }
+     */
+    router.post('/api/v1/users/request-withdrawal', passport.authenticate('jwt', { session: false }), async (req, res) => {
+        const { chain_type, address, amount, withdrawal_password } = req.body;
+        const user = req.user;
+        const withdrawalAmount = parseFloat(amount);
+        
+        // (簡易驗證)
+        if (!chain_type || !address || !withdrawalAmount || withdrawalAmount <= 0 || !withdrawal_password) {
+             return res.status(400).json({ error: '所有欄位均為必填' });
+        }
+        // (您應在 .env 中定義最小提款金額)
+        const MIN_WITHDRAWAL = parseFloat(process.env.MIN_WITHDRAWAL_AMOUNT || '10');
+        if (withdrawalAmount < MIN_WITHDRAWAL) {
+             return res.status(400).json({ error: `最小提款金額為 ${MIN_WITHDRAWAL} USDT` });
+        }
+
+        const client = await db.pool.connect();
+        try {
+            await client.query('BEGIN');
+            
+            // 1. 鎖定用戶並檢查所有條件
+            const userResult = await client.query(
+                'SELECT balance, withdrawal_password_hash, has_withdrawal_password FROM users WHERE id = $1 FOR UPDATE',
+                [user.id]
+            );
+            const userData = userResult.rows[0];
+
+            if (!userData.has_withdrawal_password) {
+                throw new Error('尚未設置提款密碼');
+            }
+            if (parseFloat(userData.balance) < withdrawalAmount) {
+                throw new Error('餘額不足');
+            }
+            
+            const isPwdMatch = await bcrypt.compare(withdrawal_password, userData.withdrawal_password_hash);
+            if (!isPwdMatch) {
+                throw new Error('提款密碼錯誤');
+            }
+
+            // 2. 扣款
+            const updatedUserResult = await client.query(
+                'UPDATE users SET balance = balance - $1 WHERE id = $2 RETURNING *',
+                [withdrawalAmount, user.id]
+            );
+
+            // 3. 創建提款單
+            await client.query(
+                `INSERT INTO withdrawals (user_id, chain_type, address, amount, status)
+                 VALUES ($1, $2, $3, $4, 'pending')`,
+                [user.user_id, chain_type, address, withdrawalAmount]
+            );
+            
+            // 4. 創建資金流水 (重要！)
+            await client.query(
+                `INSERT INTO platform_transactions (user_id, type, chain, amount, status)
+                 VALUES ($1, 'withdraw_request', $2, $3, 'pending')`,
+                 [user.user_id, chain_type, -Math.abs(withdrawalAmount)] // 存為負數
+            );
+
+            await client.query('COMMIT');
+            
+            // 5. 通知前台
+            delete updatedUserResult.rows[0].password_hash;
+            delete updatedUserResult.rows[0].withdrawal_password_hash;
+            io.to(connectedUsers[user.user_id]).emit('user_info_updated', updatedUserResult.rows[0]);
+
+            res.status(201).json({ message: '提款請求已提交，待審核' });
+
+        } catch (error) {
+            await client.query('ROLLBACK');
+            console.error(`[API v1] Withdrawal request failed for ${user.user_id}:`, error);
+            res.status(400).json({ error: error.message || '提款失敗' });
+        } finally {
+            client.release();
+        }
+    });
+    
+    /**
+     * @description (新) 獲取用戶提款歷史
+     */
+    router.get('/api/v1/users/withdrawals', passport.authenticate('jwt', { session: false }), async (req, res) => {
+        try {
+            const history = await db.query(
+                "SELECT chain_type, address, amount, status, rejection_reason, request_time, review_time, tx_hash FROM withdrawals WHERE user_id = $1 ORDER BY request_time DESC LIMIT 20",
+                [req.user.user_id]
+            );
+            res.status(200).json(history.rows);
+        } catch (error) {
+            console.error(`[API v1] Error fetching withdrawal history for ${req.user.user_id}:`, error);
+            res.status(500).json({ error: '伺服器內部錯誤' });
+        }
+    });
 }
 
 // (★★★ 載入系統設定 ★★★)

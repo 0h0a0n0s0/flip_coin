@@ -695,3 +695,54 @@ button.btn-secondary:hover {
   margin-top: 15px;
   line-height: 1.6;
 }
+
+/* 個人中心的新 <select> 樣式 */
+.modal-body select.input-field {
+  height: 45px;
+  background-color: #3a3a3c;
+  border: 1px solid #555;
+  color: #fff;
+  border-radius: 8px;
+  width: 100%;
+}
+
+/* 提款歷史列表 */
+.pc-history-list {
+  list-style: none;
+  padding: 0;
+  max-height: 200px;
+  overflow-y: auto;
+  border: 1px solid #444;
+  border-radius: 6px;
+  background-color: #3a3a3c; /* (新增背景色以區分) */
+}
+.pc-history-list li {
+  padding: 10px 15px;
+  border-bottom: 1px solid #444;
+  font-size: 13px;
+  line-height: 1.6;
+  color: #ccc;
+}
+.pc-history-list li:last-child {
+  border-bottom: none;
+}
+.pc-history-list li span {
+  display: block;
+}
+/* (新增：讓連結可點擊) */
+.pc-history-list li a {
+  color: #409EFF;
+  text-decoration: none;
+}
+.pc-history-list li a:hover {
+  text-decoration: underline;
+}
+.pc-history-list li .history-amount {
+  font-weight: bold;
+  font-size: 15px;
+  color: #ffd04b;
+}
+.pc-history-list li .history-status-pending,
+.pc-history-list li .history-status-processing { color: #e6a23c; }
+.pc-history-list li .history-status-completed { color: #67c23a; }
+.pc-history-list li .history-status-rejected { color: #f56c6c; }

@@ -39,6 +39,11 @@
             <el-menu-item index="/wallet-monitoring" v-if="$permissions.has('wallets', 'read')">錢包監控</el-menu-item> 
           </el-sub-menu>
           
+          <el-sub-menu index="finance-management" v-if="$permissions.has('withdrawals', 'read')">
+            <template #title><el-icon><Money /></el-icon><span>財務管理</span></template>
+            <el-menu-item index="/finance/withdrawals">提款審核</el-menu-item>
+          </el-sub-menu>
+          
           <el-sub-menu index="admin-management" v-if="$permissions.has('admin_accounts', 'read') || $permissions.has('admin_permissions', 'read') || $permissions.has('admin_ip_whitelist', 'read')">
             <template #title><el-icon><Lock /></el-icon><span>後台管理</span></template>
             <el-menu-item index="/admin/accounts" v-if="$permissions.has('admin_accounts', 'read')">帳號管理</el-menu-item>
@@ -63,7 +68,8 @@
 
 <script>
 import { jwtDecode } from 'jwt-decode';
-import { DataLine, User, Coin, PieChart, Setting, Lock } from '@element-plus/icons-vue' 
+// (★★★ 新增 Money Icon ★★★)
+import { DataLine, User, Coin, PieChart, Setting, Lock, Money } from '@element-plus/icons-vue' 
 import { ElMessage } from 'element-plus';
 
 export default {
@@ -78,7 +84,8 @@ export default {
       return this.$route.path; 
     },
   },
-  components: { DataLine, User, Coin, PieChart, Setting, Lock },
+  // (★★★ 新增 Money Icon ★★★)
+  components: { DataLine, User, Coin, PieChart, Setting, Lock, Money },
   created() {
     this.decodeToken();
   },
@@ -98,10 +105,8 @@ export default {
         this.handleLogout(true);
       }
     },
-    // (★★★ 7. 修正登出邏輯 ★★★)
     handleLogout(isError = false) {
       localStorage.removeItem('admin_token');
-      // (登出時，清除 $permissions store)
       if (this.$permissions) {
           this.$permissions.clearPermissions();
       }
@@ -114,6 +119,7 @@ export default {
 }
 </script>
 <style scoped>
+/* ... (保留所有現有樣式) ... */
 .layout-container {
   height: 100vh;
 }
@@ -127,48 +133,40 @@ export default {
 }
 .layout-aside {
   background-color: #545c64; 
-  height: calc(100vh - 60px); /* 減去 header 高度 */
-  overflow-y: auto; /* 如果菜單過長，允許滾動 */
+  height: calc(100vh - 60px); 
+  overflow-y: auto; 
 }
-/* (★★★ 修改：el-menu 樣式調整 ★★★) */
 .el-menu-vertical-demo {
-  border-right: none; /* 移除右邊框 */
-  /* height: 100%; (移除，讓 aside 控制高度) */
+  border-right: none; 
 }
-/* (修復子菜單背景色) */
 .el-menu-item, 
-.el-sub-menu :deep(.el-sub-menu__title) { /* 使用 :deep() 穿透子組件樣式 */
-  color: #fff; /* 確保文字顏色 */
+.el-sub-menu :deep(.el-sub-menu__title) { 
+  color: #fff; 
 }
 .el-menu-item:hover, 
 .el-sub-menu :deep(.el-sub-menu__title:hover) {
-  background-color: #434a50 !important; /* !important 提高優先級 */
+  background-color: #434a50 !important; 
 }
-/* (修復激活的子菜單項樣式) */
 .el-menu-item.is-active {
   color: #ffd04b !important;
   background-color: #434a50 !important;
 }
-/* (修復子菜單展開時的背景) */
 .el-menu--inline .el-menu-item {
-   background-color: #3e454c !important; /* 子菜單項背景色 */
+   background-color: #3e454c !important; 
 }
 .el-menu--inline .el-menu-item:hover {
-   background-color: #4a5158 !important; /* 子菜單項 hover 背景色 */
+   background-color: #4a5158 !important; 
 }
 .el-menu--inline .el-menu-item.is-active {
    background-color: #4a5158 !important; 
    color: #ffd04b !important;
 }
-
 .layout-main {
   background-color: #f0f2f5;
   padding: 20px;
-  height: calc(100vh - 60px); /* 減去 header 高度 */
-  overflow-y: auto; /* 內容過長時允許滾動 */
+  height: calc(100vh - 60px); 
+  overflow-y: auto; 
 }
-
-/* (可選) 為圖標添加一些右邊距 */
 .el-icon {
   margin-right: 8px;
 }

@@ -172,3 +172,28 @@ export function bindReferrer(token, referrerCode) {
         body: JSON.stringify({ referrer_code: referrerCode }),
     });
 }
+
+export function setWithdrawalPassword(login_password, new_password) {
+    return request('/users/set-withdrawal-password', {
+        method: 'POST', token: options.token, // (您需要自行傳入 token)
+        body: JSON.stringify({ login_password, new_password }),
+    });
+}
+export function updateWithdrawalPassword(old_password, new_password) {
+    return request('/users/update-withdrawal-password', {
+        method: 'PATCH', token: options.token,
+        body: JSON.stringify({ old_password, new_password }),
+    });
+}
+export function requestWithdrawal(token, data) {
+    // data: { chain_type, address, amount, withdrawal_password }
+    return request('/users/request-withdrawal', {
+        method: 'POST', token: token,
+        body: JSON.stringify(data),
+    });
+}
+export function getWithdrawalHistory(token) {
+    return request('/users/withdrawals', {
+        method: 'GET', token: token
+    });
+}

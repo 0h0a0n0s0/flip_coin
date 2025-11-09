@@ -4,7 +4,7 @@ const TronWeb = require('tronweb');
 const db = require('../db');
 
 // (TRC20 USDT (Mainnet) 合約地址)
-const USDT_CONTRACT_ADDRESS = 'TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t';
+const USDT_CONTRACT_ADDRESS = 'TXLAQ63Xg1NAzckPwXvjWdZfL8kNGZZzV8';
 // (USDT 的精度為 6)
 const USDT_DECIMALS = 6; 
 
@@ -20,11 +20,11 @@ class TronListener {
         // 1. 初始化 TronWeb (使用 .env 中的 API Key)
         // (我們應在 .env 中加入 TRONGRID_API_KEY)
         this.tronWeb = new TronWeb({
-            fullHost: 'https://api.trongrid.io',
+            fullHost: 'https://nile.trongrid.io',
             headers: { 'TRON-PRO-API-KEY': process.env.TRONGRID_API_KEY || 'YOUR_FALLBACK_API_KEY' }
         });
 
-        console.log("✅ [v7] TronListener.js (TRC20) initialized.");
+        console.log("✅ [v7] TronListener.js (NILE TESTNET) initialized.");
         if (!process.env.TRONGRID_API_KEY) {
             console.warn("   [!] TRONGRID_API_KEY not set in .env, using public node. Event monitoring might be unstable.");
         }

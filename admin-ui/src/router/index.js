@@ -14,6 +14,7 @@ import UserDepositAddresses from '../views/UserDepositAddresses.vue'
 import BetManagement from '../views/BetManagement.vue'
 import ReportManagement from '../views/ReportManagement.vue'
 import WalletMonitoring from '../views/WalletMonitoring.vue'
+import WithdrawalReview from '../views/finance/WithdrawalReview.vue'
 import GameParameters from '../views/settings/GameParameters.vue'
 import BlockedRegions from '../views/settings/BlockedRegions.vue'
 import UserLevels from '../views/settings/UserLevels.vue'
@@ -35,6 +36,7 @@ const routes = [
       { path: 'bets', name: 'BetManagement', component: BetManagement, meta: { requiresAuth: true, permission: 'bets:read' } },
       { path: 'reports', name: 'ReportManagement', component: ReportManagement, meta: { requiresAuth: true, permission: 'reports:read' } },
       { path: 'wallet-monitoring', name: 'WalletMonitoring', component: WalletMonitoring, meta: { requiresAuth: true, permission: 'wallets:read' } },
+      { path: 'finance/withdrawals', name: 'WithdrawalReview', component: WithdrawalReview, meta: { requiresAuth: true, permission: 'withdrawals:read' } },
       { path: '/settings/game-parameters', name: 'GameParameters', component: GameParameters, meta: { requiresAuth: true, permission: 'settings_game:read' } },
       { path: '/settings/blocked-regions', name: 'BlockedRegions', component: BlockedRegions, meta: { requiresAuth: true, permission: 'settings_regions:read' } },
       { path: '/settings/user-levels', name: 'UserLevels', component: UserLevels, meta: { requiresAuth: true, permission: 'settings_levels:read' } },

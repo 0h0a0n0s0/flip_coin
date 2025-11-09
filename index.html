@@ -112,12 +112,106 @@
         <h2>個人中心</h2>
         
         <div class="modal-tabs">
-            <button id="pc_tab_info" class="modal-tab-btn active">基本資訊</button>
-            <button id="pc_tab_deposit" class="modal-tab-btn">充值 (USDT)</button>
-        </div>
+          <button id="pc_tab_info" class="modal-tab-btn active">基本資訊</button>
+          <button id="pc_tab_deposit" class="modal-tab-btn">充值 (USDT)</button>
+          <button id="pc_tab_withdraw" class="modal-tab-btn">提款 (USDT)</button>
+      </div>
+      
+      <div id="pc_content_info" class="modal-tab-content active">
+          <div class="pc-form-section">
+              <h4>安全設置</h4>
+              <div id="pc_withdrawal_pwd_status">
+                  <span>提款密碼: </span>
+                  <strong id="pc_withdrawal_pwd_text">...</strong>
+                  <button id="pc_set_withdrawal_pwd_btn" class="btn-small btn-primary" style="display: none;">設置</button>
+                  <button id="pc_change_withdrawal_pwd_btn" class="btn-small btn-secondary" style="display: none;">修改</button>
+              </div>
+          </div>
+      </div>
+      
+      <div id="pc_content_deposit" class="modal-tab-content">
+          </div>
+      
+      <div id="pc_content_withdraw" class="modal-tab-content">
+          <div class="modal-body">
+              <h4>提交提款請求</h4>
+              <div class="pc-form-section" style="border-top: none; margin-top: 0; padding-top: 0;">
+                  <label for="pc_withdraw_chain">區塊鏈類型</label>
+                  <select id="pc_withdraw_chain" class="input-field">
+                      <option value="TRC20">TRC20 (TRON)</option>
+                      <option value="BSC">BSC (BEP20)</option>
+                      <option value="ETH">ETH (ERC20)</option>
+                      <option value="SOL">SOL (Solana)</option>
+                      <option value="POLYGON">Polygon</option>
+                  </select>
+                  
+                  <label for="pc_withdraw_address">提款地址</label>
+                  <input type="text" id="pc_withdraw_address" class="input-field" placeholder="請輸入對應鏈的 USDT 地址">
+                  
+                  <label for="pc_withdraw_amount">提款金額</label>
+                  <input type="number" id="pc_withdraw_amount" class="input-field" placeholder="最小提款 10 USDT">
+                  
+                  <label for="pc_withdraw_password">提款密碼</label>
+                  <input type="password" id="pc_withdraw_password" class="input-field" placeholder="請輸入您的提款密碼">
+                  
+                  <button id="pc_submit_withdrawal_btn" class="btn btn-primary" style="margin-top: 20px; width: 100%;">確認提款</button>
+              </div>
+      
+              <h4 style="margin-top: 30px;">提款記錄</h4>
+              <ul id="pc_withdrawal_history_list" class="pc-history-list">
+                  <li>Loading...</li>
+              </ul>
+          </div>
+      </div>
+      
+      <div id="setWithdrawalPwdModal" class="modal" style="display: none;">
+          <div class="modal-content">
+              <span id="closeSetPwdModalBtn" class="modal-close">&times;</span>
+              <h2>首次設置提款密碼</h2>
+              <form id="setPwdForm">
+                  <div class="modal-body">
+                      <label for="set_login_password">登入密碼 (驗證身分)</label>
+                      <input type="password" id="set_login_password" class="input-field" placeholder="請輸入您的登入密碼">
+                      
+                      <label for="set_new_password">新提款密碼 (至少 6 位)</label>
+                      <input type="password" id="set_new_password" class="input-field" placeholder="請輸入新提款密碼">
+                      
+                      <label for="set_confirm_password">確認新密碼</label>
+                      <input type="password" id="set_confirm_password" class="input-field" placeholder="請再次輸入新提款密碼">
+                  </div>
+              </form>
+              <div class="modal-footer">
+                  <button id="cancelSetPwdBtn" class="btn btn-secondary">取消</button>
+                  <button id="confirmSetPwdBtn" class="btn btn-primary">確認設置</button>
+              </div>
+          </div>
+      </div>
+      
+      <div id="changeWithdrawalPwdModal" class="modal" style="display: none;">
+          <div class="modal-content">
+              <span id="closeChangePwdModalBtn" class="modal-close">&times;</span>
+              <h2>修改提款密碼</h2>
+              <form id="changePwdForm">
+                  <div class="modal-body">
+                      <label for="change_old_password">舊提款密碼</label>
+                      <input type="password" id="change_old_password" class="input-field" placeholder="請輸入舊提款密碼">
+                      
+                      <label for="change_new_password">新提款密碼 (至少 6 位)</label>
+                      <input type="password" id="change_new_password" class="input-field" placeholder="請輸入新提款密碼">
+                      
+                      <label for="change_confirm_password">確認新密碼</label>
+                      <input type="password" id="change_confirm_password" class="input-field" placeholder="請再次輸入新提款密碼">
+                  </div>
+              </form>
+              <div class="modal-footer">
+                  <button id="cancelChangePwdBtn" class="btn btn-secondary">取消</button>
+                  <button id="confirmChangePwdBtn" class="btn btn-primary">確認修改</button>
+              </div>
+          </div>
+      </div>
         
         <div id="pc_content_info" class="modal-tab-content active">
-          <div class_alias="modal-body"> 
+          <div class="modal-body"> 
               <ul class="pc-info-list">
                   <li><span>用戶 ID:</span> <strong id="pc_userId">...</strong></li>
                   <li><span>用戶帳號:</span> <strong id="pc_username">...</strong></li>

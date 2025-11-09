@@ -283,3 +283,32 @@ export function deleteRole(id) {
         method: 'delete'
     });
 }
+
+export function getWithdrawals(params) {
+    return request({
+        url: '/api/admin/withdrawals',
+        method: 'get',
+        params: params,
+    });
+}
+export function approveWithdrawal(id) {
+    return request({
+        url: `/api/admin/withdrawals/${id}/approve`,
+        method: 'post',
+    });
+}
+export function rejectWithdrawal(id, reason) { // reason: { reason: '...' }
+    return request({
+        url: `/api/admin/withdrawals/${id}/reject`,
+        method: 'post',
+        data: reason,
+    });
+}
+// (您還需要一個 "手動完成" 的 API)
+export function completeWithdrawal(id, data) { // data: { tx_hash, gas_fee }
+    return request({
+        url: `/api/admin/withdrawals/${id}/complete`, // (您需要自行在 admin.js 中實作此路由)
+        method: 'post',
+        data: data,
+    });
+}

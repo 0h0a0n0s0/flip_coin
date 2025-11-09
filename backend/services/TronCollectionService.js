@@ -5,7 +5,7 @@ const db = require('../db');
 const { getKmsInstance } = require('./KmsService');
 
 // (TRC20 USDT (Mainnet) 合約地址)
-const USDT_CONTRACT_ADDRESS = 'TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t';
+const USDT_CONTRACT_ADDRESS = 'TXLAQ63Xg1NAzckPwXvjWdZfL8kNGZZzV8';
 // (激活地址所需的 TRX 數量 (單位 SUN, 1 TRX = 1,000,000 SUN))
 const ACTIVATION_TRX_AMOUNT_SUN = 1000000; // 1 TRX
 // (歸集觸發的最小 USDT 餘額 (單位 USDT))
@@ -17,7 +17,7 @@ class TronCollectionService {
     
     constructor() {
         this.tronWeb = new TronWeb({
-            fullHost: 'https://api.trongrid.io',
+            fullHost: 'https://nile.trongrid.io', // (原主網: 'https://api.trongrid.io')
             headers: { 'TRON-PRO-API-KEY': process.env.TRONGRID_API_KEY || '' },
             privateKey: '01' // (初始化時隨便填一個，實際操作時會動態載入)
         });
@@ -29,7 +29,7 @@ class TronCollectionService {
         this.collectionWallets = []; // string[]
         
         this._loadPlatformWallets();
-        console.log("✅ [v7] TronCollectionService initialized.");
+        console.log("✅ [v7] TronCollectionService (NILE TESTNET) initialized.");
     }
 
     /**

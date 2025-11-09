@@ -31,7 +31,7 @@ class KmsService {
         
         // 3. 初始化 TronWeb (僅用於地址計算，不需私鑰)
         this.tronWeb = new TronWeb({
-            fullHost: 'https://api.trongrid.io', // 使用公共節點
+            fullHost: 'https://nile.trongrid.io', // (原主網: 'https://api.trongrid.io')
             headers: { 'TRON-PRO-API-KEY': process.env.TRONGRID_API_KEY || '' }
         });
         

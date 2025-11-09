@@ -44,7 +44,7 @@ router.post('/login', async (req, res) => {
             { 
                 id: user.id, 
                 username: user.username,
-                role: user.role // (將角色 寫入 Token)
+                role_id: user.role_id // (將角色 寫入 Token)
             },
             process.env.JWT_SECRET,
             { expiresIn: '8h' } 
@@ -1219,6 +1219,170 @@ router.delete('/roles/:id', authMiddleware, checkPermission('admin_permissions',
     } catch (error) {
         console.error(`[Admin RBAC] Error deleting role ${id}:`, error);
         res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+/**
+ * @description (新) 獲取提款審核列表
+ * @route GET /api/admin/withdrawals
+ */
+router.get('/withdrawals', authMiddleware, checkPermission('withdrawals', 'read'), async (req, res) => {
+    const { page = 1, limit = 10, username, status, address, tx_hash } = req.query;
+    
+    try {
+        const params = [];
+        let whereClauses = [];
+        let paramIndex = 1;
+
+        if (username) { params.push(`%${username}%`); whereClauses.push(`u.username ILIKE $${paramIndex++}`); }
+        if (status) { params.push(status); whereClauses.push(`w.status = $${paramIndex++}`); }
+        if (address) { params.push(address); whereClauses.push(`w.address = $${paramIndex++}`); }
+        if (tx_hash) { params.push(tx_hash); whereClauses.push(`w.tx_hash = $${paramIndex++}`); }
+        
+        const whereSql = whereClauses.length > 0 ? `WHERE ${whereClauses.join(' AND ')}` : 'WHERE 1=1';
+        
+        // (★★★ 關鍵：計算累計盈虧的子查詢 ★★★)
+        // (這是一個簡化版的 P&L，僅計算 投注盈虧+獎金。注意：這在資料量大時會很慢)
+        const pnlSubQuery = `
+            (
+                COALESCE((SELECT SUM(CASE WHEN b.status = 'won' THEN b.amount * (b.payout_multiplier - 1) ELSE -b.amount END) FROM bets b WHERE b.user_id = u.user_id), 0)
+                +
+                COALESCE((SELECT SUM(pt.amount) FROM platform_transactions pt WHERE pt.user_id = u.user_id AND pt.type LIKE 'bonus_%' OR pt.type LIKE 'reward%'), 0)
+            )
+        `;
+
+        const fromSql = `
+            FROM withdrawals w
+            JOIN users u ON w.user_id = u.user_id
+            LEFT JOIN admin_users a ON w.reviewer_id = a.id
+        `;
+        
+        const countSql = `SELECT COUNT(w.id) ${fromSql} ${whereSql}`;
+        const countResult = await db.query(countSql, params);
+        const total = parseInt(countResult.rows[0].count, 10);
+
+        if (total === 0) {
+            return res.status(200).json({ total: 0, list: [] });
+        }
+
+        const dataSql = `
+            SELECT 
+                w.*, 
+                u.username,
+                a.username AS reviewer_name,
+                ${pnlSubQuery} AS total_profit_loss
+            ${fromSql}
+            ${whereSql}
+            ORDER BY w.request_time DESC
+            LIMIT $${paramIndex++} OFFSET $${paramIndex++}
+        `;
+        
+        const offset = (page - 1) * limit;
+        params.push(limit);
+        params.push(offset);
+        const dataResult = await db.query(dataSql, params);
+
+        res.status(200).json({ total: total, list: dataResult.rows });
+
+    } catch (error) {
+        console.error('[Admin Withdrawals] Error fetching list:', error);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+/**
+ * @description (新) 拒絕提款 (退款)
+ * @route POST /api/admin/withdrawals/:id/reject
+ */
+router.post('/withdrawals/:id/reject', authMiddleware, checkPermission('withdrawals', 'update'), async (req, res) => {
+    const { id } = req.params;
+    const { reason } = req.body;
+    const reviewerId = req.user.id;
+
+    if (!reason) {
+        return res.status(400).json({ error: '拒絕理由為必填' });
+    }
+
+    const client = await db.pool.connect();
+    try {
+        await client.query('BEGIN');
+
+        // 1. 查找並鎖定提款單
+        const wdResult = await client.query("SELECT * FROM withdrawals WHERE id = $1 AND status = 'pending' FOR UPDATE", [id]);
+        if (wdResult.rows.length === 0) {
+            throw new Error('提款單不存在或狀態已變更');
+        }
+        const withdrawal = wdResult.rows[0];
+
+        // 2. 更新提款單狀態
+        await client.query(
+            "UPDATE withdrawals SET status = 'rejected', rejection_reason = $1, reviewer_id = $2, review_time = NOW() WHERE id = $3",
+            [reason, reviewerId, id]
+        );
+
+        // 3. 退款給用戶
+        const userResult = await client.query(
+            "UPDATE users SET balance = balance + $1 WHERE user_id = $2 RETURNING *",
+            [withdrawal.amount, withdrawal.user_id]
+        );
+        
+        // 4. 更新對應的 platform_transaction
+        await client.query(
+            "UPDATE platform_transactions SET status = 'cancelled' WHERE user_id = $1 AND type = 'withdraw_request' AND amount = $2 AND status = 'pending'",
+            [withdrawal.user_id, -Math.abs(withdrawal.amount)]
+        );
+
+        await client.query('COMMIT');
+        
+        // 5. 通知用戶 (如果在線)
+        const updatedUser = userResult.rows[0];
+        delete updatedUser.password_hash;
+        const socketId = connectedUsers[updatedUser.user_id];
+        if (socketId) {
+            io.to(socketId).emit('user_info_updated', updatedUser);
+            // (您也可以發送一個自定義的 'withdrawal_rejected' 事件)
+        }
+
+        res.status(200).json({ message: '提款已拒絕並退款' });
+
+    } catch (error) {
+        await client.query('ROLLBACK');
+        console.error(`[Admin Withdrawals] Error rejecting withdrawal ${id}:`, error);
+        res.status(400).json({ error: error.message || '操作失敗' });
+    } finally {
+        client.release();
+    }
+});
+
+/**
+ * @description (新) 批准提款 (標記為處理中，等待手動出款)
+ * @route POST /api/admin/withdrawals/:id/approve
+ */
+router.post('/withdrawals/:id/approve', authMiddleware, checkPermission('withdrawals', 'update'), async (req, res) => {
+    const { id } = req.params;
+    const reviewerId = req.user.id;
+
+    try {
+        const result = await db.query(
+            "UPDATE withdrawals SET status = 'processing', reviewer_id = $1, review_time = NOW() WHERE id = $2 AND status = 'pending' RETURNING *",
+            [reviewerId, id]
+        );
+
+        if (result.rows.length === 0) {
+            return res.status(404).json({ error: '提款單不存在或狀態已變更' });
+        }
+        
+        // 更新 platform_transaction
+        await db.query(
+             "UPDATE platform_transactions SET status = 'processing' WHERE user_id = $1 AND type = 'withdraw_request' AND amount = $2 AND status = 'pending'",
+            [result.rows[0].user_id, -Math.abs(result.rows[0].amount)]
+        );
+
+        res.status(200).json({ message: '提款已批准，狀態變更為 [處理中]，請手動出款' });
+
+    } catch (error) {
+        console.error(`[Admin Withdrawals] Error approving withdrawal ${id}:`, error);
+        res.status(500).json({ error: '操作失敗' });
     }
 });
 

@@ -1,7 +1,6 @@
-// 檔案: app.js (★★★ v7-M-X 修改版 ★★★)
+// 檔案: app.js (★★★ 完整版 - 包含出款功能 ★★★)
 
 import { renderHistory } from './modules/history.js';
-// (★★★ 導入所有 api 函式 ★★★)
 import * as api from './modules/api.js'; 
 
 // --- Notyf 實例化 (不變) ---
@@ -22,7 +21,7 @@ const notyf = new Notyf({
     ]
 });
 
-// --- 全局狀態 ---
+// --- 全局狀態 (新增) ---
 let jwtToken = null;
 let currentUser = null;
 let socket = null;
@@ -39,19 +38,29 @@ let registerModal, closeRegisterModalBtn, cancelRegisterBtn, confirmRegisterBtn,
 let personalCenterBtn, personalCenterModal, closePersonalCenterModalBtn, pc_cancelBtn;
 // (Tab 1: Info)
 let pc_userId, pc_username, pc_level, pc_maxStreak, pc_inviteCode, pc_referrerCode;
-// (★★★ M-X 新增：個人中心表單元素 ★★★)
 let pc_nicknameInput, pc_saveNicknameBtn, pc_referrerSection, pc_referrerInput, pc_bindReferrerBtn;
 // (Tab 2: Deposit)
 let pc_tab_info, pc_tab_deposit, pc_content_info, pc_content_deposit;
 let pc_tron_address, pc_copy_tron_btn;
+// (★★★ 新增 Tab 3: Withdraw ★★★)
+let pc_tab_withdraw, pc_content_withdraw;
+let pc_withdrawal_pwd_status, pc_withdrawal_pwd_text, pc_set_withdrawal_pwd_btn, pc_change_withdrawal_pwd_btn;
+let pc_withdraw_chain, pc_withdraw_address, pc_withdraw_amount, pc_withdraw_password, pc_submit_withdrawal_btn;
+let pc_withdrawal_history_list;
+// (★★★ 新增 密碼 Modals ★★★)
+let setWithdrawalPwdModal, closeSetPwdModalBtn, cancelSetPwdBtn, confirmSetPwdBtn;
+let set_login_password, set_new_password, set_confirm_password;
+let changeWithdrawalPwdModal, closeChangePwdModalBtn, cancelChangePwdBtn, confirmChangePwdBtn;
+let change_old_password, change_new_password, change_confirm_password;
 
 let isBetting = false; 
 
-// --- Socket 連線 (不變) ---
+// --- Socket 連線 (修改) ---
 function initializeSocket(token) {
     if (socket) socket.disconnect();
     
-    socket = io('http://localhost:3000', {
+    // (使用相對路徑，Nginx 會自動處理)
+    socket = io({
         auth: {
             token: token
         }
@@ -63,7 +72,7 @@ function initializeSocket(token) {
     
     socket.on('connect_error', (err) => {
         console.error('[Socket.io] Connection Error:', err.message);
-        if (err.message === 'Authentication error: Invalid token') {
+        if (err.message === 'Authentication error: Invalid token' || err.message === 'Authentication error: User not found or disabled.') {
             handleLogout();
             notyf.error('連線已過期，請重新登入。');
         }
@@ -73,23 +82,23 @@ function initializeSocket(token) {
         console.log('[Socket.io] Received bet update (for history):', betData);
         if (jwtToken) {
             renderHistory(jwtToken);
+            // 如果個人中心開啟且在提款頁，也刷新提款歷史
+            if (personalCenterModal.style.display === 'block' && pc_content_withdraw.classList.contains('active')) {
+                fetchWithdrawalHistory();
+            }
         }
     });
-    socket.on('stats_updated', (stats) => {
-        console.log('[Socket.io] Received stats update:', stats);
-        if (currentUser) {
-            currentUser.current_streak = stats.current_streak;
-            currentUser.max_streak = stats.max_streak;
-            updateUI(); 
-        }
-    });
+
+    // (★★★ 修改：確保 user_info_updated 會更新 currentUser ★★★)
     socket.on('user_info_updated', (fullUser) => {
         console.log('[Socket.io] Received FULL user info update:', fullUser);
         if (currentUser && currentUser.id === fullUser.id) {
-            currentUser = fullUser;
+            const oldBalance = currentUser.balance;
+            currentUser = fullUser; // (★★★ 關鍵：更新全局 currentUser ★★★)
             updateUI();
             
-            if (!isBetting) {
+            // 只有在非下注狀態 且 餘額真的變動時 才彈出提示
+            if (!isBetting && oldBalance !== fullUser.balance) {
                 notyf.success(`帳戶已更新！新餘額: ${parseFloat(fullUser.balance).toFixed(2)} USDT`);
             }
         }
@@ -100,6 +109,7 @@ function initializeSocket(token) {
     });
     socket.on('disconnect', () => console.log('[Socket.io] Disconnected.'));
 }
+
 
 // --- 渲染排行榜 (不變) ---
 function renderLeaderboardData(leaderboardData) {
@@ -125,7 +135,7 @@ async function renderLeaderboard() {
     if (!listEl) return;
     listEl.innerHTML = '<li>Loading...</li>'; 
     try {
-        const leaderboardData = await api.getLeaderboard(); // (改為 api. )
+        const leaderboardData = await api.getLeaderboard();
         renderLeaderboardData(leaderboardData);
     } catch (error) {
         console.error("Failed to render leaderboard:", error);
@@ -133,7 +143,7 @@ async function renderLeaderboard() {
     }
 }
 
-// --- UI 更新 (★★★ 更新 Header 暱稱 ★★★) ---
+// --- UI 更新 (★★★ 修改 ★★★) ---
 function updateUI() {
     if (currentUser && jwtToken) {
         // --- 登入狀態 ---
@@ -144,7 +154,6 @@ function updateUI() {
         personalCenterBtn.style.display = 'block';
         logoutBtn.style.display = 'block';
 
-        // (★★★ M-X 修改：優先顯示暱稱 ★★★)
         usernameDisplay.innerText = currentUser.nickname || currentUser.username;
         const balance = typeof currentUser.balance === 'string' 
             ? parseFloat(currentUser.balance) 
@@ -170,6 +179,20 @@ function updateUI() {
         const maxStreak = currentUser.max_streak || 0;
         userMaxStreakDisplay.style.display = 'inline-block'; 
         userMaxStreakDisplay.innerText = `🏆 最高連勝: ${maxStreak}`;
+
+        // (★★★ 新增：更新個人中心內的提款密碼狀態 ★★★)
+        // (確保 currentUser.has_withdrawal_password 存在)
+        if (currentUser.has_withdrawal_password) {
+            pc_withdrawal_pwd_text.innerText = '已設置';
+            pc_withdrawal_pwd_text.style.color = '#67c23a';
+            pc_set_withdrawal_pwd_btn.style.display = 'none';
+            pc_change_withdrawal_pwd_btn.style.display = 'inline-block';
+        } else {
+            pc_withdrawal_pwd_text.innerText = '未設置';
+            pc_withdrawal_pwd_text.style.color = '#f56c6c';
+            pc_set_withdrawal_pwd_btn.style.display = 'inline-block';
+            pc_change_withdrawal_pwd_btn.style.display = 'none';
+        }
 
     } else {
         // --- 登出狀態 ---
@@ -298,7 +321,7 @@ function handleLogout() {
 async function fetchUserInfo(token) {
     try {
         const user = await api.getUserInfo(token);
-        currentUser = user;
+        currentUser = user; // (★★★ 確保 /me API 返回 has_withdrawal_password ★★★)
         updateUI();
         initializeSocket(token);
         await renderHistory(token);
@@ -320,7 +343,7 @@ async function autoLogin() {
     await renderLeaderboard();
 }
 
-// --- 個人中心 (★★★ 更新 UI 邏輯 ★★★) ---
+// --- 個人中心 (★★★ 修改 ★★★) ---
 function showPersonalCenterModal() {
     if (!currentUser) return;
     
@@ -332,11 +355,9 @@ function showPersonalCenterModal() {
     pc_inviteCode.innerText = currentUser.invite_code || 'N/A';
     pc_referrerCode.innerText = currentUser.referrer_code || '(未綁定)';
     
-    // (★★★ M-X 新增：填充表單預設值 ★★★)
     pc_nicknameInput.value = currentUser.nickname || '';
     pc_referrerInput.value = ''; // (清空推薦碼輸入)
     
-    // (★★★ M-X 新增：根據是否已綁定，決定是否顯示綁定區塊 ★★★)
     if (currentUser.referrer_code) {
         pc_referrerSection.style.display = 'none'; // (已綁定，隱藏)
     } else {
@@ -347,10 +368,13 @@ function showPersonalCenterModal() {
     pc_tron_address.value = currentUser.tron_deposit_address || '地址生成中...';
     
     // (重置 Tab 狀態為顯示 "基本資訊")
-    pc_tab_info.classList.add('active');
-    pc_content_info.classList.add('active');
-    pc_tab_deposit.classList.remove('active');
-    pc_content_deposit.classList.remove('active');
+    handlePcTabClick('info');
+    
+    // (清空提款表單)
+    pc_withdraw_chain.value = 'TRC20';
+    pc_withdraw_address.value = '';
+    pc_withdraw_amount.value = '';
+    pc_withdraw_password.value = '';
     
     personalCenterModal.style.display = 'block';
 }
@@ -359,18 +383,28 @@ function hidePersonalCenterModal() {
     personalCenterModal.style.display = 'none';
 }
 
-// (Tab 切換邏輯)
+// (★★★ 修改 Tab 切換邏輯 ★★★)
 function handlePcTabClick(tabName) {
+    // (先隱藏所有)
+    pc_tab_info.classList.remove('active');
+    pc_content_info.classList.remove('active');
+    pc_tab_deposit.classList.remove('active');
+    pc_content_deposit.classList.remove('active');
+    pc_tab_withdraw.classList.remove('active');
+    pc_content_withdraw.classList.remove('active');
+
+    // (再顯示選中的)
     if (tabName === 'info') {
         pc_tab_info.classList.add('active');
         pc_content_info.classList.add('active');
-        pc_tab_deposit.classList.remove('active');
-        pc_content_deposit.classList.remove('active');
     } else if (tabName === 'deposit') {
-        pc_tab_info.classList.remove('active');
-        pc_content_info.classList.remove('active');
         pc_tab_deposit.classList.add('active');
         pc_content_deposit.classList.add('active');
+    } else if (tabName === 'withdraw') {
+        pc_tab_withdraw.classList.add('active');
+        pc_content_withdraw.classList.add('active');
+        // (★★★ 切換到提款頁時，載入歷史紀錄 ★★★)
+        fetchWithdrawalHistory();
     }
 }
 // (複製地址邏輯)
@@ -387,7 +421,7 @@ function copyTronAddress() {
     });
 }
 
-// (★★★ 儲存暱稱 ★★★)
+// (儲存暱稱)
 async function handleSaveNickname() {
     const newNickname = pc_nicknameInput.value.trim();
     if (newNickname.length > 50) {
@@ -408,7 +442,7 @@ async function handleSaveNickname() {
         const updatedUser = await api.updateNickname(jwtToken, newNickname);
         currentUser = updatedUser; // (更新本地狀態)
         updateUI(); // (更新 Header 顯示)
-        showPersonalCenterModal(); // (更新彈窗內的顯示)
+        // (不需要 showPersonalCenterModal，因為彈窗還開著)
         notyf.success('暱稱更新成功！');
     } catch (error) {
         notyf.error(`更新失敗：${error.message}`);
@@ -418,7 +452,7 @@ async function handleSaveNickname() {
     }
 }
 
-// (★★★ 綁定推薦人 ★★★)
+// (綁定推薦人)
 async function handleBindReferrer() {
     const referrerCode = pc_referrerInput.value.trim();
     if (!referrerCode) {
@@ -442,11 +476,164 @@ async function handleBindReferrer() {
         showPersonalCenterModal(); // (更新彈窗，將隱藏綁定區塊)
         notyf.success('推薦人綁定成功！');
     } catch (error) {
-        // (後端會返回 400 錯誤，例如推薦碼不存在或已綁定)
         notyf.open({ type: 'warning', message: `綁定失敗：${error.message}` });
     } finally {
         btn.disabled = false;
         btn.innerText = '綁定';
+    }
+}
+
+
+// (★★★ 新增：提款密碼相關函數 ★★★)
+function showSetPwdModal() { 
+    set_login_password.value = '';
+    set_new_password.value = '';
+    set_confirm_password.value = '';
+    setWithdrawalPwdModal.style.display = 'block'; 
+}
+function hideSetPwdModal() { setWithdrawalPwdModal.style.display = 'none'; }
+
+function showChangePwdModal() { 
+    change_old_password.value = '';
+    change_new_password.value = '';
+    change_confirm_password.value = '';
+    changeWithdrawalPwdModal.style.display = 'block'; 
+}
+function hideChangePwdModal() { changeWithdrawalPwdModal.style.display = 'none'; }
+
+async function handleSubmitSetPwd() {
+    const loginPwd = set_login_password.value;
+    const newPwd = set_new_password.value;
+    const confirmPwd = set_confirm_password.value;
+    
+    if (newPwd !== confirmPwd) {
+        notyf.error('兩次輸入的新密碼不一致'); return;
+    }
+    if (!loginPwd || newPwd.length < 6) {
+        notyf.error('請輸入登入密碼，且新密碼至少 6 位'); return;
+    }
+
+    const btn = confirmSetPwdBtn;
+    btn.disabled = true; btn.innerText = '設置中...';
+    try {
+        // (★★★ 確保傳遞 jwtToken ★★★)
+        await api.setWithdrawalPassword(jwtToken, loginPwd, newPwd);
+        notyf.success('提款密碼設置成功！');
+        hideSetPwdModal();
+        // (手動更新本地狀態)
+        currentUser.has_withdrawal_password = true;
+        updateUI();
+    } catch (error) {
+        notyf.error(`設置失敗：${error.message}`);
+    } finally {
+        btn.disabled = false; btn.innerText = '確認設置';
+    }
+}
+
+async function handleSubmitChangePwd() {
+    const oldPwd = change_old_password.value;
+    const newPwd = change_new_password.value;
+    const confirmPwd = change_confirm_password.value;
+
+    if (newPwd !== confirmPwd) {
+        notyf.error('兩次輸入的新密碼不一致'); return;
+    }
+    if (!oldPwd || newPwd.length < 6) {
+        notyf.error('請輸入舊密碼，且新密碼至少 6 位'); return;
+    }
+
+    const btn = confirmChangePwdBtn;
+    btn.disabled = true; btn.innerText = '修改中...';
+    try {
+        await api.updateWithdrawalPassword(jwtToken, oldPwd, newPwd);
+        notyf.success('提款密碼修改成功！');
+        hideChangePwdModal();
+    } catch (error) {
+        notyf.error(`修改失敗：${error.message}`);
+    } finally {
+        btn.disabled = false; btn.innerText = '確認修改';
+    }
+}
+
+// (★★★ 新增：提款相關函數 ★★★)
+async function fetchWithdrawalHistory() {
+    pc_withdrawal_history_list.innerHTML = '<li>Loading...</li>';
+    try {
+        const history = await api.getWithdrawalHistory(jwtToken);
+        if (history.length === 0) {
+            pc_withdrawal_history_list.innerHTML = '<li>暫無提款記錄</li>';
+            return;
+        }
+        pc_withdrawal_history_list.innerHTML = history.map(item => {
+            const reqTime = new Date(item.request_time).toLocaleString();
+            let statusText = item.status;
+            let statusClass = `history-status-${item.status}`; // pending, completed, rejected
+            
+            switch(item.status) {
+                case 'pending': statusText = '待審核'; break;
+                case 'processing': statusText = '出款中'; break;
+                case 'completed': statusText = '出款完成'; break;
+                case 'rejected': statusText = `已拒絕 (${item.rejection_reason || 'N/A'})`; break;
+            }
+            
+            // (★★★ 建立測試網連結的邏輯 ★★★)
+            let txLink = '#';
+            if (item.tx_hash) {
+                if (item.chain_type === 'TRC20') txLink = `https://nile.tronscan.org/#/transaction/${item.tx_hash}`;
+                else if (item.chain_type === 'BSC') txLink = `https://testnet.bscscan.com/tx/${item.tx_hash}`;
+                else if (item.chain_type === 'ETH') txLink = `https://sepolia.etherscan.io/tx/${item.tx_hash}`;
+                else if (item.chain_type === 'POLYGON') txLink = `https://mumbai.polygonscan.com/tx/${item.tx_hash}`;
+                else if (item.chain_type === 'SOL') txLink = `https://solscan.io/tx/${item.tx_hash}?cluster=testnet`;
+            }
+
+            return `
+                <li>
+                    <span class="history-amount">${item.amount} USDT (${item.chain_type})</span>
+                    <span>地址: ${item.address}</span>
+                    <span>時間: ${reqTime}</span>
+                    <span class="${statusClass}">狀態: ${statusText}</span>
+                    ${item.tx_hash ? `<span>TX: <a href="${txLink}" target="_blank">${item.tx_hash.substring(0, 10)}...</a></span>` : ''}
+                </li>
+            `;
+        }).join('');
+    } catch (error) {
+        pc_withdrawal_history_list.innerHTML = '<li>加載失敗</li>';
+    }
+}
+
+async function handleSubmitWithdrawal() {
+    const data = {
+        chain_type: pc_withdraw_chain.value,
+        address: pc_withdraw_address.value.trim(),
+        amount: parseFloat(pc_withdraw_amount.value),
+        withdrawal_password: pc_withdraw_password.value,
+    };
+
+    if (!data.chain_type || !data.address || !data.amount || data.amount <= 0 || !data.withdrawal_password) {
+        notyf.error('請填寫所有提款欄位');
+        return;
+    }
+    
+    const btn = pc_submit_withdrawal_btn;
+    btn.disabled = true; btn.innerText = '提交中...';
+    
+    try {
+        const result = await api.requestWithdrawal(jwtToken, data);
+        notyf.success(result.message || '提款請求已提交！');
+        
+        // (清空表單)
+        pc_withdraw_address.value = '';
+        pc_withdraw_amount.value = '';
+        pc_withdraw_password.value = '';
+        
+        // (刷新餘額和歷史)
+        // (不需要手動 fetchUserInfo，後端 API 會透過 Socket.IO 推送 user_info_updated)
+        await fetchWithdrawalHistory();
+
+    } catch (error) {
+        notyf.error(`提交失敗：${error.message}`);
+    } finally {
+        btn.disabled = false; btn.innerText = '確認提款';
     }
 }
 
@@ -486,7 +673,6 @@ async function handleConfirmBet() {
         console.log('Bet settled:', settledBet);
         
         // (餘額更新將由 Socket.IO 的 'user_info_updated' 事件統一處理)
-        // (我們不再手動計算餘額，以避免狀態不一致)
 
         if (settledBet.status === 'won') {
             notyf.success(`恭喜中獎！`);
@@ -532,9 +718,9 @@ function showCoinResult(result) { // 'head' or 'tail'
     }
 }
 
-// --- 應用程式啟動器 (★★★ 獲取新 DOM ★★★) ---
+// --- 應用程式啟動器 (★★★ 修改 ★★★) ---
 function initializeApp() {
-    console.log("✅ [v7-M-X] App initializing...");
+    console.log("✅ [v7-Withdrawal] App initializing...");
     // 獲取所有 DOM 元素
     confirmBetBtn = document.getElementById('confirmBetBtn'); 
     betAmountInput = document.getElementById('betAmount'); 
@@ -579,7 +765,6 @@ function initializeApp() {
     pc_inviteCode = document.getElementById('pc_inviteCode');
     pc_referrerCode = document.getElementById('pc_referrerCode');
     
-    // (★★★ M-X 新增：獲取表單 DOM ★★★)
     pc_nicknameInput = document.getElementById('pc_nicknameInput');
     pc_saveNicknameBtn = document.getElementById('pc_saveNicknameBtn');
     pc_referrerSection = document.getElementById('pc_referrerSection');
@@ -593,6 +778,37 @@ function initializeApp() {
     pc_content_deposit = document.getElementById('pc_content_deposit');
     pc_tron_address = document.getElementById('pc_tron_address');
     pc_copy_tron_btn = document.getElementById('pc_copy_tron_btn');
+
+    // (★★★ 新增獲取 Tab 3 (提款) 的 DOM ★★★)
+    pc_tab_withdraw = document.getElementById('pc_tab_withdraw');
+    pc_content_withdraw = document.getElementById('pc_content_withdraw');
+    pc_withdrawal_pwd_status = document.getElementById('pc_withdrawal_pwd_status');
+    pc_withdrawal_pwd_text = document.getElementById('pc_withdrawal_pwd_text');
+    pc_set_withdrawal_pwd_btn = document.getElementById('pc_set_withdrawal_pwd_btn');
+    pc_change_withdrawal_pwd_btn = document.getElementById('pc_change_withdrawal_pwd_btn');
+    pc_withdraw_chain = document.getElementById('pc_withdraw_chain');
+    pc_withdraw_address = document.getElementById('pc_withdraw_address');
+    pc_withdraw_amount = document.getElementById('pc_withdraw_amount');
+    pc_withdraw_password = document.getElementById('pc_withdraw_password');
+    pc_submit_withdrawal_btn = document.getElementById('pc_submit_withdrawal_btn');
+    pc_withdrawal_history_list = document.getElementById('pc_withdrawal_history_list');
+
+    // (★★★ 新增獲取密碼 Modals 的 DOM ★★★)
+    setWithdrawalPwdModal = document.getElementById('setWithdrawalPwdModal');
+    closeSetPwdModalBtn = document.getElementById('closeSetPwdModalBtn');
+    cancelSetPwdBtn = document.getElementById('cancelSetPwdBtn');
+    confirmSetPwdBtn = document.getElementById('confirmSetPwdBtn');
+    set_login_password = document.getElementById('set_login_password');
+    set_new_password = document.getElementById('set_new_password');
+    set_confirm_password = document.getElementById('set_confirm_password');
+
+    changeWithdrawalPwdModal = document.getElementById('changeWithdrawalPwdModal');
+    closeChangePwdModalBtn = document.getElementById('closeChangePwdModalBtn');
+    cancelChangePwdBtn = document.getElementById('cancelChangePwdBtn');
+    confirmChangePwdBtn = document.getElementById('confirmChangePwdBtn');
+    change_old_password = document.getElementById('change_old_password');
+    change_new_password = document.getElementById('change_new_password');
+    change_confirm_password = document.getElementById('change_confirm_password');
 
 
     // 綁定 Auth 事件
@@ -617,12 +833,27 @@ function initializeApp() {
     // (綁定 Tab 切換)
     pc_tab_info.addEventListener('click', () => handlePcTabClick('info'));
     pc_tab_deposit.addEventListener('click', () => handlePcTabClick('deposit'));
+    pc_tab_withdraw.addEventListener('click', () => handlePcTabClick('withdraw')); // (★★★ 新增 ★★★)
     // (綁定複製按鈕)
     pc_copy_tron_btn.addEventListener('click', copyTronAddress);
 
-    // (★★★ M-X 新增：綁定個人中心表單事件 ★★★)
+    // (綁定個人中心表單事件)
     pc_saveNicknameBtn.addEventListener('click', handleSaveNickname);
     pc_bindReferrerBtn.addEventListener('click', handleBindReferrer);
+
+    // (★★★ 新增綁定 ★★★)
+    pc_set_withdrawal_pwd_btn.addEventListener('click', showSetPwdModal);
+    pc_change_withdrawal_pwd_btn.addEventListener('click', showChangePwdModal);
+    pc_submit_withdrawal_btn.addEventListener('click', handleSubmitWithdrawal);
+    
+    // (密碼 Modal 綁定)
+    closeSetPwdModalBtn.addEventListener('click', hideSetPwdModal);
+    cancelSetPwdBtn.addEventListener('click', hideSetPwdModal);
+    confirmSetPwdBtn.addEventListener('click', handleSubmitSetPwd);
+    
+    closeChangePwdModalBtn.addEventListener('click', hideChangePwdModal);
+    cancelChangePwdBtn.addEventListener('click', hideChangePwdModal);
+    confirmChangePwdBtn.addEventListener('click', handleSubmitChangePwd);
 
     // 綁定遊戲事件
     confirmBetBtn.addEventListener('click', handleConfirmBet);
@@ -632,6 +863,8 @@ function initializeApp() {
         if (event.target == loginModal) hideLoginModal();
         if (event.target == registerModal) hideRegisterModal();
         if (event.target == personalCenterModal) hidePersonalCenterModal();
+        if (event.target == setWithdrawalPwdModal) hideSetPwdModal(); // (★★★ 新增 ★★★)
+        if (event.target == changeWithdrawalPwdModal) hideChangePwdModal(); // (★★★ 新增 ★★★)
     });
 
     // 啟動 App

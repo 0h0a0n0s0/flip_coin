@@ -34,6 +34,10 @@ CREATE TABLE admin_role_permissions (
     permission_id INT NOT NULL REFERENCES admin_permissions(id) ON DELETE CASCADE,
     PRIMARY KEY (role_id, permission_id)
 );
+INSERT INTO admin_role_permissions (role_id, permission_id)
+SELECT 1, id FROM admin_permissions WHERE resource = 'withdrawals';
+INSERT INTO admin_role_permissions (role_id, permission_id)
+SELECT 2, id FROM admin_permissions WHERE resource = 'withdrawals';
 
 -- ----------------------------
 -- 建立 users
@@ -56,6 +60,8 @@ CREATE TABLE users (
     last_login_ip VARCHAR(50) NULL,
     last_activity_at TIMESTAMP WITH TIME ZONE NULL,
     status VARCHAR(20) NOT NULL DEFAULT 'active', 
+    withdrawal_password_hash VARCHAR(100) NULL,
+    has_withdrawal_password BOOLEAN NOT NULL DEFAULT false,
     last_level_up_time TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
@@ -205,7 +211,9 @@ INSERT INTO admin_permissions (resource, action, category, description) VALUES
 ('settings_regions', 'read', 'System', '讀取阻擋地區'),
 ('settings_regions', 'cud', 'System', '新增/刪G 阻擋地區'),
 ('settings_levels', 'read', 'System', '讀取用戶等級'),
-('settings_levels', 'cud', 'System', '新增/修改/刪除 用戶等級');
+('settings_levels', 'cud', 'System', '新增/修改/刪除 用戶等級'),
+('withdrawals', 'read', 'Finance', '讀取提款審核列表'),
+('withdrawals', 'update', 'Finance', '審核 (批准/拒絕) 提款');
 
 
 -- 3. 綁定 'Super Admin' (Role ID 1) 的權限 (全選)
@@ -250,3 +258,21 @@ INSERT INTO admin_ip_whitelist (ip_range, description) VALUES ('127.0.0.1/32', '
 INSERT INTO admin_ip_whitelist (ip_range, description) VALUES ('::1/128', 'Localhost IPv6 Access');
 INSERT INTO admin_ip_whitelist (ip_range, description) VALUES ('192.168.65.1/32', 'Docker Host IP (Local Dev)');
 INSERT INTO admin_ip_whitelist (ip_range, description) VALUES ('125.229.37.48/32', 'My Public IP'); -- (請確認這是您的 IP)
+
+-- 建立 withdrawals (新表格)
+CREATE TABLE withdrawals (
+    id SERIAL PRIMARY KEY,
+    user_id VARCHAR(8) NOT NULL REFERENCES users(user_id) ON DELETE SET NULL,
+    chain_type VARCHAR(20) NOT NULL, -- 'TRC20', 'BSC', 'ETH' 等
+    address VARCHAR(255) NOT NULL,
+    amount NUMERIC NOT NULL,
+    status VARCHAR(20) NOT NULL DEFAULT 'pending', -- pending, rejected, processing, completed
+    gas_fee NUMERIC NOT NULL DEFAULT 0, -- 平台實際支付的 Gas 成本
+    tx_hash VARCHAR(255) NULL,
+    rejection_reason TEXT NULL,
+    request_time TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    review_time TIMESTAMP WITH TIME ZONE NULL,
+    reviewer_id INT NULL REFERENCES admin_users(id) ON DELETE SET NULL
+);
+CREATE INDEX idx_withdrawals_status ON withdrawals(status);
+CREATE INDEX idx_withdrawals_user_id ON withdrawals(user_id);
