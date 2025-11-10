@@ -197,3 +197,14 @@ export function getWithdrawalHistory(token) {
         method: 'GET', token: token
     });
 }
+
+/**
+ * (★★★ 獲取用戶充值歷史 ★★★)
+ * @param {string} token
+ * @returns {Promise<Array>} 充值歷史列表
+ */
+export function getDepositHistory(token) {
+    return request('/users/deposits', {
+        method: 'GET', token: token
+    });
+}

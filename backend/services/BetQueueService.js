@@ -1,19 +1,22 @@
-// 檔案: backend/services/BetQueueService.js (★★★ v7-M5 新檔案 ★★★)
+// 檔案: backend/services/BetQueueService.js (★★★ v8.9 修正版 ★★★)
 
 const db = require('../db');
+// (★★★ v8.9 修正：從 server.js 改為 services/settingsCache ★★★)
+const { getSettingsCache } = require('./settingsCache.js'); 
 
 class BetQueueService {
     /**
      * @param {object} io - Socket.IO 實例
      * @param {object} connectedUsers - (user_id -> socket.id) 的 Map
      * @param {object} gameOpener - GameOpenerService 實例
-     * @param {object} settingsCache - 系統設定快取
      */
-    constructor(io, connectedUsers, gameOpener, settingsCache) {
+    // (★★★ v8.9 修正：移除 settingsCache 參數 ★★★)
+    constructor(io, connectedUsers, gameOpener) {
         this.io = io;
         this.connectedUsers = connectedUsers;
         this.gameOpener = gameOpener;
-        this.settingsCache = settingsCache;
+        // (★★★ v8.9 修正：在 constructor 中獲取快取 ★★★)
+        this.settingsCache = getSettingsCache(); 
 
         this.queue = []; // 儲存 { user, choice, amount, resolve, reject }
         this.isProcessing = false;
@@ -26,10 +29,10 @@ class BetQueueService {
      * @returns {Promise<object>} 結算後的 Bet 物件
      */
     addBetToQueue(user, choice, amount) {
+        // ... (此函數保持不變) ...
         console.log(`[v7 Queue] Received bet from ${user.user_id} ($${amount} on ${choice}). Queue size: ${this.queue.length}`);
         return new Promise((resolve, reject) => {
             this.queue.push({ user, choice, amount, resolve, reject });
-            // (非同步觸發處理，如果不在處理中，它會立即開始)
             this._processQueue();
         });
     }
@@ -38,8 +41,9 @@ class BetQueueService {
      * (內部) 依序處理隊列
      */
     async _processQueue() {
+        // ... (此函數保持不變) ...
         if (this.isProcessing || this.queue.length === 0) {
-            return; // (正在處理中 或 隊列已空)
+            return; 
         }
 
         this.isProcessing = true;
@@ -48,15 +52,13 @@ class BetQueueService {
         console.log(`[v7 Queue] Processing bet for ${item.user.user_id}...`);
 
         try {
-            // (★★★ 執行完整的下注生命週期 ★★★)
             const settledBet = await this._handleBetLifecycle(item);
             item.resolve(settledBet);
         } catch (error) {
             console.error(`[v7 Queue] Bet failed for ${item.user.user_id}:`, error.message);
-            item.reject(error); // (將錯誤返回給 API 路由)
+            item.reject(error); 
         } finally {
             this.isProcessing = false;
-            // (處理下一筆)
             this._processQueue();
         }
     }
@@ -88,7 +90,6 @@ class BetQueueService {
             if (currentBalance < amount) {
                 throw new Error("餘額不足 (Insufficient balance)");
             }
-            // (未來可在此檢查 user_levelsCache[user.level].max_bet_amount)
 
             // 1b. 扣款
             await client.query(
@@ -109,7 +110,6 @@ class BetQueueService {
             client.release(); // (釋放 TX 1)
             
             console.log(`[v7 Bet] User ${userId} bet ${betId} (Pending). Balance deducted.`);
-            // (通知 Socket.IO 注單已建立)
             this._notifySocketBetUpdate(userId, betResult.rows[0]);
 
         } catch (error) {
@@ -118,7 +118,7 @@ class BetQueueService {
                 client.release();
             }
             console.error(`[v7 Bet] TX 1 Failed (Deduct):`, error.message);
-            throw error; // (終止此注單)
+            throw error; 
         }
 
         // --- 2. 鏈上開獎 (A -> B) ---
@@ -126,10 +126,9 @@ class BetQueueService {
         try {
             txHash = await this.gameOpener.triggerBetTransaction();
         } catch (onChainError) {
-            // (鏈上開獎失敗，必須退款)
             console.error(`[v7 Bet] On-Chain TX failed for bet ${betId}. Refunding...`);
             await this._refundBet(betId, userId, amount, 'failed', onChainError.message);
-            throw onChainError; // (終止此注單)
+            throw onChainError; 
         }
 
         // --- 3. 交易 2：結算 & 派獎 ---
@@ -140,6 +139,7 @@ class BetQueueService {
             const status = didWin ? 'won' : 'lost';
 
             // 3b. 獲取派彩
+            // (★★★ v8.9 修正：確保 this.settingsCache 是最新的 ★★★)
             const multiplier = parseInt(this.settingsCache['PAYOUT_MULTIPLIER']?.value || 2, 10);
             const payoutAmount = didWin ? (amount * multiplier) : 0;
             
@@ -183,11 +183,11 @@ class BetQueueService {
             console.log(`[v7 Bet] Bet ${betId} Settled. User ${userId} ${status}.`);
             
             // 3e. 通知 Socket.IO
-            this._notifySocketBetUpdate(userId, settledBet); // (更新注單狀態)
+            this._notifySocketBetUpdate(userId, settledBet); 
             delete updatedUser.password_hash;
-            this._notifySocketUserInfo(userId, updatedUser); // (更新餘額和連勝)
+            this._notifySocketUserInfo(userId, updatedUser); 
 
-            return settledBet; // (返回給 API 路由)
+            return settledBet; 
 
         } catch (error) {
             if (client) {
@@ -195,9 +195,8 @@ class BetQueueService {
                 client.release();
             }
             console.error(`[v7 Bet] CRITICAL: TX 2 Failed (Settle) for bet ${betId}. Refunding...`, error.message);
-            // (結算失敗，必須退款)
             await this._refundBet(betId, userId, amount, 'failed', 'Settlement DB Error');
-            throw error; // (終止此注單)
+            throw error; 
         }
     }
     
@@ -205,13 +204,13 @@ class BetQueueService {
      * (輔助) 處理退款 (當開獎或結算失敗時)
      */
     async _refundBet(betId, userId, amount, status, errorMsg) {
+        // ... (此函數保持不變) ...
         try {
             await db.query("UPDATE bets SET status = $1, notes = $2 WHERE id = $3", [status, errorMsg, betId]);
             const userResult = await db.query(
                 "UPDATE users SET balance = balance + $1 WHERE user_id = $2 RETURNING *",
                 [amount, userId]
             );
-            // (通知用戶注單失敗 + 餘額退回)
             this._notifySocketBetUpdate(userId, { id: betId, status: status, notes: errorMsg });
             delete userResult.rows[0].password_hash;
             this._notifySocketUserInfo(userId, userResult.rows[0]);
@@ -222,12 +221,14 @@ class BetQueueService {
 
     // (輔助) Socket.IO 通知
     _notifySocketBetUpdate(userId, betData) {
+        // ... (此函數保持不變) ...
         const socketId = this.connectedUsers[userId];
         if (socketId) {
             this.io.to(socketId).emit('bet_updated', betData);
         }
     }
     _notifySocketUserInfo(userId, userData) {
+        // ... (此函數保持不變) ...
         const socketId = this.connectedUsers[userId];
         if (socketId) {
             this.io.to(socketId).emit('user_info_updated', userData);
@@ -235,11 +236,11 @@ class BetQueueService {
     }
 }
 
-// (使用單例模式)
+// (★★★ v8.9 修正：移除 settingsCache 參數 ★★★)
 let instance = null;
-function getBetQueueInstance(io, connectedUsers, gameOpener, settingsCache) {
+function getBetQueueInstance(io, connectedUsers, gameOpener) { // (移除 settingsCache)
     if (!instance) {
-        instance = new BetQueueService(io, connectedUsers, gameOpener, settingsCache);
+        instance = new BetQueueService(io, connectedUsers, gameOpener); // (移除 settingsCache)
     }
     return instance;
 }

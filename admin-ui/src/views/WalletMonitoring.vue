@@ -210,7 +210,11 @@ export default {
                           await this.$api.updateWallet(this.walletForm.id, this.walletForm);
                           ElMessage.success('錢包更新成功');
                       } else {
-                          await this.addWallet(this.walletForm);
+                          // (★★★ v8.6 錯誤修復：這裡呼叫的是 this.addWallet ★★★)
+                          // await this.addWallet(this.walletForm); 
+                          
+                          // (★★★ v8.6 修正：應為 this.$api.addWallet ★★★)
+                          await this.$api.addWallet(this.walletForm); //
                           ElMessage.success('錢包新增成功');
                       }
                       this.dialogVisible = false;

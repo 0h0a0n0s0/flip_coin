@@ -1,5 +1,4 @@
 # docker-compose.yml (修改)
-version: '3.8' 
 
 services:
   # 後端 API 服務 (v1)
@@ -20,7 +19,7 @@ services:
       db:
         condition: service_healthy 
     env_file:
-      - .env  
+      - .env    
     environment:
       - DATABASE_URL=postgres://game_user:game_password@db:5432/flipcoin_db
     restart: unless-stopped

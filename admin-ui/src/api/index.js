@@ -284,6 +284,17 @@ export function deleteRole(id) {
     });
 }
 
+/**
+ * @description (獲取充值記錄)
+ */
+export function getDeposits(params) {
+    return request({
+        url: '/api/admin/deposits',
+        method: 'get',
+        params: params,
+    });
+}
+
 export function getWithdrawals(params) {
     return request({
         url: '/api/admin/withdrawals',

@@ -1,40 +1,34 @@
-// 檔案: backend/services/TronCollectionService.js (★★★ v7-M3 新檔案 ★★★)
+// 檔案: backend/services/TronCollectionService.js (★★★ v8.5 移除 API Key 依賴 ★★★)
 
 const TronWeb = require('tronweb');
 const db = require('../db');
 const { getKmsInstance } = require('./KmsService');
 
-// (TRC20 USDT (Mainnet) 合約地址)
-const USDT_CONTRACT_ADDRESS = 'TXLAQ63Xg1NAzckPwXvjWdZfL8kNGZZzV8';
-// (激活地址所需的 TRX 數量 (單位 SUN, 1 TRX = 1,000,000 SUN))
+const USDT_CONTRACT_ADDRESS = 'TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t'; 
 const ACTIVATION_TRX_AMOUNT_SUN = 1000000; // 1 TRX
-// (歸集觸發的最小 USDT 餘額 (單位 USDT))
 const COLLECTION_THRESHOLD_USDT = 1.0; 
-// (歸集時補足的 Gas (TRX) 數量 (單位 SUN))
-const COLLECTION_GAS_TOPUP_SUN = 2000000; // 2 TRX (假設一次歸集消耗 1 TRX)
+const COLLECTION_GAS_TOPUP_SUN = 2000000; // 2 TRX
 
 class TronCollectionService {
     
     constructor() {
+        // (★★★ v8.12 修正：加回 API Key ★★★)
         this.tronWeb = new TronWeb({
-            fullHost: 'https://nile.trongrid.io', // (原主網: 'https://api.trongrid.io')
+            fullHost: 'https://nile.trongrid.io', 
             headers: { 'TRON-PRO-API-KEY': process.env.TRONGRID_API_KEY || '' },
-            privateKey: '01' // (初始化時隨便填一個，實際操作時會動態載入)
+            privateKey: '01' 
         });
 
         this.kmsService = getKmsInstance();
         
-        // (快取平台錢包)
-        this.gasReserveWallet = null; // { address, privateKey }
-        this.collectionWallets = []; // string[]
+        this.gasReserveWallet = null; 
+        this.collectionWallets = []; 
         
         this._loadPlatformWallets();
-        console.log("✅ [v7] TronCollectionService (NILE TESTNET) initialized.");
+        console.log("✅ [v7] TronCollectionService (NILE TESTNET) initialized (API Key Used).");
     }
 
-    /**
-     * 從 DB 載入並快取 Gas 儲備錢包和歸集錢包
-     */
+    // (_loadPlatformWallets 函數保持不變)
     async _loadPlatformWallets() {
         try {
             const wallets = await db.query(
@@ -44,8 +38,6 @@ class TronCollectionService {
             // 1. 查找 Gas 儲備錢包 (激活錢包)
             const gasWalletRow = wallets.rows.find(w => w.is_gas_reserve);
             if (gasWalletRow) {
-                // (★★★ 警告：私鑰必須在 .env 中按地址命名 ★★★)
-                // 例如：TRON_PK_T...
                 const pkEnvVar = `TRON_PK_${gasWalletRow.address}`;
                 const privateKey = process.env[pkEnvVar];
                 
@@ -78,10 +70,7 @@ class TronCollectionService {
         }
     }
 
-    /**
-     * (M3 需求) 激活新用戶的 TRC20 地址
-     * @param {string} toAddress - 用戶的 tron_deposit_address
-     */
+    // (activateAddress 函數保持不變)
     async activateAddress(toAddress) {
         if (!this.gasReserveWallet) {
             console.error(`[v7 Activate] Failed: No Gas Reserve Wallet loaded.`);
@@ -113,9 +102,7 @@ class TronCollectionService {
         }
     }
 
-    /**
-     * (M3 需求) 執行歸集 (由定時任務調用)
-     */
+    // (collectFunds 函數保持不變 - v8.3 的 BigNumber 邏輯是正確的)
     async collectFunds() {
         if (!this.gasReserveWallet || this.collectionWallets.length === 0) {
             console.warn("[v7 Collect] Skipping collection run: Gas or Collection wallet not configured.");
@@ -124,8 +111,6 @@ class TronCollectionService {
         
         console.log("[v7 Collect] Starting collection sweep...");
 
-        // 1. 查找所有*可能*有餘額的用戶地址
-        // (優化：只查找今天有活動的用戶，或餘額 > 0 的用戶，但為簡單起見，我們先掃描所有用戶)
         const usersResult = await db.query(
             "SELECT id, user_id, deposit_path_index, tron_deposit_address FROM users WHERE tron_deposit_address IS NOT NULL"
         );
@@ -137,25 +122,21 @@ class TronCollectionService {
             const userPathIndex = user.deposit_path_index;
             
             try {
-                // 2. 查詢 USDT 餘額
-                const usdtBalance = await this.tronWeb.trx.getTokenBalance(userAddress, USDT_CONTRACT_ADDRESS);
+                const contract = await this.tronWeb.contract().at(USDT_CONTRACT_ADDRESS);
+                const usdtBalanceBigNumber = await contract.balanceOf(userAddress).call();
+                const usdtBalance = parseFloat(usdtBalanceBigNumber.toString()) / (10**USDT_DECIMALS);
 
-                if (usdtBalance >= (COLLECTION_THRESHOLD_USDT * (10**6))) {
-                    console.log(`[v7 Collect] Found ${usdtBalance / (10**6)} USDT in ${userAddress} (User: ${user.user_id})`);
+                if (usdtBalance >= COLLECTION_THRESHOLD_USDT) {
+                    console.log(`[v7 Collect] Found ${usdtBalance} USDT in ${userAddress} (User: ${user.user_id})`);
                     
-                    // 3. 獲取用戶地址的私鑰 (★★★ 關鍵 ★★★)
                     const userPrivateKey = this.kmsService.getPrivateKey('TRC20', userPathIndex);
-                    
-                    // 4. 檢查 TRX (Gas) 餘額
                     const trxBalance = await this.tronWeb.trx.getBalance(userAddress);
                     
-                    // (如果 Gas 不足 1 TRX)
                     if (trxBalance < 1000000) {
                         await this._topUpGas(userAddress);
                     }
 
-                    // 5. 執行歸集
-                    await this._transferUsdt(userPrivateKey, userAddress, usdtBalance);
+                    await this._transferUsdt(userPrivateKey, userAddress, usdtBalanceBigNumber);
                     collectedCount++;
                 }
 
@@ -169,9 +150,7 @@ class TronCollectionService {
         }
     }
 
-    /**
-     * (輔助) 補足 Gas
-     */
+    // (_topUpGas 函數保持不變)
     async _topUpGas(toAddress) {
         console.log(`[v7 Collect] Topping up ${toAddress} with ${COLLECTION_GAS_TOPUP_SUN / 1000000} TRX for collection...`);
         try {
@@ -184,32 +163,27 @@ class TronCollectionService {
             const signedTx = await this.tronWeb.trx.sign(tx);
             await this.tronWeb.trx.sendRawTransaction(signedTx);
             console.log(`[v7 Collect] Gas top-up sent to ${toAddress}.`);
-            // (等待幾秒鐘讓 Gas 到帳)
             await new Promise(resolve => setTimeout(resolve, 5000));
         } catch (error) {
             console.error(`[v7 Collect] Error topping up gas for ${toAddress}:`, error.message);
-            throw new Error("Gas top-up failed"); // (拋出錯誤，中斷此次歸集)
+            throw new Error("Gas top-up failed"); 
         }
     }
 
-    /**
-     * (輔助) 轉移 USDT
-     */
-    async _transferUsdt(userPrivateKey, userAddress, amount) {
-        // (輪巡隨機選擇一個歸集地址)
-        const collectionAddress = this.collectionWallets[0]; // (為簡單起見，先用第一個)
+    // (_transferUsdt 函數保持不變)
+    async _transferUsdt(userPrivateKey, userAddress, amountBigNumber) {
+        const collectionAddress = this.collectionWallets[0]; 
         
-        console.log(`[v7 Collect] Transferring ${amount / (10**6)} USDT from ${userAddress} to ${collectionAddress}...`);
+        console.log(`[v7 Collect] Transferring ${Number(amountBigNumber) / (10**USDT_DECIMALS)} USDT from ${userAddress} to ${collectionAddress}...`);
         
         try {
             this.tronWeb.setPrivateKey(userPrivateKey);
             const contract = await this.tronWeb.contract().at(USDT_CONTRACT_ADDRESS);
             
-            // (注意：USDT 轉帳金額是原始單位)
-            const txid = await contract.transfer(collectionAddress, amount).send({
-                feeLimit: 15000000, // 15 TRX
+            const txid = await contract.transfer(collectionAddress, amountBigNumber).send({
+                feeLimit: 15000000, 
                 callValue: 0,
-                shouldPollResponse: false // (我們不需要等待結果)
+                shouldPollResponse: false 
             });
             
             console.log(`[v7 Collect] SUCCESS: Transfer initiated. TX: ${txid}`);
@@ -220,7 +194,7 @@ class TronCollectionService {
     }
 }
 
-// (使用單例模式)
+// (單例模式保持不變)
 let instance = null;
 function getTronCollectionInstance() {
     if (!instance) {

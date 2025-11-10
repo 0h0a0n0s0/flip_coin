@@ -35,9 +35,11 @@ CREATE TABLE admin_role_permissions (
     PRIMARY KEY (role_id, permission_id)
 );
 INSERT INTO admin_role_permissions (role_id, permission_id)
-SELECT 1, id FROM admin_permissions WHERE resource = 'withdrawals';
+SELECT 1, id FROM admin_permissions WHERE resource = 'withdrawals'
+ON CONFLICT (role_id, permission_id) DO NOTHING;
 INSERT INTO admin_role_permissions (role_id, permission_id)
-SELECT 2, id FROM admin_permissions WHERE resource = 'withdrawals';
+SELECT 2, id FROM admin_permissions WHERE resource = 'withdrawals'
+ON CONFLICT (role_id, permission_id) DO NOTHING;
 
 -- ----------------------------
 -- 建立 users
@@ -200,6 +202,7 @@ INSERT INTO admin_permissions (resource, action, category, description) VALUES
 ('reports', 'read', 'ReportManagement', '讀取盈虧報表'),
 ('wallets', 'read', 'ReportManagement', '讀取錢包監控列表'),
 ('wallets', 'cud', 'ReportManagement', '新增/修改/刪除 錢包 (高風險)'),
+('deposits', 'read', 'Finance', '讀取充值記錄列表'),
 ('admin_accounts', 'read', 'System', '讀取後台帳號列表'),
 ('admin_accounts', 'cud', 'System', '新增/修改/刪除 後台帳號'),
 ('admin_permissions', 'read', 'System', '讀取權限組列表'),
@@ -223,12 +226,12 @@ SELECT 1, id FROM admin_permissions;
 -- 4. 綁定 'Admin' (Role ID 2) 的權限 (管理用戶/注單/報表)
 INSERT INTO admin_role_permissions (role_id, permission_id)
 SELECT 2, id FROM admin_permissions WHERE resource IN 
-('dashboard', 'users', 'users_addresses', 'bets', 'reports', 'wallets');
+('dashboard', 'users', 'users_addresses', 'bets', 'reports', 'wallets', 'deposits');
 
 -- 5. 綁定 'Operator' (Role ID 3) 的權限 (僅可讀取)
 INSERT INTO admin_role_permissions (role_id, permission_id)
 SELECT 3, id FROM admin_permissions WHERE action = 'read' 
-AND resource IN ('dashboard', 'users', 'users_addresses', 'bets', 'reports', 'wallets');
+AND resource IN ('dashboard', 'users', 'users_addresses', 'bets', 'reports', 'wallets', 'deposits');
 
 -- ----------------------------------------------------
 -- (插入初始數據)

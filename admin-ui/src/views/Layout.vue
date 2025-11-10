@@ -39,9 +39,9 @@
             <el-menu-item index="/wallet-monitoring" v-if="$permissions.has('wallets', 'read')">錢包監控</el-menu-item> 
           </el-sub-menu>
           
-          <el-sub-menu index="finance-management" v-if="$permissions.has('withdrawals', 'read')">
-            <template #title><el-icon><Money /></el-icon><span>財務管理</span></template>
-            <el-menu-item index="/finance/withdrawals">提款審核</el-menu-item>
+          <el-sub-menu index="finance-management" v-if="$permissions.has('withdrawals', 'read') || $permissions.has('deposits', 'read')"> <template #title><el-icon><Money /></el-icon><span>財務管理</span></template>
+            <el-menu-item index="/finance/withdrawals" v-if="$permissions.has('withdrawals', 'read')">提款審核</el-menu-item>
+            <el-menu-item index="/finance/deposits" v-if="$permissions.has('deposits', 'read')">充值記錄</el-menu-item>
           </el-sub-menu>
           
           <el-sub-menu index="admin-management" v-if="$permissions.has('admin_accounts', 'read') || $permissions.has('admin_permissions', 'read') || $permissions.has('admin_ip_whitelist', 'read')">

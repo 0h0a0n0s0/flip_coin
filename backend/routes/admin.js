@@ -1222,6 +1222,61 @@ router.delete('/roles/:id', authMiddleware, checkPermission('admin_permissions',
     }
 });
 
+// (★★★ 獲取充值記錄列表 ★★★)
+/**
+ * @description 獲取充值記錄列表
+ * @route GET /api/admin/deposits
+ */
+router.get('/deposits', authMiddleware, checkPermission('deposits', 'read'), async (req, res) => {
+    const { page = 1, limit = 10, username, tx_hash, status } = req.query;
+    
+    try {
+        const params = [];
+        let whereClauses = ["pt.type = 'deposit'"]; // (限定類型為 'deposit')
+        let paramIndex = 1;
+
+        if (username) { params.push(`%${username}%`); whereClauses.push(`u.username ILIKE $${paramIndex++}`); }
+        if (status) { params.push(status); whereClauses.push(`pt.status = $${paramIndex++}`); }
+        if (tx_hash) { params.push(tx_hash); whereClauses.push(`pt.tx_hash = $${paramIndex++}`); }
+        
+        const whereSql = `WHERE ${whereClauses.join(' AND ')}`;
+        const fromSql = `
+            FROM platform_transactions pt
+            JOIN users u ON pt.user_id = u.user_id
+        `;
+        
+        const countSql = `SELECT COUNT(pt.id) ${fromSql} ${whereSql}`;
+        const countResult = await db.query(countSql, params);
+        const total = parseInt(countResult.rows[0].count, 10);
+
+        if (total === 0) {
+            return res.status(200).json({ total: 0, list: [] });
+        }
+
+        const dataSql = `
+            SELECT 
+                pt.id, pt.chain, pt.amount, pt.status, pt.tx_hash, pt.created_at,
+                u.username,
+                u.user_id
+            ${fromSql}
+            ${whereSql}
+            ORDER BY pt.created_at DESC
+            LIMIT $${paramIndex++} OFFSET $${paramIndex++}
+        `;
+        
+        const offset = (page - 1) * limit;
+        params.push(limit);
+        params.push(offset);
+        const dataResult = await db.query(dataSql, params);
+
+        res.status(200).json({ total: total, list: dataResult.rows });
+
+    } catch (error) {
+        console.error('[Admin Deposits] Error fetching list:', error);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
 /**
  * @description (新) 獲取提款審核列表
  * @route GET /api/admin/withdrawals

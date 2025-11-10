@@ -42,6 +42,7 @@ let pc_nicknameInput, pc_saveNicknameBtn, pc_referrerSection, pc_referrerInput, 
 // (Tab 2: Deposit)
 let pc_tab_info, pc_tab_deposit, pc_content_info, pc_content_deposit;
 let pc_tron_address, pc_copy_tron_btn;
+let pc_evm_address, pc_copy_evm_btn, pc_deposit_history_list;
 // (★★★ 新增 Tab 3: Withdraw ★★★)
 let pc_tab_withdraw, pc_content_withdraw;
 let pc_withdrawal_pwd_status, pc_withdrawal_pwd_text, pc_set_withdrawal_pwd_btn, pc_change_withdrawal_pwd_btn;
@@ -82,7 +83,11 @@ function initializeSocket(token) {
         console.log('[Socket.io] Received bet update (for history):', betData);
         if (jwtToken) {
             renderHistory(jwtToken);
-            // 如果個人中心開啟且在提款頁，也刷新提款歷史
+            // (★★★ 如果充值頁開啟，也刷新充值歷史 ★★★)
+            if (personalCenterModal.style.display === 'block' && pc_content_deposit.classList.contains('active')) {
+                fetchDepositHistory(); // (我們將在下面新增此函數)
+            }
+            // (保留原有的提款歷史刷新邏輯)
             if (personalCenterModal.style.display === 'block' && pc_content_withdraw.classList.contains('active')) {
                 fetchWithdrawalHistory();
             }
@@ -354,7 +359,8 @@ function showPersonalCenterModal() {
     pc_maxStreak.innerText = currentUser.max_streak;
     pc_inviteCode.innerText = currentUser.invite_code || 'N/A';
     pc_referrerCode.innerText = currentUser.referrer_code || '(未綁定)';
-    
+    pc_tron_address.value = currentUser.tron_deposit_address || '地址生成中...';
+    pc_evm_address.value = currentUser.evm_deposit_address || '地址生成中...';
     pc_nicknameInput.value = currentUser.nickname || '';
     pc_referrerInput.value = ''; // (清空推薦碼輸入)
     
@@ -400,6 +406,7 @@ function handlePcTabClick(tabName) {
     } else if (tabName === 'deposit') {
         pc_tab_deposit.classList.add('active');
         pc_content_deposit.classList.add('active');
+        fetchDepositHistory();
     } else if (tabName === 'withdraw') {
         pc_tab_withdraw.classList.add('active');
         pc_content_withdraw.classList.add('active');
@@ -415,6 +422,19 @@ function copyTronAddress() {
     }
     navigator.clipboard.writeText(pc_tron_address.value).then(() => {
         notyf.success('TRC20 地址已複製');
+    }, (err) => {
+        notyf.error('複製失敗');
+        console.error('Failed to copy text: ', err);
+    });
+}
+
+function copyEvmAddress() {
+    if (!navigator.clipboard) {
+        notyf.error('您的瀏覽器不支持複製功能');
+        return;
+    }
+    navigator.clipboard.writeText(pc_evm_address.value).then(() => {
+        notyf.success('EVM (0x) 地址已複製');
     }, (err) => {
         notyf.error('複製失敗');
         console.error('Failed to copy text: ', err);
@@ -483,6 +503,49 @@ async function handleBindReferrer() {
     }
 }
 
+// (★★★ 新增：獲取充值歷史函數 ★★★)
+async function fetchDepositHistory() {
+    pc_deposit_history_list.innerHTML = '<li>Loading...</li>';
+    try {
+        const history = await api.getDepositHistory(jwtToken);
+        if (history.length === 0) {
+            pc_deposit_history_list.innerHTML = '<li>暫無充值記錄</li>';
+            return;
+        }
+        pc_deposit_history_list.innerHTML = history.map(item => {
+            // (注意：created_at 是發起時間，也是到帳時間，因為 TronListener 是即時上分的)
+            const time = new Date(item.created_at).toLocaleString();
+            let statusText = '已到帳';
+            let statusClass = 'history-status-completed'; // (目前 TronListener 只有 completed 狀態)
+            
+            // (如果未來 TronListener 更新了 status，這裡可以擴展)
+            // if (item.status === 'pending') {
+            //     statusText = '未到帳';
+            //     statusClass = 'history-status-pending';
+            // }
+
+            // (★★★ 建立測試網連結的邏輯 ★★★)
+            let txLink = '#';
+            if (item.tx_hash) {
+                if (item.chain === 'TRC20') txLink = `https://nile.tronscan.org/#/transaction/${item.tx_hash}`;
+                else if (item.chain === 'BSC') txLink = `https://testnet.bscscan.com/tx/${item.tx_hash}`;
+                else if (item.chain === 'ETH') txLink = `https://sepolia.etherscan.io/tx/${item.tx_hash}`;
+                // (其他鏈...)
+            }
+
+            return `
+                <li>
+                    <span class="history-amount">${item.amount} USDT (${item.chain})</span>
+                    <span>時間: ${time}</span>
+                    <span class="${statusClass}">狀態: ${statusText}</span>
+                    ${item.tx_hash ? `<span>TX: <a href="${txLink}" target="_blank">${item.tx_hash.substring(0, 10)}...</a></span>` : ''}
+                </li>
+            `;
+        }).join('');
+    } catch (error) {
+        pc_deposit_history_list.innerHTML = '<li>加載失敗</li>';
+    }
+}
 
 // (★★★ 新增：提款密碼相關函數 ★★★)
 function showSetPwdModal() { 
@@ -629,6 +692,9 @@ async function handleSubmitWithdrawal() {
         // (刷新餘額和歷史)
         // (不需要手動 fetchUserInfo，後端 API 會透過 Socket.IO 推送 user_info_updated)
         await fetchWithdrawalHistory();
+        if (pc_content_deposit.classList.contains('active')) {
+            await fetchDepositHistory();
+        }
 
     } catch (error) {
         notyf.error(`提交失敗：${error.message}`);
@@ -778,7 +844,10 @@ function initializeApp() {
     pc_content_deposit = document.getElementById('pc_content_deposit');
     pc_tron_address = document.getElementById('pc_tron_address');
     pc_copy_tron_btn = document.getElementById('pc_copy_tron_btn');
-
+    pc_evm_address = document.getElementById('pc_evm_address');
+    pc_copy_evm_btn = document.getElementById('pc_copy_evm_btn');
+    pc_deposit_history_list = document.getElementById('pc_deposit_history_list');
+    
     // (★★★ 新增獲取 Tab 3 (提款) 的 DOM ★★★)
     pc_tab_withdraw = document.getElementById('pc_tab_withdraw');
     pc_content_withdraw = document.getElementById('pc_content_withdraw');
@@ -836,7 +905,7 @@ function initializeApp() {
     pc_tab_withdraw.addEventListener('click', () => handlePcTabClick('withdraw')); // (★★★ 新增 ★★★)
     // (綁定複製按鈕)
     pc_copy_tron_btn.addEventListener('click', copyTronAddress);
-
+    pc_copy_evm_btn.addEventListener('click', copyEvmAddress);
     // (綁定個人中心表單事件)
     pc_saveNicknameBtn.addEventListener('click', handleSaveNickname);
     pc_bindReferrerBtn.addEventListener('click', handleBindReferrer);

@@ -1,9 +1,9 @@
-// 檔案: backend/server.js (★★★ v7.1 HD 錢包修正版 ★★★)
+// 檔案: backend/server.js (★★★ v8.9 修正版 ★★★)
 
-require('dotenv').config();
+
+
 const express = require('express');
 const cors = require('cors');
-const { ethers } = require('ethers');
 const db = require('./db');
 const http = require('http');
 const { Server } = require('socket.io');
@@ -24,21 +24,24 @@ const TronListener = require('./services/TronListener.js');
 const { getTronCollectionInstance } = require('./services/TronCollectionService.js');
 const { getGameOpenerInstance } = require('./services/GameOpenerService.js');
 const { getBetQueueInstance } = require('./services/BetQueueService.js');
+// (★★★ v8.9 修正：導入新的快取模組 ★★★)
+const settingsCacheModule = require('./services/settingsCache.js');
 
 // --- 全局變數 ---
 const nanoid = customAlphabet('ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789', 8);
-let userLevelsCache = {};
-let settingsCache = {};
-module.exports.getSettingsCache = () => { return settingsCache; };
+// (★★★ v8.9 移除：舊的快取)
+// let userLevelsCache = {};
+// let settingsCache = {};
+// module.exports.getSettingsCache = () => { return settingsCache; }; // (移除)
 
 // (★★★ 立即初始化 KmsService ★★★)
 let kmsService;
 try {
-    kmsService = getKmsInstance(); // (這將觸發 KmsService.js 中的 console.log)
+    kmsService = getKmsInstance(); 
 } catch (error) {
     console.error("CRITICAL KMS ERROR: FAILED TO INITIALIZE.", error.message);
     console.error("Ensure MASTER_MNEMONIC is set in .env file.");
-    process.exit(1); // 如果 KMS 失敗 (例如 .env 遺失)，必須停止服務
+    process.exit(1); 
 }
 
 // (★★★ 初始化 Collection Service ★★★)
@@ -68,8 +71,9 @@ const PORT = 3000;
 const httpServer = http.createServer(app);
 const io = new Server(httpServer, { cors: { origin: "*", methods: ["GET", "POST"] } });
 
-console.log(`✅ [v6] 中心化服務啟動...`); // (這個日誌現在會在 KMS 之後)
-console.log(`✅ 連接到區塊鏈 (用於開獎): ${process.env.SEPOLIA_RPC_URL}`);
+console.log(`✅ [v6] 中心化服務啟動...`);
+// (★★★ v8.9 修正：移除 misleading log ★★★)
+// console.log(`✅ 連接到區塊鏈 (用於開獎): ${process.env.SEPOLIA_RPC_URL}`);
 
 // --- 中間件設定 ---
 app.use(cors());
@@ -77,8 +81,7 @@ app.use(express.json());
 app.set('trust proxy', true);
 app.use(passport.initialize());
 
-// --- Passport.js 策略設定 (★★★ v7 修改 ★★★) ---
-
+// --- Passport.js 策略設定  ---
 // 策略 1：本地註冊 (local-signup)
 passport.use('local-signup', new LocalStrategy({
     usernameField: 'username',
@@ -89,11 +92,7 @@ passport.use('local-signup', new LocalStrategy({
     const client = await db.pool.connect(); 
     
     try {
-        // (開始事務)
         await client.query('BEGIN');
-
-        // (★★★ M-Fix 5: 在事務開頭鎖定 users 表 ★★★)
-        // (這將防止並發註冊時的 race condition)
         await client.query('LOCK TABLE users IN EXCLUSIVE MODE');
 
         // 1. 檢查用戶名 (使用 client)
@@ -109,7 +108,6 @@ passport.use('local-signup', new LocalStrategy({
         const password_hash = await bcrypt.hash(password, salt);
         
         // 3. v7 核心修改：從 KMS 獲取新地址和索引 (使用 client)
-        // (現在 KmsService.js 中的查詢是安全的，因為表已被鎖定)
         const { 
             deposit_path_index, 
             evm_deposit_address, 
@@ -146,7 +144,6 @@ passport.use('local-signup', new LocalStrategy({
             ]
         );
         
-        // (★★★ 提交事務，釋放鎖定 ★★★)
         await client.query('COMMIT'); 
         
         const newUser = newUserResult.rows[0];
@@ -169,7 +166,7 @@ passport.use('local-signup', new LocalStrategy({
     }
 }));
 
-// 策略 2：本地登入 (local-login) (不變)
+// 策略 2：本地登入 (local-login)
 passport.use('local-login', new LocalStrategy({
     usernameField: 'username',
     passwordField: 'password'
@@ -213,9 +210,7 @@ passport.use('jwt', new JwtStrategy({
     }
 }));
 
-
-// --- 輔助函數 (★★★ v7 保留 ★★★) ---
-// (這個是生成*邀請碼*，KMS Service 負責*錢包地址*)
+// --- 輔助函數 ---
 async function generateUniqueInviteCode(client) { // (★★★ 接收 client ★★★)
     let inviteCode;
     let isUnique = false;
@@ -228,14 +223,14 @@ async function generateUniqueInviteCode(client) { // (★★★ 接收 client �
     return inviteCode;
 }
 
-// --- 代理設定 (不變) ---
+// --- 代理設定 ---
 const adminUiProxy = createProxyMiddleware({
     target: 'http://admin-ui:80', 
     changeOrigin: true,
     pathRewrite: { '^/admin': '' }, 
 });
 
-// --- 路由順序 (不變) ---
+// --- 路由順序 ---
 app.use('/api/admin', adminIpWhitelistMiddleware, adminRoutes);
 app.use('/admin', adminIpWhitelistMiddleware, adminUiProxy);
 
@@ -254,7 +249,6 @@ app.use('/', v1Router);
 // --- Socket.IO ---
 let connectedUsers = {}; // (★★★ 保持這個 Map ★★★)
 io.use(async (socket, next) => {
-    // ... (socket.io auth 邏輯不變) ...
     const token = socket.handshake.auth.token;
     if (!token) {
         return next(new Error('Authentication error: No token'));
@@ -284,7 +278,7 @@ io.on('connection', (socket) => {
     });
 });
 
-// --- v1 API 路由定義函數 (不變) ---
+// --- v1 API 路由定義函數 ---
 function v1ApiRouter(router, passport) {
     
     // ( /api/v1/register )
@@ -650,51 +644,62 @@ function v1ApiRouter(router, passport) {
             res.status(500).json({ error: '伺服器內部錯誤' });
         }
     });
+    
+    /**
+     * @description (新) 獲取用戶充值歷史
+     */
+    router.get('/api/v1/users/deposits', passport.authenticate('jwt', { session: false }), async (req, res) => {
+        try {
+            // (從 platform_transactions 查詢 'deposit' 類型的記錄)
+            // (TronListener.js 寫入的 status 總是 'completed')
+            const history = await db.query(
+                `SELECT id, chain, amount, status, tx_hash, created_at 
+                 FROM platform_transactions 
+                 WHERE user_id = $1 AND type = 'deposit' 
+                 ORDER BY created_at DESC 
+                 LIMIT 20`,
+                [req.user.user_id]
+            );
+            res.status(200).json(history.rows);
+        } catch (error) {
+            console.error(`[API v1] Error fetching deposit history for ${req.user.user_id}:`, error);
+            res.status(500).json({ error: '伺服器內部錯誤' });
+        }
+    });
 }
-
-// (★★★ 載入系統設定 ★★★)
-async function loadSettings() {
-    try {
-        console.log("[v7 Settings] Loading system settings...");
-        const result = await db.query('SELECT key, value FROM system_settings');
-        settingsCache = result.rows.reduce((acc, row) => {
-            acc[row.key] = { value: row.value };
-            return acc;
-        }, {});
-        console.log(`[v7 Settings] Loaded ${Object.keys(settingsCache).length} settings.`);
-    } catch (error) {
-         console.error("[v7 Settings] CRITICAL: Failed to load system settings:", error);
-    }
-}
-
 
 // --- 啟動伺服器 ---
 httpServer.listen(PORT, async () => { 
     console.log(`Server (with Socket.io) is listening on port ${PORT}`);
 
-    // (★★★ M5 新增：先載入設定 ★★★)
-    await loadSettings();
-    // (未來可加入 loadUserLevels() )
-
-    // (★★★ M5 新增：在獲取 io 和 settings 後，才初始化 BetQueue ★★★)
+    // (v8.9 修正：使用新模組)
+    await settingsCacheModule.loadSettings();
+    
     betQueueService = getBetQueueInstance(
         io, 
         connectedUsers, 
-        gameOpenerService, 
-        settingsCache
+        gameOpenerService
     );
 
-    // (M2/M3：啟動 TRON 服務)
+    // (TronListener 啟動延遲)
+    // (給予服務 20 秒鐘的緩衝時間來等待 DB 和 Docker 網路完全就緒)
+// (★★★ v8.12 修正：移除 20 秒延遲，讓 TronListener 自己重試 ★★★)
     try {
         const tronListener = new TronListener(io, connectedUsers);
-        tronListener.start();
-    } catch (listenerError) { /* ... */ }
+        tronListener.start(); // (v8.11 版的 TronListener 內部會自動重試)
+    } catch (listenerError) {
+         console.error("[v7] Error initializing TronListener:", listenerError);
+    }
     
+    // (Collection Service 啟動邏輯不變)
     if (tronCollectionService) {
         console.log(`[v7 Collect] Starting collection service timer (Interval: 10 minutes)`);
-        tronCollectionService.collectFunds().catch(err => console.error("[v7 Collect] Initial run failed:", err));
-        setInterval(() => {
-            tronCollectionService.collectFunds().catch(err => console.error("[v7 Collect] Timed run failed:", err));
-        }, 10 * 60 * 1000); 
+        // (v8.11 修正：延遲 30 秒再開始第一次歸集，避免和 TronListener 衝突)
+        setTimeout(() => {
+            tronCollectionService.collectFunds().catch(err => console.error("[v7 Collect] Initial run failed:", err));
+            setInterval(() => {
+                tronCollectionService.collectFunds().catch(err => console.error("[v7 Collect] Timed run failed:", err));
+            }, 10 * 60 * 1000); 
+        }, 30000); // 延遲 30 秒
     }
 });
