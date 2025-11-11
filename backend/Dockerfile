@@ -9,8 +9,9 @@ WORKDIR /usr/src/app
 # 3. 複製 package.json 和 package-lock.json 到工作目錄
 #    這樣做可以利用 Docker 的快取機制，只有在依賴變更時才重新安裝
 COPY package*.json ./
+
 # 4. 安裝專案依賴
-RUN npm install
+RUN npm install --registry=https://registry.npmmirror.com
 
 # 5. 複製專案的所有檔案到工作目錄
 COPY . .

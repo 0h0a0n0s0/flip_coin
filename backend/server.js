@@ -1,6 +1,6 @@
 // 檔案: backend/server.js (★★★ v8.9 修正版 ★★★)
 
-
+require('dns').setDefaultResultOrder('ipv4first');
 
 const express = require('express');
 const cors = require('cors');

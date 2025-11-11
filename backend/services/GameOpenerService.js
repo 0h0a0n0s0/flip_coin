@@ -1,34 +1,36 @@
-// 檔案: backend/services/GameOpenerService.js (★★★ v8.12 還原 API Key ★★★)
+// 檔案: backend/services/GameOpenerService.js (★★★ v8.19 移除 API Key 版 ★★★)
 
 const TronWeb = require('tronweb'); 
 const db = require('../db');
-const { getSettingsCache } = require('./settingsCache.js'); // (v8.9 修復)
+const { getSettingsCache } = require('./settingsCache.js'); 
 
 class GameOpenerService {
     constructor() {
-        this.settingsCache = getSettingsCache(); // (v8.9 修復)
+        this.settingsCache = getSettingsCache();
 
-        if (!process.env.TRONGRID_API_KEY) {
-             console.warn("[v7 Opener] TRONGRID_API_KEY not set in .env, using public node.");
-        }
-        
-        // (★★★ v8.12 修正：加回 API Key ★★★)
+        // (★★★ v8.35 修正：簡化 constructor ★★★)
         this.tronWeb = new TronWeb({
             fullHost: 'https://nile.trongrid.io',
-            headers: { 'TRON-PRO-API-KEY': process.env.TRONGRID_API_KEY || '' },
-            privateKey: '01' 
+            privateKey: '01', 
+            timeout: 60000 
         });
         
+        // (★★★ v8.35 新增：手動強制設定所有節點 ★★★)
+        this.tronWeb.setFullNode('https://nile.trongrid.io');
+        this.tronWeb.setSolidityNode('https://nile.trongrid.io');
+        this.tronWeb.setEventServer('https://nile.trongrid.io');
+
         this.walletA_PrivateKey = null; 
         this.addressA = null;
         this.addressB = null;
 
         this._loadPlatformWallets();
-        console.log("✅ [v7] GameOpenerService initialized (Mode: TRON / API Key Used).");
+        // (★★★ v8.19 修改日誌 ★★★)
+        console.log("✅ [v7] GameOpenerService initialized (v8.35 Force Set Nodes).");
     }
 
     // (*** _loadPlatformWallets, triggerBetTransaction, determineOutcome ***)
-    // (*** 以下所有函數均保持 v8.11 的狀態不變 ***)
+    // (*** 以下所有函數均保持不變 ***)
 
     async _loadPlatformWallets() {
         try {
@@ -100,6 +102,8 @@ class GameOpenerService {
 
         } catch (error) {
             console.error("[v7 Opener] CRITICAL: Failed to send opener transaction (TRON):", error.message || error);
+            // (★★★ v8.19 應用健壯日誌 ★★★)
+            logError(error, `Error in triggerBetTransaction`, this.addressA);
             throw new Error("On-chain transaction failed.");
         }
     }
@@ -110,6 +114,20 @@ class GameOpenerService {
         const isHead = decimalValue % 2 === 0;
         console.log(`[v7 Opener] Outcome determined: Hash: ...${lastChar} (${decimalValue}) -> ${isHead ? 'HEAD' : 'TAIL'}`);
         return isHead;
+    }
+}
+
+// (★★★ v8.19 健壯日誌輔助函數 ★★★)
+function logError(error, context, address) {
+    console.error(`[v7 Opener] ${context} for address ${address}. Details:`);
+    try {
+        if (error && error.message) {
+            console.error(JSON.stringify(error, Object.getOwnPropertyNames(error), 2));
+        } else {
+             console.error(JSON.stringify(error, null, 2));
+        }
+    } catch (e) {
+        console.error(util.inspect(error, { depth: null, showHidden: true }));
     }
 }
 

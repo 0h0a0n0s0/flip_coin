@@ -1,111 +1,156 @@
-// 檔案: backend/services/TronListener.js (★★★ v8.13 輪詢修正版 ★★★)
+// 檔案: backend/services/TronListener.js (★★★ v8.24 重寫版 - 放棄 Events API ★★★)
 
 const TronWeb = require('tronweb');
 const db = require('../db');
+const util = require('util');
 
 const USDT_CONTRACT_ADDRESS = 'TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t'; 
 const USDT_DECIMALS = 6; 
-const POLLING_INTERVAL_MS = 5000; // 5 秒輪詢一次
+const POLLING_INTERVAL_MS = 10000; // (★★★ 修正：延長到 10 秒，因為 API 負擔較重 ★★★)
+
+// (日誌輔助函數)
+function logPollError(error, context) {
+    console.error(`[v7-Poll] ${context}. Details:`);
+    try {
+        if (error && error.message) {
+            console.error(JSON.stringify(error, Object.getOwnPropertyNames(error), 2));
+        } else {
+             console.error(JSON.stringify(error, null, 2));
+        }
+    } catch (e) {
+        console.error(util.inspect(error, { depth: null, showHidden: true }));
+    }
+}
+
 
 class TronListener {
     constructor(io, connectedUsers) {
         this.io = io;
         this.connectedUsers = connectedUsers;
         
+        // (★★★ v8.35 修正：簡化 constructor ★★★)
         this.tronWeb = new TronWeb({
             fullHost: 'https://nile.trongrid.io',
-            headers: { 'TRON-PRO-API-KEY': process.env.TRONGRID_API_KEY || '' },
-            timeout: 60000 // (設定 60 秒超時)
+            privateKey: '01', // (建議: 雖然輪詢用不到，但保持一致性)
+            timeout: 60000 
         });
 
-        // (★★★ 核心修改：狀態變數 ★★★)
-        // 我們只關心伺服器啟動後的新交易
-        this.lastPollTimestamp = Date.now(); 
-        this.isPolling = false; // (防止重疊執行)
+        // (★★★ v8.35 新增：手動強制設定所有節點 ★★★)
+        this.tronWeb.setFullNode('https://nile.trongrid.io');
+        this.tronWeb.setSolidityNode('https://nile.trongrid.io');
+        this.tronWeb.setEventServer('https://nile.trongrid.io');
 
-        console.log("✅ [v7-Poll] TronListener.js (NILE TESTNET) initialized (Mode: HTTP Polling).");
-        if (!process.env.TRONGRID_API_KEY) {
-            console.warn("   [!] TRONGRID_API_KEY not set. Polling might fail.");
-        }
+        this.isPolling = false; 
+        // (★★★ v8.24 修正：我們需要一個時間戳來查詢新交易 ★★★)
+        // (注意：如果服務重啟，這可能導致少量重複查詢，但 _processDeposit 中的 DB 檢查會處理)
+        this.lastPollTimestamp = Date.now() - (10 * 60 * 1000); // (預設查詢過去 10 分鐘)
+
+        // (★★★ v8.24 修改日誌 ★★★)
+        console.log("✅ [v7-Poll] TronListener.js (NILE TESTNET) initialized (v8.35 Force Set Nodes).");
     }
 
-    /**
-     * (★★★ 核心修改：從 watch() 改為 startPolling() ★★★)
-     */
     async start() {
-        console.log(`[v7-Poll] Starting to poll TRC20 USDT transfers to contract: ${USDT_CONTRACT_ADDRESS} (Nile)`);
+        console.log(`[v7-Poll] Starting Account Polling Service (Interval: ${POLLING_INTERVAL_MS}ms)`);
         
-        // 立即執行第一次
-        this._pollEvents();
+        // (立即執行第一次)
+        this._pollAllUsers();
         
-        // 設定定時器
-        setInterval(() => this._pollEvents(), POLLING_INTERVAL_MS);
+        // (設定定時器)
+        setInterval(() => this._pollAllUsers(), POLLING_INTERVAL_MS);
     }
 
     /**
-     * (★★★ 核心修改：輪詢 API 的函數 ★★★)
+     * (★★★ v8.24 核心重寫：輪詢所有用戶 ★★★)
      */
-    async _pollEvents() {
+    async _pollAllUsers() {
         if (this.isPolling) {
             // console.log("[v7-Poll] Poll skipped: Previous poll still running.");
             return;
         }
         this.isPolling = true;
-
+        
+        let usersToPoll = [];
         try {
-            // (我們使用 tronWeb 的內建 http 請求，這對應你啟用的 API 權限)
-            // (注意：我們添加了 min_block_timestamp 參數來只獲取最新的交易)
-            const response = await this.tronWeb.fullNode.request(
-                `v1/contracts/${USDT_CONTRACT_ADDRESS}/events`, 
-                {
-                    'event_name': 'Transfer',
-                    'only_confirmed': true,
-                    'min_block_timestamp': this.lastPollTimestamp
-                }, 
-                'get'
+            // 1. 從 DB 獲取所有用戶地址
+            const usersResult = await db.query(
+                'SELECT id, user_id, tron_deposit_address FROM users WHERE tron_deposit_address IS NOT NULL'
             );
+            usersToPoll = usersResult.rows;
+        } catch (dbError) {
+             console.error("[v7-Poll] CRITICAL: Failed to fetch users from DB.", dbError);
+             this.isPolling = false;
+             return;
+        }
 
-            if (response && response.data && response.data.length > 0) {
-                console.log(`[v7-Poll] Found ${response.data.length} new 'Transfer' event(s).`);
-                
-                let maxTimestamp = this.lastPollTimestamp;
+        if (usersToPoll.length === 0) {
+            // console.log("[v7-Poll] No users with TRON address to poll.");
+            this.isPolling = false;
+            return;
+        }
 
-                for (const event of response.data) {
-                    // (event 結構與 .watch() 返回的幾乎一致)
-                    // event = { block_number, block_timestamp, transaction_id, result: { from, to, value }, ... }
+        // console.log(`[v7-Poll] Polling ${usersToPoll.length} user addresses...`);
+        let newTimestamp = this.lastPollTimestamp;
+
+        for (const user of usersToPoll) {
+            try {
+                // 2. 查詢 TRC20 交易歷史
+                // (這是公共 API，應該可用)
+                const response = await this.tronWeb.fullNode.request(
+                    `v1/accounts/${user.tron_deposit_address}/transactions/trc20`, 
+                    {
+                        'only_to': true, // (只看轉入)
+                        'min_timestamp': this.lastPollTimestamp, // (只看新交易)
+                        'contract_address': USDT_CONTRACT_ADDRESS, // (只看 USDT)
+                        'limit': 50 // (假設 10 秒內不會有超過 50 筆)
+                    }, 
+                    'get'
+                );
+
+                if (response && response.data && response.data.length > 0) {
+                    console.log(`[v7-Poll] Found ${response.data.length} new tx(s) for ${user.user_id} (${user.tron_deposit_address})`);
                     
-                    if (event && event.result && event.transaction_id) {
-                        // (★★★ 重用你的 v8.4 存款邏輯 ★★★)
-                        await this._processDeposit(event);
-                    }
-                    
-                    if (event.block_timestamp > maxTimestamp) {
-                        maxTimestamp = event.block_timestamp;
+                    for (const tx of response.data) {
+                        // (將 TRC20 API 格式轉換為 _processDeposit 期望的格式)
+                        const eventData = {
+                            transaction_id: tx.transaction_id,
+                            result: {
+                                from: tx.from,
+                                to: tx.to,
+                                value: tx.value 
+                            },
+                            block_timestamp: tx.block_timestamp
+                        };
+                        
+                        await this._processDeposit(eventData);
+                        
+                        if (tx.block_timestamp > newTimestamp) {
+                            newTimestamp = tx.block_timestamp;
+                        }
                     }
                 }
                 
-                // (更新時間戳，加 1ms 避免下次輪詢重複獲取最後一筆)
-                this.lastPollTimestamp = maxTimestamp + 1;
+            } catch (error) {
+                // (如果 `v1/accounts` API 也失敗，日誌會顯示在這裡)
+                logPollError(error, `Failed to poll TRC20 txs for ${user.user_id}`);
             }
-            
-        } catch (error) {
-            // (這裡仍然可能報錯，例如 API Key 失效)
-            console.error(`[v7-Poll] CRITICAL: Failed to poll events:`, error);
-        } finally {
-            this.isPolling = false;
         }
+        
+        // (更新時間戳，加 1ms 避免下次輪詢重複獲取最後一筆)
+        this.lastPollTimestamp = newTimestamp + 1;
+        this.isPolling = false;
     }
 
 
     /**
-     * 處理入帳邏輯 (此函數來自 v8.4，保持不變)
+     * 處理入帳邏輯 (此函數保持 v8.19 版不變)
      */
     async _processDeposit(event) {
         const txID = event.transaction_id;
-        const fromAddress = this.tronWeb.address.fromHex(event.result.from);
-        const toAddress = this.tronWeb.address.fromHex(event.result.to);
+        // (★★★ v8.24 修正：v1 API 返回的是 Base58，不需要 fromHex ★★★)
+        const fromAddress = event.result.from; 
+        const toAddress = event.result.to;
         
-        const amountValue = event.result.value; // (這是 10 進制字符串, e.g., "10000000")
+        const amountValue = event.result.value; 
         console.log(`[v7-Poll] Processing Event: TXID: ${txID}, To: ${toAddress}, From: ${fromAddress}, Raw Value: ${amountValue}`);
 
         // 1. 檢查 TX 是否已處理
@@ -138,7 +183,7 @@ class TronListener {
             return;
         }
 
-        // 3. 轉換金額 (v8.4 修正版)
+        // 3. 轉換金額
         const amountBigInt = BigInt(amountValue); 
         const amount = Number(amountBigInt) / (10**USDT_DECIMALS);
         
