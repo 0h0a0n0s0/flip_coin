@@ -1,10 +1,11 @@
-// 檔案: backend/services/TronCollectionService.js (★★★ v8.5 移除 API Key 依賴 ★★★)
+// 檔案: backend/services/TronCollectionService.js (★★★ v8.16 最終修正版 ★★★)
 
 const TronWeb = require('tronweb');
 const db = require('../db');
 const { getKmsInstance } = require('./KmsService');
 
 const USDT_CONTRACT_ADDRESS = 'TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t'; 
+const USDT_DECIMALS = 6; // (你已加入)
 const ACTIVATION_TRX_AMOUNT_SUN = 1000000; // 1 TRX
 const COLLECTION_THRESHOLD_USDT = 1.0; 
 const COLLECTION_GAS_TOPUP_SUN = 2000000; // 2 TRX
@@ -12,11 +13,12 @@ const COLLECTION_GAS_TOPUP_SUN = 2000000; // 2 TRX
 class TronCollectionService {
     
     constructor() {
-        // (★★★ v8.12 修正：加回 API Key ★★★)
+        // (★★★ 修正 1：增加 60 秒超時設定 ★★★)
         this.tronWeb = new TronWeb({
             fullHost: 'https://nile.trongrid.io', 
             headers: { 'TRON-PRO-API-KEY': process.env.TRONGRID_API_KEY || '' },
-            privateKey: '01' 
+            privateKey: '01',
+            timeout: 60000 // (設定 60 秒超時)
         });
 
         this.kmsService = getKmsInstance();
@@ -102,7 +104,7 @@ class TronCollectionService {
         }
     }
 
-    // (collectFunds 函數保持不變 - v8.3 的 BigNumber 邏輯是正確的)
+    // (collectFunds 函數)
     async collectFunds() {
         if (!this.gasReserveWallet || this.collectionWallets.length === 0) {
             console.warn("[v7 Collect] Skipping collection run: Gas or Collection wallet not configured.");
@@ -141,7 +143,8 @@ class TronCollectionService {
                 }
 
             } catch (error) {
-                console.error(`[v7 Collect] Error processing address ${userAddress}:`, error.message);
+                // (★★★ 修正 2：打印完整的 error 物件 ★★★)
+                console.error(`[v7 Collect] Error processing address ${userAddress}:`, error);
             }
         }
         

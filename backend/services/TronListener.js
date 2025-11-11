@@ -1,70 +1,104 @@
-// 檔案: backend/services/TronListener.js (★★★ v8.11 延遲監聽修正版 ★★★)
+// 檔案: backend/services/TronListener.js (★★★ v8.13 輪詢修正版 ★★★)
 
 const TronWeb = require('tronweb');
 const db = require('../db');
 
 const USDT_CONTRACT_ADDRESS = 'TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t'; 
 const USDT_DECIMALS = 6; 
-const MAX_RETRIES = 5; // (★★★ v8.11 修正：增加到 5 次 ★★★)
-const RETRY_DELAY = 15000; // (★★★ v8.11 修正：延長到 15 秒 ★★★)
+const POLLING_INTERVAL_MS = 5000; // 5 秒輪詢一次
 
 class TronListener {
     constructor(io, connectedUsers) {
         this.io = io;
         this.connectedUsers = connectedUsers;
         
-        // (★★★ v8.12 修正：加回 API Key ★★★)
         this.tronWeb = new TronWeb({
             fullHost: 'https://nile.trongrid.io',
-            headers: { 'TRON-PRO-API-KEY': process.env.TRONGRID_API_KEY || '' }
+            headers: { 'TRON-PRO-API-KEY': process.env.TRONGRID_API_KEY || '' },
+            timeout: 60000 // (設定 60 秒超時)
         });
 
-        console.log("✅ [v7] TronListener.js (NILE TESTNET) initialized (API Key Used).");
+        // (★★★ 核心修改：狀態變數 ★★★)
+        // 我們只關心伺服器啟動後的新交易
+        this.lastPollTimestamp = Date.now(); 
+        this.isPolling = false; // (防止重疊執行)
+
+        console.log("✅ [v7-Poll] TronListener.js (NILE TESTNET) initialized (Mode: HTTP Polling).");
         if (!process.env.TRONGRID_API_KEY) {
-            console.warn("   [!] TRONGRID_API_KEY not set in .env, using public node. Event monitoring might be unstable.");
+            console.warn("   [!] TRONGRID_API_KEY not set. Polling might fail.");
         }
     }
 
     /**
-     * (★★★ v8.11 修正：使用新的延遲參數 ★★★)
-     * 啟動監聽器
+     * (★★★ 核心修改：從 watch() 改為 startPolling() ★★★)
      */
-    async start(retryCount = 0) {
-        console.log(`[v7 TronListener] Starting to monitor TRC20 USDT transfers to contract: ${USDT_CONTRACT_ADDRESS} (Nile)`);
-        try {
-            console.log(`[v7 TronListener] Attempting to load contract at: ${USDT_CONTRACT_ADDRESS}`);
-            const contract = await this.tronWeb.contract().at(USDT_CONTRACT_ADDRESS);
-            console.log(`[v7 TronListener] Contract loaded. Setting up 'Transfer' event watcher...`);
+    async start() {
+        console.log(`[v7-Poll] Starting to poll TRC20 USDT transfers to contract: ${USDT_CONTRACT_ADDRESS} (Nile)`);
+        
+        // 立即執行第一次
+        this._pollEvents();
+        
+        // 設定定時器
+        setInterval(() => this._pollEvents(), POLLING_INTERVAL_MS);
+    }
 
-            contract.Transfer().watch((err, event) => {
-                if (err) {
-                    return console.error('[v7 TronListener] ERROR during watch:', err);
+    /**
+     * (★★★ 核心修改：輪詢 API 的函數 ★★★)
+     */
+    async _pollEvents() {
+        if (this.isPolling) {
+            // console.log("[v7-Poll] Poll skipped: Previous poll still running.");
+            return;
+        }
+        this.isPolling = true;
+
+        try {
+            // (我們使用 tronWeb 的內建 http 請求，這對應你啟用的 API 權限)
+            // (注意：我們添加了 min_block_timestamp 參數來只獲取最新的交易)
+            const response = await this.tronWeb.fullNode.request(
+                `v1/contracts/${USDT_CONTRACT_ADDRESS}/events`, 
+                {
+                    'event_name': 'Transfer',
+                    'only_confirmed': true,
+                    'min_block_timestamp': this.lastPollTimestamp
+                }, 
+                'get'
+            );
+
+            if (response && response.data && response.data.length > 0) {
+                console.log(`[v7-Poll] Found ${response.data.length} new 'Transfer' event(s).`);
+                
+                let maxTimestamp = this.lastPollTimestamp;
+
+                for (const event of response.data) {
+                    // (event 結構與 .watch() 返回的幾乎一致)
+                    // event = { block_number, block_timestamp, transaction_id, result: { from, to, value }, ... }
+                    
+                    if (event && event.result && event.transaction_id) {
+                        // (★★★ 重用你的 v8.4 存款邏輯 ★★★)
+                        await this._processDeposit(event);
+                    }
+                    
+                    if (event.block_timestamp > maxTimestamp) {
+                        maxTimestamp = event.block_timestamp;
+                    }
                 }
                 
-                console.log('[v7 TronListener] Received raw event:', JSON.stringify(event, null, 2));
-
-                if (event && event.result && event.transaction_id) {
-                    this._processDeposit(event);
-                }
-            });
-            
-            console.log('[v7 TronListener] Watcher started successfully.');
-
-        } catch (error) {
-            console.error(`[v7 TronListener] CRITICAL: Failed to initialize contract watcher (Attempt ${retryCount + 1}/${MAX_RETRIES}):`, error.message || error);
-            
-            if (retryCount < MAX_RETRIES - 1) {
-                console.log(`[v7 TronListener] Retrying in ${RETRY_DELAY / 1000} seconds...`);
-                setTimeout(() => this.start(retryCount + 1), RETRY_DELAY);
-            } else {
-                console.error(`[v7 TronListener] CRITICAL: All retry attempts failed. TronListener will NOT run.`);
+                // (更新時間戳，加 1ms 避免下次輪詢重複獲取最後一筆)
+                this.lastPollTimestamp = maxTimestamp + 1;
             }
+            
+        } catch (error) {
+            // (這裡仍然可能報錯，例如 API Key 失效)
+            console.error(`[v7-Poll] CRITICAL: Failed to poll events:`, error);
+        } finally {
+            this.isPolling = false;
         }
     }
 
+
     /**
-     * 處理入帳邏輯
-     * (★★★ 保持 v8.4 的邏輯不變 ★★★)
+     * 處理入帳邏輯 (此函數來自 v8.4，保持不變)
      */
     async _processDeposit(event) {
         const txID = event.transaction_id;
@@ -72,17 +106,17 @@ class TronListener {
         const toAddress = this.tronWeb.address.fromHex(event.result.to);
         
         const amountValue = event.result.value; // (這是 10 進制字符串, e.g., "10000000")
-        console.log(`[v7 TronListener] Processing Event: TXID: ${txID}, To: ${toAddress}, From: ${fromAddress}, Raw Value: ${amountValue}`);
+        console.log(`[v7-Poll] Processing Event: TXID: ${txID}, To: ${toAddress}, From: ${fromAddress}, Raw Value: ${amountValue}`);
 
         // 1. 檢查 TX 是否已處理
         try {
             const existingTx = await db.query('SELECT 1 FROM platform_transactions WHERE tx_hash = $1', [txID]);
             if (existingTx.rows.length > 0) {
-                 console.log(`[v7 TronListener] Skipping duplicate tx: ${txID}`);
+                 console.log(`[v7-Poll] Skipping duplicate tx: ${txID}`);
                 return;
             }
         } catch (checkError) {
-            console.error(`[v7 TronListener] DB Error checking tx ${txID}:`, checkError);
+            console.error(`[v7-Poll] DB Error checking tx ${txID}:`, checkError);
             return;
         }
 
@@ -94,13 +128,13 @@ class TronListener {
                 [toAddress]
             );
             if (userResult.rows.length === 0) {
-                 console.log(`[v7 TronListener] Ignore: Address ${toAddress} is not a tracked user deposit address.`);
+                 console.log(`[v7-Poll] Ignore: Address ${toAddress} is not a tracked user deposit address.`);
                 return; 
             }
             user = userResult.rows[0];
-            console.log(`[v7 TronListener] Match: Address ${toAddress} belongs to User ${user.user_id}`);
+            console.log(`[v7-Poll] Match: Address ${toAddress} belongs to User ${user.user_id}`);
         } catch (findError) {
-             console.error(`[v7 TronListener] DB Error finding user for address ${toAddress}:`, findError);
+             console.error(`[v7-Poll] DB Error finding user for address ${toAddress}:`, findError);
             return;
         }
 
@@ -108,14 +142,14 @@ class TronListener {
         const amountBigInt = BigInt(amountValue); 
         const amount = Number(amountBigInt) / (10**USDT_DECIMALS);
         
-        console.log(`[v7 TronListener] Parsed Value: BigInt=${amountBigInt.toString()}, FinalAmount=${amount} USDT`); 
+        console.log(`[v7-Poll] Parsed Value: BigInt=${amountBigInt.toString()}, FinalAmount=${amount} USDT`); 
 
         if (amount <= 0) {
-            console.warn(`[v7 TronListener] Ignoring zero or invalid amount tx: ${txID}`);
+            console.warn(`[v7-Poll] Ignoring zero or invalid amount tx: ${txID}`);
             return;
         }
 
-        console.log(`[v7 TronListener] Processing Deposit: User ${user.user_id} | Amount: ${amount} USDT | TX: ${txID}`);
+        console.log(`[v7-Poll] Processing Deposit: User ${user.user_id} | Amount: ${amount} USDT | TX: ${txID}`);
 
         // 4. 資料庫事務
         const client = await db.pool.connect();
@@ -140,18 +174,18 @@ class TronListener {
 
             await client.query('COMMIT');
             
-            console.log(`[v7 TronListener] SUCCESS: User ${user.user_id} credited with ${amount} USDT. New balance: ${newBalance}`);
+            console.log(`[v7-Poll] SUCCESS: User ${user.user_id} credited with ${amount} USDT. New balance: ${newBalance}`);
 
             // 5. Socket.IO 通知
             const userSocketId = this.connectedUsers[user.user_id];
             if (userSocketId) {
                 this.io.to(userSocketId).emit('user_info_updated', updatedUser);
-                console.log(`[v7 TronListener] Sent real-time balance update to ${user.user_id}`);
+                console.log(`[v7-Poll] Sent real-time balance update to ${user.user_id}`);
             }
 
         } catch (txError) {
             await client.query('ROLLBACK');
-            console.error(`[v7 TronListener] CRITICAL: Transaction failed for tx ${txID} (User: ${user.user_id}). ROLLBACK executed.`, txError);
+            console.error(`[v7-Poll] CRITICAL: Transaction failed for tx ${txID} (User: ${user.user_id}). ROLLBACK executed.`, txError);
         } finally {
             client.release();
         }
