@@ -1,37 +1,40 @@
-// 檔案: backend/services/GameOpenerService.js (★★★ v8.19 移除 API Key 版 ★★★)
+// 檔案: backend/services/GameOpenerService.js (★★★ v8.41 Nileex 節點版 ★★★)
 
 const TronWeb = require('tronweb'); 
 const db = require('../db');
 const { getSettingsCache } = require('./settingsCache.js'); 
+const util = require('util');
+
+// (★★★ v8.41 修正：定義新節點 ★★★)
+const NILE_NODE_HOST = 'https://api.nileex.io';
 
 class GameOpenerService {
     constructor() {
         this.settingsCache = getSettingsCache();
 
-        // (★★★ v8.35 修正：簡化 constructor ★★★)
+        // (★★★ v8.41 修正：更換為 Nileex 節點 ★★★)
         this.tronWeb = new TronWeb({
-            fullHost: 'https://nile.trongrid.io',
+            fullHost: NILE_NODE_HOST,
+            solidityHost: NILE_NODE_HOST,
             privateKey: '01', 
             timeout: 60000 
         });
         
-        // (★★★ v8.35 新增：手動強制設定所有節點 ★★★)
-        this.tronWeb.setFullNode('https://nile.trongrid.io');
-        this.tronWeb.setSolidityNode('https://nile.trongrid.io');
-        this.tronWeb.setEventServer('https://nile.trongrid.io');
+        // (★★★ v8.41 修正：手動強制設定所有節點 ★★★)
+        this.tronWeb.setFullNode(NILE_NODE_HOST);
+        this.tronWeb.setSolidityNode(NILE_NODE_HOST);
+        this.tronWeb.setEventServer(NILE_NODE_HOST);
 
         this.walletA_PrivateKey = null; 
         this.addressA = null;
         this.addressB = null;
 
         this._loadPlatformWallets();
-        // (★★★ v8.19 修改日誌 ★★★)
-        console.log("✅ [v7] GameOpenerService initialized (v8.35 Force Set Nodes).");
+        // (★★★ v8.41 修改日誌 ★★★)
+        console.log(`✅ [v7] GameOpenerService initialized (v8.41 Nileex Node: ${NILE_NODE_HOST}).`);
     }
 
-    // (*** _loadPlatformWallets, triggerBetTransaction, determineOutcome ***)
-    // (*** 以下所有函數均保持不變 ***)
-
+    // (_loadPlatformWallets 保持不變)
     async _loadPlatformWallets() {
         try {
             const chainType = 'TRC20'; 
@@ -72,6 +75,7 @@ class GameOpenerService {
         }
     }
 
+    // (triggerBetTransaction 保持不變 - v8.36)
     async triggerBetTransaction() {
         if (!this.walletA_PrivateKey || !this.addressA || !this.addressB) {
             throw new Error("Opener wallets (A or B) are not configured.");
@@ -82,6 +86,7 @@ class GameOpenerService {
         try {
             this.tronWeb.setPrivateKey(this.walletA_PrivateKey);
             
+            // (預期請求: https://api.nileex.io/wallet/createtransaction)
             const tx = await this.tronWeb.transactionBuilder.sendTrx(
                 this.addressB, // toAddress
                 0, // amount (0 SUN)
@@ -89,6 +94,7 @@ class GameOpenerService {
             );
             
             const signedTx = await this.tronWeb.trx.sign(tx);
+            // (預期請求: https://api.nileex.io/wallet/broadcasttransaction)
             const receipt = await this.tronWeb.trx.sendRawTransaction(signedTx);
             
             if (!receipt || !receipt.txid) {
@@ -102,12 +108,12 @@ class GameOpenerService {
 
         } catch (error) {
             console.error("[v7 Opener] CRITICAL: Failed to send opener transaction (TRON):", error.message || error);
-            // (★★★ v8.19 應用健壯日誌 ★★★)
             logError(error, `Error in triggerBetTransaction`, this.addressA);
             throw new Error("On-chain transaction failed.");
         }
     }
 
+    // (determineOutcome 保持不變)
     determineOutcome(txHash) {
         const lastChar = txHash.slice(-1);
         const decimalValue = parseInt(lastChar, 16);
@@ -117,7 +123,7 @@ class GameOpenerService {
     }
 }
 
-// (★★★ v8.19 健壯日誌輔助函數 ★★★)
+// (日誌輔助函數 保持不變)
 function logError(error, context, address) {
     console.error(`[v7 Opener] ${context} for address ${address}. Details:`);
     try {

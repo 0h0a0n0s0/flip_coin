@@ -15,11 +15,11 @@ services:
       - ./style.css:/usr/src/app/v1_frontend/style.css
       - ./modules:/usr/src/app/v1_frontend/modules
       - ./403.html:/usr/src/app/v1_frontend/403.html
-    # dns:
-    #   - 8.8.8.8
-    #   - 1.1.1.1  
+    dns:
+      - 8.8.8.8
+      - 1.1.1.1  
     extra_hosts:
-      - "nile.trongrid.io:54.203.79.58"
+      - "api.nileex.io:52.15.86.168"
     depends_on:
       db:
         condition: service_healthy 
