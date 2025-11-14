@@ -1,18 +1,21 @@
-// 檔案: backend/services/GameOpenerService.js (★★★ v8.41 Nileex 節點版 ★★★)
+// 檔案: backend/services/GameOpenerService.js (★★★ v8.49 修正版 ★★★)
 
 const TronWeb = require('tronweb'); 
 const db = require('../db');
 const { getSettingsCache } = require('./settingsCache.js'); 
 const util = require('util');
 
-// (★★★ v8.41 修正：定義新節點 ★★★)
-const NILE_NODE_HOST = 'https://api.nileex.io';
+// (★★★ v8.49 修正：從 .env 讀取節點 ★★★)
+const NILE_NODE_HOST = process.env.NILE_NODE_HOST;
+if (!NILE_NODE_HOST) {
+    throw new Error("CRITICAL: NILE_NODE_HOST is not set in .env file!");
+}
 
 class GameOpenerService {
     constructor() {
         this.settingsCache = getSettingsCache();
 
-        // (★★★ v8.41 修正：更換為 Nileex 節點 ★★★)
+        // (★★★ v8.49 修正：使用 tronweb@5.3.2 的建構函式並指定新節點 ★★★)
         this.tronWeb = new TronWeb({
             fullHost: NILE_NODE_HOST,
             solidityHost: NILE_NODE_HOST,
@@ -20,7 +23,6 @@ class GameOpenerService {
             timeout: 60000 
         });
         
-        // (★★★ v8.41 修正：手動強制設定所有節點 ★★★)
         this.tronWeb.setFullNode(NILE_NODE_HOST);
         this.tronWeb.setSolidityNode(NILE_NODE_HOST);
         this.tronWeb.setEventServer(NILE_NODE_HOST);
@@ -30,26 +32,23 @@ class GameOpenerService {
         this.addressB = null;
 
         this._loadPlatformWallets();
-        // (★★★ v8.41 修改日誌 ★★★)
-        console.log(`✅ [v7] GameOpenerService initialized (v8.41 Nileex Node: ${NILE_NODE_HOST}).`);
+        // (★★★ v8.49 修改日誌 ★★★)
+        console.log(`✅ [v7] GameOpenerService initialized (v8.49 tronweb@5.3.2 / GetBlock Node).`);
     }
 
     // (_loadPlatformWallets 保持不變)
     async _loadPlatformWallets() {
+        // ... (保持不變) ...
         try {
             const chainType = 'TRC20'; 
-            
             const wallets = await db.query(
                 "SELECT * FROM platform_wallets WHERE chain_type = $1 AND is_active = true",
                 [chainType]
             );
-
-            // 1. 查找 Opener A (發送方)
             const openerA = wallets.rows.find(w => w.is_opener_a);
             if (openerA) {
                 const pkEnvVar = `TRON_PK_${openerA.address}`;
                 const privateKey = process.env[pkEnvVar];
-                
                 if (!privateKey) {
                     console.error(`[v7 Opener] CRITICAL: Opener Wallet A (${openerA.address}) found in DB, but its Private Key (${pkEnvVar}) is NOT in .env!`);
                 } else {
@@ -60,8 +59,6 @@ class GameOpenerService {
             } else {
                  console.error(`[v7 Opener] CRITICAL: No active 'is_opener_a' wallet (chain: ${chainType}) found.`);
             }
-            
-            // 2. 查找 Opener B (接收方)
             const openerB = wallets.rows.find(w => w.is_opener_b);
             if (openerB) {
                  this.addressB = openerB.address;
@@ -69,13 +66,12 @@ class GameOpenerService {
             } else {
                  console.error(`[v7 Opener] CRITICAL: No active 'is_opener_b' wallet (chain: ${chainType}) found.`);
             }
-            
         } catch (error) {
             console.error("[v7 Opener] Error loading platform wallets:", error);
         }
     }
 
-    // (triggerBetTransaction 保持不變 - v8.36)
+    // (triggerBetTransaction 保持不變)
     async triggerBetTransaction() {
         if (!this.walletA_PrivateKey || !this.addressA || !this.addressB) {
             throw new Error("Opener wallets (A or B) are not configured.");
@@ -86,7 +82,6 @@ class GameOpenerService {
         try {
             this.tronWeb.setPrivateKey(this.walletA_PrivateKey);
             
-            // (預期請求: https://api.nileex.io/wallet/createtransaction)
             const tx = await this.tronWeb.transactionBuilder.sendTrx(
                 this.addressB, // toAddress
                 0, // amount (0 SUN)
@@ -94,11 +89,15 @@ class GameOpenerService {
             );
             
             const signedTx = await this.tronWeb.trx.sign(tx);
-            // (預期請求: https://api.nileex.io/wallet/broadcasttransaction)
             const receipt = await this.tronWeb.trx.sendRawTransaction(signedTx);
             
             if (!receipt || !receipt.txid) {
-                throw new Error("Transaction failed to broadcast or txid not returned.");
+                 // (v8.49 修正：tronweb@5.x 成功時 receipt.result 為 true)
+                if (receipt && receipt.result === true) {
+                    // 這是成功的
+                } else {
+                    throw new Error("Transaction failed to broadcast or txid not returned.");
+                }
             }
             
             const txHash = receipt.txid;
@@ -115,6 +114,7 @@ class GameOpenerService {
 
     // (determineOutcome 保持不變)
     determineOutcome(txHash) {
+        // ... (保持不變) ...
         const lastChar = txHash.slice(-1);
         const decimalValue = parseInt(lastChar, 16);
         const isHead = decimalValue % 2 === 0;
@@ -125,6 +125,7 @@ class GameOpenerService {
 
 // (日誌輔助函數 保持不變)
 function logError(error, context, address) {
+    // ... (保持不變) ...
     console.error(`[v7 Opener] ${context} for address ${address}. Details:`);
     try {
         if (error && error.message) {

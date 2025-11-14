@@ -19,7 +19,7 @@ services:
       - 8.8.8.8
       - 1.1.1.1  
     extra_hosts:
-      - "api.nileex.io:52.15.86.168"
+      - "nile.getblock.io:52.20.141.144" # (GetBlock 的一個 IP，用作 DNS 輔助)
     depends_on:
       db:
         condition: service_healthy 

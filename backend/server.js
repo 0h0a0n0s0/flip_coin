@@ -17,6 +17,7 @@ const LocalStrategy = require('passport-local').Strategy;
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const { Strategy: JwtStrategy, ExtractJwt } = require('passport-jwt');
+const axios = require('axios');
 
 // (★★★ 1. 導入 KmsService ★★★)
 const { getKmsInstance } = require('./services/KmsService.js');
@@ -687,6 +688,7 @@ httpServer.listen(PORT, async () => {
     // (給予服務 20 秒鐘的緩衝時間來等待 DB 和 Docker 網路完全就緒)
 // (★★★ v8.12 修正：移除 20 秒延遲，讓 TronListener 自己重試 ★★★)
     try {
+        const TronListener = require('./services/TronListener.js');
         const tronListener = new TronListener(io, connectedUsers);
         tronListener.start(); // (v8.11 版的 TronListener 內部會自動重試)
     } catch (listenerError) {

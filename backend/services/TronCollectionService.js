@@ -1,14 +1,19 @@
-// 檔案: backend/services/TronCollectionService.js (★★★ v8.41 Nileex 節點版 ★★★)
+// 檔案: backend/services/TronCollectionService.js (★★★ v8.49 完整修正版 ★★★)
 
 const TronWeb = require('tronweb');
 const db = require('../db');
 const { getKmsInstance } = require('./KmsService');
 const util = require('util'); 
 
-// (★★★ v8.41 修正：定義新節點 ★★★)
-const NILE_NODE_HOST = 'https://api.nileex.io';
+// (★★★ v8.49 修正：從 .env 讀取節點 ★★★)
+const NILE_NODE_HOST = process.env.NILE_NODE_HOST;
+if (!NILE_NODE_HOST) {
+    throw new Error("CRITICAL: NILE_NODE_HOST is not set in .env file!");
+}
 
-const USDT_CONTRACT_ADDRESS = 'TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t'; 
+// (★★★ v8.49 核心修正：使用 Nile 測試網的 USDT 合約地址 ★★★)
+const DEFAULT_USDT_CONTRACT = 'TXYZopYRdj2D9XRtbG411XZZ3kM5VkAeBf';
+const USDT_CONTRACT_ADDRESS = process.env.USDT_CONTRACT_ADDRESS || DEFAULT_USDT_CONTRACT; 
 const USDT_DECIMALS = 6;
 const ACTIVATION_TRX_AMOUNT_SUN = 1000000; // 1 TRX
 const COLLECTION_THRESHOLD_USDT = 1.0; 
@@ -31,19 +36,22 @@ function logError(error, context, address) {
 class TronCollectionService {
     
     constructor() {
-        // (★★★ v8.41 修正：更換為 Nileex 節點 ★★★)
+        // (★★★ v8.49 修正：使用 tronweb@5.3.2 的建構函式並指定新節點 ★★★)
         this.tronWeb = new TronWeb({
             fullHost: NILE_NODE_HOST,
             solidityHost: NILE_NODE_HOST,
             privateKey: '01',
             timeout: 60000 
         });
-        // (★★★ v8.41 修正：手動強制設定所有節點 ★★★)
+        
         this.tronWeb.setFullNode(NILE_NODE_HOST);
         this.tronWeb.setSolidityNode(NILE_NODE_HOST);
         this.tronWeb.setEventServer(NILE_NODE_HOST);
+
+        this.usdtContractHex = this.tronWeb.address.toHex(USDT_CONTRACT_ADDRESS);
         
-        console.log(`✅ [v7] TronCollectionService (NILE TESTNET) initialized (v8.41 Nileex Node: ${NILE_NODE_HOST}).`);
+        // (★★★ v8.49 修改日誌 ★★★)
+        console.log(`✅ [v7] TronCollectionService (NILE TESTNET) initialized (v8.49 tronweb@5.3.2 / GetBlock Node).`);
 
 
         this.kmsService = getKmsInstance();
@@ -55,6 +63,7 @@ class TronCollectionService {
 
     // (_loadPlatformWallets 保持不變)
     async _loadPlatformWallets() {
+        // ... (保持不變) ...
         try {
             const wallets = await db.query(
                 "SELECT * FROM platform_wallets WHERE chain_type = 'TRC20' AND is_active = true"
@@ -83,7 +92,7 @@ class TronCollectionService {
         }
     }
 
-    // (activateAddress 保持不變 - v8.36)
+    // (activateAddress - v8.49)
     async activateAddress(toAddress) {
         if (!this.gasReserveWallet) {
             console.error(`[v7 Activate] Failed: No Gas Reserve Wallet loaded.`);
@@ -92,10 +101,12 @@ class TronCollectionService {
         console.log(`[v7 Activate] Attempting to activate ${toAddress} with 1 TRX...`);
         try {
             this.tronWeb.setPrivateKey(this.gasReserveWallet.privateKey);
+
             const tx = await this.tronWeb.transactionBuilder.sendTrx(toAddress, ACTIVATION_TRX_AMOUNT_SUN, this.gasReserveWallet.address);
             const signedTx = await this.tronWeb.trx.sign(tx);
             const receipt = await this.tronWeb.trx.sendRawTransaction(signedTx);
-            if (receipt.result) {
+            
+            if (receipt && receipt.result === true) {
                 console.log(`[v7 Activate] SUCCESS: Address ${toAddress} activated. TX: ${receipt.txid}`);
                 return true;
             } else {
@@ -108,16 +119,20 @@ class TronCollectionService {
         }
     }
     
-    // (輔助函數：取代 .call() - v8.36)
+    // (★★★ v8.49 核心修正：使用 HEX 地址參數 (來自 GPT 分析) ★★★)
     async _getUsdtBalance(userAddress) {
         try {
-            // (預期請求: https://api.nileex.io/wallet/triggerconstantcontract)
+            // (★★★ v8.49 修正 1：將 T... 地址轉換為 41... HEX 地址 ★★★)
+            const userAddressHex = this.tronWeb.address.toHex(userAddress);
+            const gasWalletAddressHex = this.tronWeb.address.toHex(this.gasReserveWallet.address);
+
+            // (預期請求: https://go.getblock.io/YOUR_API_KEY/wallet/triggerconstantcontract)
             const transaction = await this.tronWeb.transactionBuilder.triggerConstantContract(
-                USDT_CONTRACT_ADDRESS,
+                this.usdtContractHex, // (使用 HEX 合約地址)
                 'balanceOf(address)', // 函數選擇器
                 {}, // 選項
-                [{ type: 'address', value: userAddress }], // 參數
-                this.tronWeb.address.toHex(this.gasReserveWallet.address) 
+                [{ type: 'address', value: userAddressHex }], // (★★★ v8.49 修正 2：使用 HEX 參數 ★★★)
+                gasWalletAddressHex // (★★★ v8.49 修正 3：呼叫者也用 HEX ★★★)
             );
 
             if (!transaction || !transaction.constant_result || !transaction.constant_result[0]) {
@@ -127,13 +142,14 @@ class TronCollectionService {
             return '0x' + transaction.constant_result[0];
             
         } catch (error) {
+            // (log19.txt 的 "Smart contract is not exist" 錯誤會在這裡被捕獲)
             logError(error, `_getUsdtBalance (triggerConstantContract)`, userAddress);
             throw error;
         }
     }
 
 
-    // (collectFunds 函數 - v8.36 邏輯)
+    // (collectFunds 函數 - v8.49)
     async collectFunds() {
         if (!this.gasReserveWallet || this.collectionWallets.length === 0) {
             console.warn("[v7 Collect] Skipping collection run: Gas or Collection wallet not configured.");
@@ -157,7 +173,6 @@ class TronCollectionService {
 
             // --- 步驟 1: 檢查 TRX 餘額 (getBalance) ---
             try {
-                // (預期請求: https://api.nileex.io/wallet/getaccount)
                 trxBalance = await this.tronWeb.trx.getBalance(userAddress);
             } catch (gasCheckError) {
                 trxBalance = 0; 
@@ -165,6 +180,7 @@ class TronCollectionService {
             }
 
             // --- 步驟 2: 補 Gas (如果帳戶未啟用) ---
+            // (log19.txt 證明這一步在 5.3.2 上是可行的)
             if (trxBalance < 1000000) { // (小於 1 TRX - 包含 0)
                 try {
                     await this._topUpGas(userAddress);
@@ -178,9 +194,11 @@ class TronCollectionService {
             let usdtBalanceBigNumberStr;
             // --- 步驟 3: 檢查 USDT 餘額 (使用 triggerConstantContract) ---
             try {
+                // (★★★ v8.49 修正：呼叫已修復的 _getUsdtBalance ★★★)
                 usdtBalanceBigNumberStr = await this._getUsdtBalance(userAddress);
                 usdtBalance = parseFloat(BigInt(usdtBalanceBigNumberStr).toString()) / (10**USDT_DECIMALS);
             } catch (balanceError) {
+                // (★★★ v8.49 修正：如果合約地址和參數都對了，這裡不應再報錯 ★★★)
                 logError(balanceError, `STEP 3 FAILED (_getUsdtBalance)`, userAddress);
                 continue; // 處理下一個用戶
             }
@@ -194,6 +212,7 @@ class TronCollectionService {
             // --- 步驟 4: 歸集 (使用 triggerSmartContract) ---
             try {
                 const userPrivateKey = this.kmsService.getPrivateKey('TRC20', userPathIndex);
+                // (★★★ v8.49 修正：再次呼叫 _getUsdtBalance 獲取準確的當前餘額 ★★★)
                 const amountBigNumberStr = (await this._getUsdtBalance(userAddress)).toString();
                 await this._transferUsdt(userPrivateKey, userAddress, amountBigNumberStr);
                 collectedCount++;
@@ -208,15 +227,14 @@ class TronCollectionService {
         }
     }
 
-    // (_topUpGas 函數 - v8.36)
+    // (_topUpGas 函數 - v8.49)
     async _topUpGas(toAddress) {
         console.log(`[v7 Collect] Topping up ${toAddress} with ${ACTIVATION_TRX_AMOUNT_SUN / 1000000} TRX for collection/activation...`);
         try {
             this.tronWeb.setPrivateKey(this.gasReserveWallet.privateKey);
-            // (預期請求: https://api.nileex.io/wallet/createtransaction)
+            
             const tx = await this.tronWeb.transactionBuilder.sendTrx(toAddress, ACTIVATION_TRX_AMOUNT_SUN, this.gasReserveWallet.address);
             const signedTx = await this.tronWeb.trx.sign(tx);
-            // (預期請求: https://api.nileex.io/wallet/broadcasttransaction)
             await this.tronWeb.trx.sendRawTransaction(signedTx);
             console.log(`[v7 Collect] Gas/Activation top-up sent to ${toAddress}.`);
         } catch (error) {
@@ -225,7 +243,7 @@ class TronCollectionService {
         }
     }
 
-    // (_transferUsdt 函數 - v8.36)
+    // (_transferUsdt 函數 - v8.49)
     async _transferUsdt(userPrivateKey, userAddress, amountBigNumberStr) {
         const collectionAddress = this.collectionWallets[0]; 
         
@@ -235,16 +253,19 @@ class TronCollectionService {
             this.tronWeb.setPrivateKey(userPrivateKey);
             
             // 1. 建立交易
-            // (預期請求: https://api.nileex.io/wallet/triggersmartcontract)
+            // (★★★ v8.49 核心修正：使用 HEX 地址參數 (來自 GPT 分析) ★★★)
+            const collectionAddressHex = this.tronWeb.address.toHex(collectionAddress);
+            const userAddressHex = this.tronWeb.address.toHex(userAddress);
+
             const transaction = await this.tronWeb.transactionBuilder.triggerSmartContract(
-                USDT_CONTRACT_ADDRESS,
+                this.usdtContractHex, // (使用 HEX 合約地址)
                 'transfer(address,uint256)', // 函數選擇器
                 { feeLimit: 15000000, callValue: 0 }, // 選項
                 [ // 參數
-                    { type: 'address', value: collectionAddress },
+                    { type: 'address', value: collectionAddressHex }, // (★★★ v8.49 修正 ★★★)
                     { type: 'uint256', value: amountBigNumberStr } 
                 ],
-                userAddress // 交易發起人地址
+                userAddressHex // (★★★ v8.49 修正 ★★★)
             );
 
             if (!transaction || !transaction.result || !transaction.result.result) {
