@@ -173,15 +173,32 @@ export function bindReferrer(token, referrerCode) {
     });
 }
 
-export function setWithdrawalPassword(login_password, new_password) {
+/**
+ * (★★★ 設置初始提款密碼 ★★★)
+ * @param {string} token
+ * @param {string} login_password 
+ * @param {string} new_password
+ * @returns {Promise<object>}
+ */
+export function setWithdrawalPassword(token, login_password, new_password) {
     return request('/users/set-withdrawal-password', {
-        method: 'POST', token: options.token, // (您需要自行傳入 token)
+        method: 'POST',
+        token: token,
         body: JSON.stringify({ login_password, new_password }),
     });
 }
-export function updateWithdrawalPassword(old_password, new_password) {
+
+/**
+ * (★★★ 修改提款密碼 ★★★)
+ * @param {string} token
+ * @param {string} old_password 
+ * @param {string} new_password
+ * @returns {Promise<object>}
+ */
+export function updateWithdrawalPassword(token, old_password, new_password) {
     return request('/users/update-withdrawal-password', {
-        method: 'PATCH', token: options.token,
+        method: 'PATCH',
+        token: token,
         body: JSON.stringify({ old_password, new_password }),
     });
 }

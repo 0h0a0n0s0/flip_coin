@@ -167,14 +167,47 @@ export default {
 
     // (手動完成)
     handleComplete(row) {
-        // (您需要自行在 api.js 和 admin.js 中實作 'completeWithdrawal' API)
-        ElMessage.info('「手動完成」功能尚未實作。');
-        // ElMessageBox.prompt('請輸入出款 TX Hash', '標記為完成', { ... })
-        // .then(async ({ value: txHash }) => {
-        //    const { value: gasFee } = await ElMessageBox.prompt('請輸入 Gas 成本 (USDT)', 'Gas 成本', { ... });
-        //    await this.$api.completeWithdrawal(row.id, { tx_hash: txHash, gas_fee: gasFee });
-        //    ...
-        // })
+        ElMessageBox.prompt(
+            '請輸入出款 TX Hash（交易哈希）',
+            '標記為完成',
+            {
+                confirmButtonText: '下一步',
+                cancelButtonText: '取消',
+                inputPattern: /.+/,
+                inputErrorMessage: 'TX Hash 不能為空',
+                inputPlaceholder: '請輸入完整的交易哈希'
+            }
+        ).then(async ({ value: txHash }) => {
+            // (第二步：輸入 Gas Fee)
+            ElMessageBox.prompt(
+                '請輸入 Gas 成本 (USDT)',
+                'Gas 成本',
+                {
+                    confirmButtonText: '確認完成',
+                    cancelButtonText: '取消',
+                    inputPattern: /^[0-9]+\.?[0-9]*$/,
+                    inputErrorMessage: 'Gas Fee 必須為有效的數字',
+                    inputPlaceholder: '例如：0.001',
+                    inputValue: '0'
+                }
+            ).then(async ({ value: gasFee }) => {
+                try {
+                    await this.$api.completeWithdrawal(row.id, {
+                        tx_hash: txHash.trim(),
+                        gas_fee: parseFloat(gasFee) || 0
+                    });
+                    ElMessage.success('提款已標記為完成');
+                    await this.fetchData();
+                } catch (error) {
+                    console.error('Failed to complete withdrawal:', error);
+                    ElMessage.error(error.response?.data?.error || '標記完成失敗');
+                }
+            }).catch(() => {
+                // (用戶取消，不執行任何操作)
+            });
+        }).catch(() => {
+            // (用戶取消，不執行任何操作)
+        });
     },
 
     // --- (格式化輔助函數) ---

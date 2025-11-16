@@ -5,20 +5,15 @@ import { ElMessage } from 'element-plus';
 
 // 建立 Axios 實例
 const service = axios.create({
-    // (★★★ 關鍵 ★★★)
-    // 基礎 URL。因為 Nginx 代理，我們所有的 API 請求都指向同一個來源 (Nginx)
-    // Nginx 會自動將 /api/ 開頭的請求轉發到後端
     baseURL: '/', 
-    timeout: 10000, // 請求超時
+    timeout: 10000, 
 });
 
 // 請求攔截器 (Request Interceptor)
 service.interceptors.request.use(
     (config) => {
-        // 在發送請求前，檢查 localStorage 中是否有 token
         const token = localStorage.getItem('admin_token');
         if (token) {
-            // 如果有 token，則設置 Authorization 標頭
             config.headers['Authorization'] = `Bearer ${token}`;
         }
         return config;
@@ -32,7 +27,6 @@ service.interceptors.request.use(
 // 回應攔截器 (Response Interceptor)
 service.interceptors.response.use(
     (response) => {
-        // 直接返回 response.data
         return response.data;
     },
     (error) => {
@@ -46,20 +40,30 @@ service.interceptors.response.use(
                 message = `錯誤 ${error.response.status}: ${error.response.statusText}`;
             }
 
-            // (★★★ 關鍵修改：只攔截 401，並跳轉到 /admin/login ★★★)
+            // (★★★ 關鍵修復：區分 401 來源 ★★★)
             if (error.response.status === 401) {
-                ElMessage.error('Token 已過期或無效，請重新登入。');
-                localStorage.removeItem('admin_token');
-                
-                // (使用 /admin/login 來確保跳轉到正確的後台登入頁)
-                window.location.href = '/admin/login'; 
-                
-                // (返回一個 pending 的 Promise 來中斷當前的 API 鏈)
-                return new Promise(() => {});
+                const originalRequestUrl = error.config.url;
+
+                // 1. 如果是「登入 API」本身返回 401，代表帳號密碼錯誤
+                if (originalRequestUrl.includes('/api/admin/login')) {
+                    // (不需要做任何事，讓錯誤繼續往下傳遞到 Login.vue 的 catch 塊)
+                    // (ElMessage.error 會在下面統一處理)
+                } else {
+                    // 2. 如果是其他 API (例如 /stats) 返回 401，代表 Token 過期
+                    ElMessage.error('Token 已過期或無效，請重新登入。');
+                    localStorage.removeItem('admin_token');
+                    
+                    // (如果是 /admin/ 以外的路徑，才跳轉)
+                    if (!window.location.pathname.startsWith('/admin/login')) {
+                         window.location.href = '/admin/login'; 
+                    }
+                    
+                    return new Promise(() => {}); // 中斷 API 鏈
+                }
             }
         }
         
-        // (對於 400 業務錯誤 或 500 伺服器錯誤，只彈出提示)
+        // (統一顯示 400 業務錯誤、500 伺服器錯誤，或登入失敗的 401 錯誤)
         ElMessage.error(message);
         return Promise.reject(error);
     }

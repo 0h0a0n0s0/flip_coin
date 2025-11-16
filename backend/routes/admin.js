@@ -1441,4 +1441,75 @@ router.post('/withdrawals/:id/approve', authMiddleware, checkPermission('withdra
     }
 });
 
+/**
+ * @description (新) 手動完成提款 (標記為完成，記錄 TX Hash 和 Gas Fee)
+ * @route POST /api/admin/withdrawals/:id/complete
+ */
+router.post('/withdrawals/:id/complete', authMiddleware, checkPermission('withdrawals', 'update'), async (req, res) => {
+    const { id } = req.params;
+    const { tx_hash, gas_fee } = req.body;
+    const reviewerId = req.user.id;
+
+    if (!tx_hash || !tx_hash.trim()) {
+        return res.status(400).json({ error: 'TX Hash 為必填' });
+    }
+
+    const gasFeeValue = gas_fee !== undefined && gas_fee !== null ? parseFloat(gas_fee) : 0;
+    if (isNaN(gasFeeValue) || gasFeeValue < 0) {
+        return res.status(400).json({ error: 'Gas Fee 必須為有效的數字且大於等於 0' });
+    }
+
+    const client = await db.pool.connect();
+    try {
+        await client.query('BEGIN');
+
+        // 1. 查找並鎖定提款單 (狀態必須為 processing)
+        const wdResult = await client.query(
+            "SELECT * FROM withdrawals WHERE id = $1 AND status = 'processing' FOR UPDATE",
+            [id]
+        );
+        
+        if (wdResult.rows.length === 0) {
+            await client.query('ROLLBACK');
+            return res.status(404).json({ error: '提款單不存在或狀態不是 [處理中]' });
+        }
+        
+        const withdrawal = wdResult.rows[0];
+
+        // 2. 更新提款單狀態為 completed
+        await client.query(
+            `UPDATE withdrawals 
+             SET status = 'completed', 
+                 tx_hash = $1, 
+                 gas_fee = $2, 
+                 review_time = NOW() 
+             WHERE id = $3`,
+            [tx_hash.trim(), gasFeeValue, id]
+        );
+
+        // 3. 更新 platform_transactions 表的狀態為 completed
+        await client.query(
+            `UPDATE platform_transactions 
+             SET status = 'completed', 
+                 updated_at = NOW() 
+             WHERE user_id = $1 
+               AND type = 'withdraw_request' 
+               AND amount = $2 
+               AND status = 'processing'`,
+            [withdrawal.user_id, -Math.abs(withdrawal.amount)]
+        );
+
+        await client.query('COMMIT');
+
+        res.status(200).json({ message: '提款已標記為完成' });
+
+    } catch (error) {
+        await client.query('ROLLBACK');
+        console.error(`[Admin Withdrawals] Error completing withdrawal ${id}:`, error);
+        res.status(500).json({ error: error.message || '操作失敗' });
+    } finally {
+        client.release();
+    }
+});
+
 module.exports = router;

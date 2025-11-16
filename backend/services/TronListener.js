@@ -68,9 +68,13 @@ class TronListener {
         // (★★★ v8.49 修正：建立 axios 實例，指向 Listener 節點 ★★★)
         this.axiosInstance = axios.create({
             baseURL: NILE_LISTENER_HOST,
-            timeout: 10000,
-            headers: TRONGRID_API_KEY ? { 'TRON-PRO-API-KEY': TRONGRID_API_KEY } : {}
+            timeout: 60000, // (增加 timeout 從 10 秒到 60 秒)
+            headers: TRONGRID_API_KEY ? { 'TRON-PRO-API-KEY': TRONGRID_API_KEY } : {},
             // (GetBlock 節點不需要 API Key 在 Header 中，因為它在 URL 裡)
+            // (增加重試和錯誤處理)
+            validateStatus: function (status) {
+                return status < 500; // 只對 5xx 錯誤拋出異常
+            }
         });
 
         if (NILE_LISTENER_HOST.includes('getblock.io')) {
@@ -122,137 +126,244 @@ class TronListener {
 
         for (const user of usersToPoll) {
             const latestUsdtTs = await this._pollUsdtTransactionsForUser(user);
-            if (latestUsdtTs && latestUsdtTs > newTrc20Timestamp) {
-                newTrc20Timestamp = latestUsdtTs;
+            if (latestUsdtTs !== null && latestUsdtTs !== undefined) {
+                // (無論是否處理，都更新時間戳以避免重複查詢)
+                if (latestUsdtTs > newTrc20Timestamp) {
+                    newTrc20Timestamp = latestUsdtTs;
+                }
             }
 
             const latestTrxTs = await this._pollTrxTransactionsForUser(user);
-            if (latestTrxTs && latestTrxTs > newTrxTimestamp) {
-                newTrxTimestamp = latestTrxTs;
+            if (latestTrxTs !== null && latestTrxTs !== undefined) {
+                // (無論是否處理，都更新時間戳以避免重複查詢)
+                if (latestTrxTs > newTrxTimestamp) {
+                    newTrxTimestamp = latestTrxTs;
+                }
             }
         }
         
         // (更新時間戳，加 1ms 避免下次輪詢重複獲取最後一筆)
+        const oldTrc20Ts = this.lastTrc20PollTimestamp;
+        const oldTrxTs = this.lastTrxPollTimestamp;
+        
         this.lastTrc20PollTimestamp = newTrc20Timestamp + 1;
         this.lastTrxPollTimestamp = newTrxTimestamp + 1;
+        
+        // (只在時間戳有變化時輸出日誌，避免日誌噪音)
+        if (this.lastTrc20PollTimestamp !== oldTrc20Ts + 1 || this.lastTrxPollTimestamp !== oldTrxTs + 1) {
+            console.log(`[v7-Poll] 📅 Timestamp updated: TRC20=${this.lastTrc20PollTimestamp}, TRX=${this.lastTrxPollTimestamp}`);
+        }
+        
         this.isPolling = false;
     }
 
-    async _pollUsdtTransactionsForUser(user) {
-        try {
-            const response = await this.axiosInstance.get(
-                `v1/accounts/${user.tron_deposit_address}/transactions/trc20`,
-                {
-                    params: {
-                        only_to: true,
-                        only_confirmed: true,
-                        min_block_timestamp: this.lastTrc20PollTimestamp,
-                        contract_address: USDT_CONTRACT_ADDRESS,
-                        limit: 50,
-                        order_by: 'block_timestamp,asc'
+    async _pollUsdtTransactionsForUser(user, retries = 3) {
+        for (let attempt = 1; attempt <= retries; attempt++) {
+            try {
+                const response = await this.axiosInstance.get(
+                    `v1/accounts/${user.tron_deposit_address}/transactions/trc20`,
+                    {
+                        params: {
+                            only_to: true,
+                            only_confirmed: true,
+                            min_block_timestamp: this.lastTrc20PollTimestamp,
+                            contract_address: USDT_CONTRACT_ADDRESS,
+                            limit: 50,
+                            order_by: 'block_timestamp,asc'
+                        }
+                    }
+                );
+
+                // (檢查響應狀態)
+                if (response.status >= 400) {
+                    console.warn(`[v7-Poll] USDT API returned status ${response.status} for ${user.user_id}. Response:`, response.data);
+                    if (attempt < retries) {
+                        await new Promise(resolve => setTimeout(resolve, 2000 * attempt));
+                        continue;
+                    }
+                    return null;
+                }
+
+                const transactions = response.data && response.data.data ? response.data.data : [];
+                if (transactions.length === 0) {
+                    return null;
+                }
+
+                let latestTimestamp = null;
+                let processedCount = 0;
+                let skippedCount = 0;
+
+                for (const tx of transactions) {
+                    // (無論是否處理，都先更新 latestTimestamp 以避免重複查詢)
+                    if (!latestTimestamp || tx.block_timestamp > latestTimestamp) {
+                        latestTimestamp = tx.block_timestamp;
+                    }
+
+                    const eventData = {
+                        transaction_id: tx.transaction_id,
+                        result: {
+                            from: tx.from,
+                            to: tx.to,
+                            value: tx.value
+                        },
+                        block_timestamp: tx.block_timestamp
+                    };
+
+                    // (處理交易，檢查是否成功處理)
+                    const wasProcessed = await this._processDeposit(eventData);
+                    if (wasProcessed) {
+                        processedCount++;
+                    } else {
+                        skippedCount++;
                     }
                 }
-            );
 
-            const transactions = response.data && response.data.data ? response.data.data : [];
-            if (transactions.length === 0) {
+                // (只在有新交易時輸出日誌)
+                if (transactions.length > 0) {
+                    if (processedCount > 0 || skippedCount > 0) {
+                        console.log(`[v7-Poll] 💰 USDT poll for ${user.user_id}: ${processedCount} processed, ${skippedCount} skipped`);
+                    }
+                }
+
+                // (確保返回 latestTimestamp，即使所有交易都被跳過)
+                return latestTimestamp;
+            } catch (error) {
+                // (如果是 DNS 錯誤或超時，嘗試重試)
+                const isRetryable = error.code === 'EAI_AGAIN' || 
+                                    error.code === 'ECONNABORTED' || 
+                                    error.code === 'ETIMEDOUT' ||
+                                    error.message.includes('timeout');
+                
+                if (isRetryable && attempt < retries) {
+                    console.warn(`[v7-Poll] USDT poll failed (attempt ${attempt}/${retries}) for ${user.user_id}, retrying... Error:`, error.message);
+                    await new Promise(resolve => setTimeout(resolve, 3000 * attempt));
+                    continue;
+                }
+                
+                // (最後一次嘗試失敗或非重試錯誤)
+                logPollError(error, `Failed to poll USDT txs for ${user.user_id} (attempt ${attempt}/${retries})`);
                 return null;
             }
-
-            let latestTimestamp = null;
-            console.log(`[v7-Poll] Found ${transactions.length} USDT tx(s) for ${user.user_id} (${user.tron_deposit_address})`);
-
-            for (const tx of transactions) {
-                const eventData = {
-                    transaction_id: tx.transaction_id,
-                    result: {
-                        from: tx.from,
-                        to: tx.to,
-                        value: tx.value
-                    },
-                    block_timestamp: tx.block_timestamp
-                };
-
-                await this._processDeposit(eventData);
-
-                if (!latestTimestamp || tx.block_timestamp > latestTimestamp) {
-                    latestTimestamp = tx.block_timestamp;
-                }
-            }
-
-            return latestTimestamp;
-        } catch (error) {
-            logPollError(error, `Failed to poll USDT txs for ${user.user_id}`);
-            return null;
         }
+        return null;
     }
 
-    async _pollTrxTransactionsForUser(user) {
-        try {
-            const response = await this.axiosInstance.get(
-                `v1/accounts/${user.tron_deposit_address}/transactions`,
-                {
-                    params: {
-                        only_to: true,
-                        only_confirmed: true,
-                        min_block_timestamp: this.lastTrxPollTimestamp,
-                        limit: 50,
-                        order_by: 'block_timestamp,asc'
+    async _pollTrxTransactionsForUser(user, retries = 3) {
+        for (let attempt = 1; attempt <= retries; attempt++) {
+            try {
+                const response = await this.axiosInstance.get(
+                    `v1/accounts/${user.tron_deposit_address}/transactions`,
+                    {
+                        params: {
+                            only_to: true,
+                            only_confirmed: true,
+                            min_block_timestamp: this.lastTrxPollTimestamp,
+                            limit: 50,
+                            order_by: 'block_timestamp,asc'
+                        }
+                    }
+                );
+
+                // (檢查響應狀態)
+                if (response.status >= 400) {
+                    console.warn(`[v7-Poll] TRX API returned status ${response.status} for ${user.user_id}. Response:`, response.data);
+                    if (attempt < retries) {
+                        await new Promise(resolve => setTimeout(resolve, 2000 * attempt));
+                        continue;
+                    }
+                    return null;
+                }
+
+                const transactions = response.data && response.data.data ? response.data.data : [];
+                if (transactions.length === 0) {
+                    return null;
+                }
+
+                let latestTimestamp = null;
+                let processedCount = 0;
+                let skippedCount = 0;
+                let filteredCount = 0;
+                const depositHex = this.tronWeb.address.toHex(user.tron_deposit_address);
+
+                for (const tx of transactions) {
+                    // (無論是否處理，都先更新 latestTimestamp 以避免重複查詢)
+                    if (!latestTimestamp || tx.block_timestamp > latestTimestamp) {
+                        latestTimestamp = tx.block_timestamp;
+                    }
+
+                    if (!tx.ret || !tx.ret[0] || tx.ret[0].contractRet !== 'SUCCESS') {
+                        filteredCount++;
+                        continue;
+                    }
+
+                    const contract = tx.raw_data && tx.raw_data.contract ? tx.raw_data.contract[0] : null;
+                    if (!contract || contract.type !== 'TransferContract') {
+                        filteredCount++;
+                        continue;
+                    }
+
+                    const paramValue = contract.parameter && contract.parameter.value ? contract.parameter.value : null;
+                    if (!paramValue || !paramValue.amount || !paramValue.to_address) {
+                        filteredCount++;
+                        continue;
+                    }
+
+                    const toHex = this._safeHexToHex(paramValue.to_address);
+                    if (toHex !== depositHex) {
+                        filteredCount++;
+                        continue;
+                    }
+
+                    // (處理交易，檢查是否成功處理)
+                    const wasProcessed = await this._processTrxDeposit({
+                        txID: tx.txID || tx.transaction_id,
+                        from: this._safeHexToBase58(paramValue.owner_address),
+                        to: this._safeHexToBase58(paramValue.to_address),
+                        amountSun: paramValue.amount,
+                        block_timestamp: tx.block_timestamp
+                    }, user);
+
+                    if (wasProcessed) {
+                        processedCount++;
+                    } else {
+                        skippedCount++;
                     }
                 }
-            );
 
-            const transactions = response.data && response.data.data ? response.data.data : [];
-            if (transactions.length === 0) {
+                // (只在有新交易時輸出日誌)
+                if (transactions.length > 0) {
+                    if (processedCount > 0 || skippedCount > 0) {
+                        console.log(`[v7-Poll] 🔷 TRX poll for ${user.user_id}: ${processedCount} processed, ${skippedCount} skipped, ${filteredCount} filtered`);
+                    }
+                }
+
+                // (確保返回 latestTimestamp，即使所有交易都被跳過或過濾)
+                return latestTimestamp;
+            } catch (error) {
+                // (如果是 DNS 錯誤或超時，嘗試重試)
+                const isRetryable = error.code === 'EAI_AGAIN' || 
+                                    error.code === 'ECONNABORTED' || 
+                                    error.code === 'ETIMEDOUT' ||
+                                    error.message.includes('timeout');
+                
+                if (isRetryable && attempt < retries) {
+                    console.warn(`[v7-Poll] TRX poll failed (attempt ${attempt}/${retries}) for ${user.user_id}, retrying... Error:`, error.message);
+                    await new Promise(resolve => setTimeout(resolve, 3000 * attempt));
+                    continue;
+                }
+                
+                // (最後一次嘗試失敗或非重試錯誤)
+                logPollError(error, `Failed to poll TRX txs for ${user.user_id} (attempt ${attempt}/${retries})`);
                 return null;
             }
-
-            let latestTimestamp = null;
-            const depositHex = this.tronWeb.address.toHex(user.tron_deposit_address);
-
-            for (const tx of transactions) {
-                if (!tx.ret || !tx.ret[0] || tx.ret[0].contractRet !== 'SUCCESS') {
-                    continue;
-                }
-
-                const contract = tx.raw_data && tx.raw_data.contract ? tx.raw_data.contract[0] : null;
-                if (!contract || contract.type !== 'TransferContract') {
-                    continue;
-                }
-
-                const paramValue = contract.parameter && contract.parameter.value ? contract.parameter.value : null;
-                if (!paramValue || !paramValue.amount || !paramValue.to_address) {
-                    continue;
-                }
-
-                const toHex = this._safeHexToHex(paramValue.to_address);
-                if (toHex !== depositHex) {
-                    continue;
-                }
-
-                await this._processTrxDeposit({
-                    txID: tx.txID || tx.transaction_id,
-                    from: this._safeHexToBase58(paramValue.owner_address),
-                    to: this._safeHexToBase58(paramValue.to_address),
-                    amountSun: paramValue.amount,
-                    block_timestamp: tx.block_timestamp
-                }, user);
-
-                if (!latestTimestamp || tx.block_timestamp > latestTimestamp) {
-                    latestTimestamp = tx.block_timestamp;
-                }
-            }
-
-            return latestTimestamp;
-        } catch (error) {
-            logPollError(error, `Failed to poll TRX txs for ${user.user_id}`);
-            return null;
         }
+        return null;
     }
 
 
     /**
      * 處理入帳邏輯 (★★★ v8.49 修正：使用 this.tronWeb 進行地址比較 ★★★)
+     * @returns {boolean} 返回 true 表示成功處理，false 表示跳過（重複或無效）
      */
     async _processDeposit(event) {
         const txID = event.transaction_id;
@@ -260,18 +371,17 @@ class TronListener {
         const toAddress = event.result.to;
         
         const amountValue = event.result.value; 
-        console.log(`[v7-Poll] Processing Event: TXID: ${txID}, To: ${toAddress}, From: ${fromAddress}, Raw Value: ${amountValue}`);
 
         // 1. 檢查 TX 是否已處理
         try {
             const existingTx = await db.query('SELECT 1 FROM platform_transactions WHERE tx_hash = $1', [txID]);
             if (existingTx.rows.length > 0) {
-                 console.log(`[v7-Poll] Skipping duplicate tx: ${txID}`);
-                return;
+                // (重複交易，靜默跳過)
+                return false;
             }
         } catch (checkError) {
             console.error(`[v7-Poll] DB Error checking tx ${txID}:`, checkError);
-            return;
+            return false;
         }
 
         // 2. 查找用戶地址
@@ -288,27 +398,24 @@ class TronListener {
             );
 
             if (!user) {
-                 console.log(`[v7-Poll] Ignore: Address ${toAddress} (${toAddressHex}) is not a tracked user deposit address.`);
-                return; 
+                // (非用戶地址，靜默跳過)
+                return false;
             }
-            console.log(`[v7-Poll] Match: Address ${toAddress} belongs to User ${user.user_id}`);
         } catch (findError) {
-             console.error(`[v7-Poll] DB Error finding user for address ${toAddress}:`, findError);
-            return;
+            console.error(`[v7-Poll] DB Error finding user for address ${toAddress}:`, findError);
+            return false;
         }
 
         // 3. 轉換金額
         const amountBigInt = BigInt(amountValue); 
         const amount = Number(amountBigInt) / (10**USDT_DECIMALS);
-        
-        console.log(`[v7-Poll] Parsed Value: BigInt=${amountBigInt.toString()}, FinalAmount=${amount} USDT`); 
 
         if (amount <= 0) {
-            console.warn(`[v7-Poll] Ignoring zero or invalid amount tx: ${txID}`);
-            return;
+            // (零金額，靜默跳過)
+            return false;
         }
 
-        console.log(`[v7-Poll] Processing Deposit: User ${user.user_id} | Amount: ${amount} USDT | TX: ${txID}`);
+        console.log(`[v7-Poll] 💰 Processing USDT deposit: User ${user.user_id} | ${amount} USDT | TX: ${txID}`);
 
         // 4. 資料庫事務
         const client = await db.pool.connect();
@@ -333,18 +440,19 @@ class TronListener {
 
             await client.query('COMMIT');
             
-            console.log(`[v7-Poll] SUCCESS: User ${user.user_id} credited with ${amount} USDT. New balance: ${newBalance}`);
+            console.log(`[v7-Poll] ✅ User ${user.user_id} credited: +${amount} USDT | Balance: ${newBalance} USDT`);
 
             // 5. Socket.IO 通知
             const userSocketId = this.connectedUsers[user.user_id];
             if (userSocketId) {
                 this.io.to(userSocketId).emit('user_info_updated', updatedUser);
-                console.log(`[v7-Poll] Sent real-time balance update to ${user.user_id}`);
             }
 
+            return true; // (返回 true 表示成功處理)
         } catch (txError) {
             await client.query('ROLLBACK');
-            console.error(`[v7-Poll] CRITICAL: Transaction failed for tx ${txID} (User: ${user.user_id}). ROLLBACK executed.`, txError);
+            console.error(`[v7-Poll] ❌ Transaction failed for tx ${txID} (User: ${user.user_id}):`, txError.message);
+            return false;
         } finally {
             client.release();
         }
@@ -353,25 +461,25 @@ class TronListener {
     async _processTrxDeposit(event, user) {
         const txID = event.txID;
         if (!txID) {
-            return;
+            return false; // (返回 false 表示未處理)
         }
 
         try {
             const existingTx = await db.query('SELECT 1 FROM platform_transactions WHERE tx_hash = $1', [txID]);
             if (existingTx.rows.length > 0) {
-                console.log(`[v7-Poll] Skipping duplicate TRX tx: ${txID}`);
-                return;
+                // (重複交易，靜默跳過，不輸出日誌以減少噪音)
+                return false; // (返回 false 表示已存在，但已處理)
             }
         } catch (checkError) {
             console.error(`[v7-Poll] DB Error checking TRX tx ${txID}:`, checkError);
-            return;
+            return false;
         }
 
         const amountSun = BigInt(event.amountSun);
         const amount = Number(amountSun) / (10 ** TRX_DECIMALS);
         if (amount <= 0) {
-            console.warn(`[v7-Poll] Ignoring zero TRX tx: ${txID}`);
-            return;
+            // (零金額交易，靜默跳過)
+            return false;
         }
 
         const client = await db.pool.connect();
@@ -383,10 +491,12 @@ class TronListener {
                 [user.user_id, amount, txID]
             );
             await client.query('COMMIT');
-            console.log(`[v7-Poll] Recorded TRX activation deposit: User ${user.user_id} | Amount: ${amount} TRX | TX: ${txID}`);
+            console.log(`[v7-Poll] ✅ Recorded TRX activation: User ${user.user_id} | ${amount} TRX | TX: ${txID}`);
+            return true; // (返回 true 表示成功處理)
         } catch (txError) {
             await client.query('ROLLBACK');
-            console.error(`[v7-Poll] CRITICAL: Failed to record TRX activation tx ${txID} (User: ${user.user_id}).`, txError);
+            console.error(`[v7-Poll] ❌ Failed to record TRX tx ${txID} (User: ${user.user_id}):`, txError.message);
+            return false;
         } finally {
             client.release();
         }

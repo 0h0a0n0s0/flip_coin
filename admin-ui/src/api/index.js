@@ -315,10 +315,14 @@ export function rejectWithdrawal(id, reason) { // reason: { reason: '...' }
         data: reason,
     });
 }
-// (您還需要一個 "手動完成" 的 API)
-export function completeWithdrawal(id, data) { // data: { tx_hash, gas_fee }
+/**
+ * @description (手動完成提款)
+ * @param {number} id - 提款單 ID
+ * @param {object} data - { tx_hash, gas_fee }
+ */
+export function completeWithdrawal(id, data) {
     return request({
-        url: `/api/admin/withdrawals/${id}/complete`, // (您需要自行在 admin.js 中實作此路由)
+        url: `/api/admin/withdrawals/${id}/complete`,
         method: 'post',
         data: data,
     });

@@ -41,7 +41,7 @@ class TronCollectionService {
             fullHost: NILE_NODE_HOST,
             solidityHost: NILE_NODE_HOST,
             privateKey: '01',
-            timeout: 60000 
+            timeout: 120000 // (增加 timeout 從 60 秒到 120 秒)
         });
         
         this.tronWeb.setFullNode(NILE_NODE_HOST);
@@ -51,7 +51,9 @@ class TronCollectionService {
         this.usdtContractHex = this.tronWeb.address.toHex(USDT_CONTRACT_ADDRESS);
         
         // (★★★ v8.49 修改日誌 ★★★)
-        console.log(`✅ [v7] TronCollectionService (NILE TESTNET) initialized (v8.49 tronweb@5.3.2 / GetBlock Node).`);
+        console.log(`✅ [v7] TronCollectionService (NILE TESTNET) initialized (v8.49 tronweb@5.3.2 / Node: ${NILE_NODE_HOST}).`);
+        console.log(`[v7 Collection] USDT Contract Address (Base58): ${USDT_CONTRACT_ADDRESS}`);
+        console.log(`[v7 Collection] USDT Contract Address (HEX): ${this.usdtContractHex}`);
 
 
         this.kmsService = getKmsInstance();
@@ -120,31 +122,50 @@ class TronCollectionService {
     }
     
     // (★★★ v8.49 核心修正：使用 HEX 地址參數 (來自 GPT 分析) ★★★)
-    async _getUsdtBalance(userAddress) {
-        try {
-            // (★★★ v8.49 修正 1：將 T... 地址轉換為 41... HEX 地址 ★★★)
-            const userAddressHex = this.tronWeb.address.toHex(userAddress);
-            const gasWalletAddressHex = this.tronWeb.address.toHex(this.gasReserveWallet.address);
+    async _getUsdtBalance(userAddress, retries = 3) {
+        for (let attempt = 1; attempt <= retries; attempt++) {
+            try {
+                // (★★★ v8.49 修正 1：將 T... 地址轉換為 41... HEX 地址 ★★★)
+                const userAddressHex = this.tronWeb.address.toHex(userAddress);
+                const gasWalletAddressHex = this.tronWeb.address.toHex(this.gasReserveWallet.address);
 
-            // (預期請求: https://go.getblock.io/YOUR_API_KEY/wallet/triggerconstantcontract)
-            const transaction = await this.tronWeb.transactionBuilder.triggerConstantContract(
-                this.usdtContractHex, // (使用 HEX 合約地址)
-                'balanceOf(address)', // 函數選擇器
-                {}, // 選項
-                [{ type: 'address', value: userAddressHex }], // (★★★ v8.49 修正 2：使用 HEX 參數 ★★★)
-                gasWalletAddressHex // (★★★ v8.49 修正 3：呼叫者也用 HEX ★★★)
-            );
+                // (預期請求: https://go.getblock.io/YOUR_API_KEY/wallet/triggerconstantcontract)
+                const transaction = await this.tronWeb.transactionBuilder.triggerConstantContract(
+                    this.usdtContractHex, // (使用 HEX 合約地址)
+                    'balanceOf(address)', // 函數選擇器
+                    {}, // 選項
+                    [{ type: 'address', value: userAddressHex }], // (★★★ v8.49 修正 2：使用 HEX 參數 ★★★)
+                    gasWalletAddressHex // (★★★ v8.49 修正 3：呼叫者也用 HEX ★★★)
+                );
 
-            if (!transaction || !transaction.constant_result || !transaction.constant_result[0]) {
-                throw new Error('balanceOf call failed: No constant_result');
+                if (!transaction || !transaction.constant_result || !transaction.constant_result[0]) {
+                    throw new Error('balanceOf call failed: No constant_result');
+                }
+                
+                const balance = '0x' + transaction.constant_result[0];
+                return balance;
+                
+            } catch (error) {
+                const isRetryable = error.message && (
+                    error.message.includes('timeout') ||
+                    error.message.includes('ECONNABORTED') ||
+                    error.message.includes('EAI_AGAIN') ||
+                    error.message.includes('ETIMEDOUT') ||
+                    error.code === 'ECONNABORTED' ||
+                    error.code === 'EAI_AGAIN' ||
+                    error.code === 'ETIMEDOUT'
+                );
+                
+                if (isRetryable && attempt < retries) {
+                    console.warn(`[v7 Collect] balanceOf failed (attempt ${attempt}/${retries}) for ${userAddress}, retrying... Error:`, error.message);
+                    await new Promise(resolve => setTimeout(resolve, 3000 * attempt));
+                    continue;
+                }
+                
+                // (log19.txt 的 "Smart contract is not exist" 錯誤會在這裡被捕獲)
+                logError(error, `_getUsdtBalance (triggerConstantContract) (attempt ${attempt}/${retries})`, userAddress);
+                throw error;
             }
-            
-            return '0x' + transaction.constant_result[0];
-            
-        } catch (error) {
-            // (log19.txt 的 "Smart contract is not exist" 錯誤會在這裡被捕獲)
-            logError(error, `_getUsdtBalance (triggerConstantContract)`, userAddress);
-            throw error;
         }
     }
 
@@ -156,13 +177,19 @@ class TronCollectionService {
             return;
         }
         
-        console.log("[v7 Collect] Starting collection sweep...");
-
         const usersResult = await db.query(
             "SELECT id, user_id, deposit_path_index, tron_deposit_address FROM users WHERE tron_deposit_address IS NOT NULL"
         );
         
+        if (usersResult.rows.length === 0) {
+            return; // (沒有用戶地址，直接返回)
+        }
+
+        console.log(`[v7 Collect] 🔍 Starting collection sweep for ${usersResult.rows.length} addresses...`);
+        
         let collectedCount = 0;
+        let topUpCount = 0;
+        let skippedCount = 0;
 
         for (const user of usersResult.rows) {
             const userAddress = user.tron_deposit_address;
@@ -176,70 +203,144 @@ class TronCollectionService {
                 trxBalance = await this.tronWeb.trx.getBalance(userAddress);
             } catch (gasCheckError) {
                 trxBalance = 0; 
-                logError(gasCheckError, `STEP 1 INFO (getBalance failed, assuming 0 TRX)`, userAddress);
+                // (靜默處理，不輸出日誌)
             }
 
             // --- 步驟 2: 補 Gas (如果帳戶未啟用) ---
-            // (log19.txt 證明這一步在 5.3.2 上是可行的)
             if (trxBalance < 1000000) { // (小於 1 TRX - 包含 0)
                 try {
                     await this._topUpGas(userAddress);
+                    topUpCount++;
                     await new Promise(resolve => setTimeout(resolve, 5000));
                 } catch (topUpError) {
-                    logError(topUpError, `STEP 2 FAILED (_topUpGas)`, userAddress);
-                    continue; // 處理下一個用戶
+                    // (永久性錯誤，跳過此地址)
+                    if (topUpError.message && topUpError.message.includes('Permanent error')) {
+                        skippedCount++;
+                        continue;
+                    }
+                    // (臨時性錯誤，記錄並跳過)
+                    console.warn(`[v7 Collect] ⚠️ Failed to top up gas for ${userAddress}: ${topUpError.message}`);
+                    skippedCount++;
+                    continue;
                 }
             }
             
             let usdtBalanceBigNumberStr;
             // --- 步驟 3: 檢查 USDT 餘額 (使用 triggerConstantContract) ---
             try {
-                // (★★★ v8.49 修正：呼叫已修復的 _getUsdtBalance ★★★)
                 usdtBalanceBigNumberStr = await this._getUsdtBalance(userAddress);
                 usdtBalance = parseFloat(BigInt(usdtBalanceBigNumberStr).toString()) / (10**USDT_DECIMALS);
             } catch (balanceError) {
-                // (★★★ v8.49 修正：如果合約地址和參數都對了，這裡不應再報錯 ★★★)
-                logError(balanceError, `STEP 3 FAILED (_getUsdtBalance)`, userAddress);
-                continue; // 處理下一個用戶
+                // (靜默處理，跳過此地址)
+                skippedCount++;
+                continue;
             }
 
             if (usdtBalance < COLLECTION_THRESHOLD_USDT) {
-                continue; // 餘額不足，跳過
+                skippedCount++;
+                continue; // (餘額不足，跳過)
             }
             
-            console.log(`[v7 Collect] Found ${usdtBalance} USDT in ${userAddress} (User: ${user.user_id})`);
+            console.log(`[v7 Collect] 💰 Found ${usdtBalance.toFixed(6)} USDT in ${userAddress} (User: ${user.user_id})`);
 
             // --- 步驟 4: 歸集 (使用 triggerSmartContract) ---
             try {
                 const userPrivateKey = this.kmsService.getPrivateKey('TRC20', userPathIndex);
-                // (★★★ v8.49 修正：再次呼叫 _getUsdtBalance 獲取準確的當前餘額 ★★★)
                 const amountBigNumberStr = (await this._getUsdtBalance(userAddress)).toString();
                 await this._transferUsdt(userPrivateKey, userAddress, amountBigNumberStr);
                 collectedCount++;
             } catch (transferError) {
-                logError(transferError, `STEP 4 FAILED (_transferUsdt)`, userAddress);
-                continue; // 處理下一個用戶
+                console.error(`[v7 Collect] ❌ Failed to transfer USDT from ${userAddress}: ${transferError.message}`);
+                skippedCount++;
+                continue;
             }
         }
         
-        if (collectedCount > 0) {
-            console.log(`[v7 Collect] Collection sweep finished. ${collectedCount} addresses processed.`);
+        // (輸出統計資訊)
+        if (collectedCount > 0 || topUpCount > 0) {
+            console.log(`[v7 Collect] ✅ Collection sweep finished: ${collectedCount} collected, ${topUpCount} topped up, ${skippedCount} skipped`);
+        } else if (skippedCount > 0) {
+            console.log(`[v7 Collect] ℹ️ Collection sweep finished: ${skippedCount} addresses skipped (no balance or errors)`);
         }
     }
 
     // (_topUpGas 函數 - v8.49)
-    async _topUpGas(toAddress) {
-        console.log(`[v7 Collect] Topping up ${toAddress} with ${ACTIVATION_TRX_AMOUNT_SUN / 1000000} TRX for collection/activation...`);
-        try {
-            this.tronWeb.setPrivateKey(this.gasReserveWallet.privateKey);
-            
-            const tx = await this.tronWeb.transactionBuilder.sendTrx(toAddress, ACTIVATION_TRX_AMOUNT_SUN, this.gasReserveWallet.address);
-            const signedTx = await this.tronWeb.trx.sign(tx);
-            await this.tronWeb.trx.sendRawTransaction(signedTx);
-            console.log(`[v7 Collect] Gas/Activation top-up sent to ${toAddress}.`);
-        } catch (error) {
-            logError(error, `Error in _topUpGas`, toAddress);
-            throw error; 
+    async _topUpGas(toAddress, retries = 3) {
+        for (let attempt = 1; attempt <= retries; attempt++) {
+            try {
+                this.tronWeb.setPrivateKey(this.gasReserveWallet.privateKey);
+                
+                const tx = await this.tronWeb.transactionBuilder.sendTrx(toAddress, ACTIVATION_TRX_AMOUNT_SUN, this.gasReserveWallet.address);
+                const signedTx = await this.tronWeb.trx.sign(tx);
+                const receipt = await this.tronWeb.trx.sendRawTransaction(signedTx);
+                
+                // (檢查 receipt 是否成功)
+                if (receipt && receipt.result === true && receipt.txid) {
+                    console.log(`[v7 Collect] ✅ Gas/Activation top-up sent to ${toAddress}. TXID: ${receipt.txid}`);
+                    return receipt;
+                } else if (receipt && receipt.code) {
+                    // (檢查是否為永久性錯誤)
+                    const isPermanentError = receipt.code === 'CONTRACT_VALIDATE_ERROR' || 
+                                            receipt.code === 'BANDWIDTH_ERROR' ||
+                                            receipt.message && receipt.message.includes('does not exist');
+                    
+                    if (isPermanentError) {
+                        // (永久性錯誤，不解碼 HEX 訊息，直接拋出)
+                        const errorMsg = receipt.message ? Buffer.from(receipt.message, 'hex').toString('utf8') : receipt.code;
+                        console.error(`[v7 Collect] ❌ Permanent error in _topUpGas for ${toAddress}: ${receipt.code} - ${errorMsg}`);
+                        throw new Error(`Permanent error: ${receipt.code} - ${errorMsg}`);
+                    } else {
+                        // (臨時性錯誤，可以重試)
+                        console.warn(`[v7 Collect] ⚠️ Temporary error in _topUpGas for ${toAddress}: ${receipt.code}`);
+                        if (attempt < retries) {
+                            await new Promise(resolve => setTimeout(resolve, 3000 * attempt));
+                            continue;
+                        }
+                        throw new Error(`sendRawTransaction failed: ${receipt.code}`);
+                    }
+                } else {
+                    // (未知格式的 receipt)
+                    console.warn(`[v7 Collect] ⚠️ Unexpected receipt format:`, receipt);
+                    if (attempt < retries) {
+                        await new Promise(resolve => setTimeout(resolve, 3000 * attempt));
+                        continue;
+                    }
+                    throw new Error(`sendRawTransaction failed: Unexpected receipt format. Receipt: ${JSON.stringify(receipt)}`);
+                }
+            } catch (error) {
+                // (檢查是否為永久性錯誤)
+                const isPermanentError = error.message && (
+                    error.message.includes('Permanent error') ||
+                    error.message.includes('does not exist') ||
+                    error.message.includes('CONTRACT_VALIDATE_ERROR')
+                );
+                
+                if (isPermanentError) {
+                    // (永久性錯誤，不重試)
+                    logError(error, `Permanent error in _topUpGas (attempt ${attempt}/${retries})`, toAddress);
+                    throw error;
+                }
+                
+                // (臨時性錯誤，可以重試)
+                const isRetryable = error.message && (
+                    error.message.includes('timeout') ||
+                    error.message.includes('ECONNABORTED') ||
+                    error.message.includes('EAI_AGAIN') ||
+                    error.message.includes('ETIMEDOUT') ||
+                    error.code === 'ECONNABORTED' ||
+                    error.code === 'EAI_AGAIN' ||
+                    error.code === 'ETIMEDOUT'
+                );
+                
+                if (isRetryable && attempt < retries) {
+                    console.warn(`[v7 Collect] ⚠️ Temporary error in _topUpGas (attempt ${attempt}/${retries}) for ${toAddress}, retrying... Error:`, error.message);
+                    await new Promise(resolve => setTimeout(resolve, 5000 * attempt));
+                    continue;
+                }
+                
+                logError(error, `Error in _topUpGas (attempt ${attempt}/${retries})`, toAddress);
+                throw error;
+            }
         }
     }
 
