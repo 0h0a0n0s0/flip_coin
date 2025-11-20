@@ -1,23 +1,23 @@
 <template>
   <div>
-    <h2>儀表板 (Dashboard)</h2>
-    <p>歡迎回來！</p>
+    <h2>仪表板 (Dashboard)</h2>
+    <p>欢迎回来！</p>
     
     <el-card shadow="never" v-loading="loading">
       <template #header>
-        <div>核心數據統計</div>
+        <div>核心数据统计</div>
       </template>
       <div v-if="stats" class="stats-container">
         <div class="stat-item">
-          <div class="stat-label">總用戶數</div>
+          <div class="stat-label">总用户数</div>
           <div class="stat-value">{{ stats.totalUsers }}</div>
         </div>
         <div class="stat-item">
-          <div class="stat-label">總投注數</div>
+          <div class="stat-label">总投注数</div>
           <div class="stat-value">{{ stats.totalBets }}</div>
         </div>
         <div class="stat-item">
-          <div class="stat-label">異常訂單 (待派獎)</div>
+          <div class="stat-label">異常订单 (待派奖)</div>
           <div class="stat-value">{{ stats.pendingPayouts }}</div>
         </div>
       </div>
@@ -35,21 +35,21 @@ export default {
     };
   },
   async created() {
-    // 頁面一載入，就去呼叫受保護的 API
+    // 页面一载入，就去呼叫受保护的 API
     await this.fetchStats();
   },
   methods: {
     async fetchStats() {
       this.loading = true;
       try {
-        // (★★★ 關鍵 ★★★)
-        // 呼叫受保護的 API。
-        // request.js 會自動附加 Token。
-        // 如果 Token 無效，request.js 攔截器會自動把我們踢回登入頁。
+        // (★★★ 关键 ★★★)
+        // 呼叫受保护的 API。
+        // request.js 会自动附加 Token。
+        // 如果 Token 無效，request.js 拦截器会自动把我们踢回登入页。
         const data = await this.$api.getDashboardStats();
         this.stats = data;
       } catch (error) {
-        // (錯誤會被 request.js 攔截器處理)
+        // (错误会被 request.js 拦截器处理)
         console.error('Failed to fetch stats (handled by interceptor):', error);
       } finally {
         this.loading = false;

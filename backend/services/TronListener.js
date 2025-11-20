@@ -1,22 +1,22 @@
-// 檔案: backend/services/TronListener.js (★★★ v8.49 最終修正版 ★★★)
+// 档案: backend/services/TronListener.js (★★★ v8.49 最终修正版 ★★★)
 
 const TronWeb = require('tronweb');
 const db = require('../db');
 const util = require('util');
 const axios = require('axios'); // (★★★ v8.48 新增 ★★★)
 
-// (★★★ v8.49 修正：從 .env 讀取 Listener 節點 ★★★)
+// (★★★ v8.49 修正：从 .env 读取 Listener 节点 ★★★)
 const NILE_LISTENER_HOST = process.env.NILE_LISTENER_HOST;
 if (!NILE_LISTENER_HOST) {
     throw new Error("CRITICAL: NILE_LISTENER_HOST is not set in .env file! (e.g., https://go.getblock.io/YOUR_API_KEY/)");
 }
-// (★★★ v8.49 修正：從 .env 讀取主節點 (僅用於地址轉換) ★★★)
+// (★★★ v8.49 修正：从 .env 读取主节点 (僅用于地址转换) ★★★)
 const NILE_NODE_HOST = process.env.NILE_NODE_HOST;
 if (!NILE_NODE_HOST) {
     throw new Error("CRITICAL: NILE_NODE_HOST is not set in .env file!");
 }
 
-// (★★★ v8.49 核心修正：使用 Nile 測試網的 USDT 合約地址 ★★★)
+// (★★★ v8.49 核心修正：使用 Nile 測試网的 USDT 合约地址 ★★★)
 const DEFAULT_USDT_CONTRACT = 'TG3XXyExBkPp9nzdajDZsozEu4BkaSJozs';
 const USDT_CONTRACT_ADDRESS = process.env.USDT_CONTRACT_ADDRESS || DEFAULT_USDT_CONTRACT; 
 const USDT_DECIMALS = 6; 
@@ -24,17 +24,17 @@ const TRX_DECIMALS = 6;
 const POLLING_INTERVAL_MS = 10000; 
 const TRONGRID_API_KEY = process.env.TRONGRID_API_KEY || process.env.TRON_PRO_API_KEY || null;
 
-// (日誌輔助函數)
+// (日志辅助函数)
 function logPollError(error, context) {
     console.error(`[v7-Poll] ${context}. Details:`);
     try {
         if (error && error.message) {
-            // (★★★ v8.48 修正：如果是 axios 錯誤，顯示 config ★★★)
+            // (★★★ v8.48 修正：如果是 axios 错误，显示 config ★★★)
             if (error.config) {
                  console.error(`[Axios Error] URL: ${error.config.url}`);
                  console.error(`[Axios Error] Params: ${JSON.stringify(error.config.params)}`);
             }
-            // (★★★ v8.48 修正：顯示 response data (如果節點有返回錯誤訊息) ★★★)
+            // (★★★ v8.48 修正：显示 response data (如果节点有返回错误讯息) ★★★)
             if (error.response && error.response.data) {
                 console.error(`[Axios Error] Response: ${JSON.stringify(error.response.data)}`);
             }
@@ -53,27 +53,27 @@ class TronListener {
         this.io = io;
         this.connectedUsers = connectedUsers;
         
-        // (★★★ v8.49 修正：僅用於地址轉換 ★★★)
-        // (我們仍然需要 tronWeb 實例來進行 HEX 地址轉換)
+        // (★★★ v8.49 修正：僅用于地址转换 ★★★)
+        // (我们仍然需要 tronWeb 實例来進行 HEX 地址转换)
         this.tronWeb = new TronWeb({
-            fullHost: NILE_NODE_HOST, // (使用主節點)
+            fullHost: NILE_NODE_HOST, // (使用主节点)
             solidityHost: NILE_NODE_HOST,
             privateKey: '01'
         });
 
         this.isPolling = false; 
-        this.lastTrc20PollTimestamp = Date.now() - (10 * 60 * 1000); // (預設查詢過去 10 分鐘)
+        this.lastTrc20PollTimestamp = Date.now() - (10 * 60 * 1000); // (预设查询过去 10 分钟)
         this.lastTrxPollTimestamp = Date.now() - (10 * 60 * 1000);
         
-        // (★★★ v8.49 修正：建立 axios 實例，指向 Listener 節點 ★★★)
+        // (★★★ v8.49 修正：建立 axios 實例，指向 Listener 节点 ★★★)
         this.axiosInstance = axios.create({
             baseURL: NILE_LISTENER_HOST,
-            timeout: 60000, // (增加 timeout 從 10 秒到 60 秒)
+            timeout: 60000, // (增加 timeout 从 10 秒到 60 秒)
             headers: TRONGRID_API_KEY ? { 'TRON-PRO-API-KEY': TRONGRID_API_KEY } : {},
-            // (GetBlock 節點不需要 API Key 在 Header 中，因為它在 URL 裡)
-            // (增加重試和錯誤處理)
+            // (GetBlock 节点不需要 API Key 在 Header 中，因为它在 URL 里)
+            // (增加重試和错误处理)
             validateStatus: function (status) {
-                return status < 500; // 只對 5xx 錯誤拋出異常
+                return status < 500; // 只对 5xx 错误拋出異常
             }
         });
 
@@ -81,22 +81,22 @@ class TronListener {
             console.warn(`[v7-Poll] WARNING: Detected GetBlock endpoint for NILE_LISTENER_HOST. TronGrid v1 routes (/v1/...) may return 404 on GetBlock. Prefer https://nile.trongrid.io or another TronGrid-compatible host for listener polling.`);
         }
 
-        // (★★★ v8.49 修改日誌 ★★★)
+        // (★★★ v8.49 修改日志 ★★★)
         console.log(`✅ [v7-Poll] TronListener.js (NILE TESTNET) initialized (v8.49 Manual Axios Logic / GetBlock Node).`);
     }
 
     async start() {
         console.log(`[v7-Poll] Starting Account Polling Service (Interval: ${POLLING_INTERVAL_MS}ms)`);
         
-        // (立即執行第一次)
+        // (立即执行第一次)
         this._pollAllUsers();
         
-        // (設定定時器)
+        // (设定定时器)
         setInterval(() => this._pollAllUsers(), POLLING_INTERVAL_MS);
     }
 
     /**
-     * (★★★ v8.49 核心：使用 Axios 手動輪詢 v1 API ★★★)
+     * (★★★ v8.49 核心：使用 Axios 手动轮询 v1 API ★★★)
      */
     async _pollAllUsers() {
         if (this.isPolling) {
@@ -127,7 +127,7 @@ class TronListener {
         for (const user of usersToPoll) {
             const latestUsdtTs = await this._pollUsdtTransactionsForUser(user);
             if (latestUsdtTs !== null && latestUsdtTs !== undefined) {
-                // (無論是否處理，都更新時間戳以避免重複查詢)
+                // (無论是否处理，都更新时间戳以避免重复查询)
                 if (latestUsdtTs > newTrc20Timestamp) {
                     newTrc20Timestamp = latestUsdtTs;
                 }
@@ -135,21 +135,21 @@ class TronListener {
 
             const latestTrxTs = await this._pollTrxTransactionsForUser(user);
             if (latestTrxTs !== null && latestTrxTs !== undefined) {
-                // (無論是否處理，都更新時間戳以避免重複查詢)
+                // (無论是否处理，都更新时间戳以避免重复查询)
                 if (latestTrxTs > newTrxTimestamp) {
                     newTrxTimestamp = latestTrxTs;
                 }
             }
         }
         
-        // (更新時間戳，加 1ms 避免下次輪詢重複獲取最後一筆)
+        // (更新时间戳，加 1ms 避免下次轮询重复获取最後一笔)
         const oldTrc20Ts = this.lastTrc20PollTimestamp;
         const oldTrxTs = this.lastTrxPollTimestamp;
         
         this.lastTrc20PollTimestamp = newTrc20Timestamp + 1;
         this.lastTrxPollTimestamp = newTrxTimestamp + 1;
         
-        // (只在時間戳有變化時輸出日誌，避免日誌噪音)
+        // (只在时间戳有变化时输出日志，避免日志噪音)
         if (this.lastTrc20PollTimestamp !== oldTrc20Ts + 1 || this.lastTrxPollTimestamp !== oldTrxTs + 1) {
             console.log(`[v7-Poll] 📅 Timestamp updated: TRC20=${this.lastTrc20PollTimestamp}, TRX=${this.lastTrxPollTimestamp}`);
         }
@@ -174,7 +174,7 @@ class TronListener {
                     }
                 );
 
-                // (檢查響應狀態)
+                // (检查响应狀态)
                 if (response.status >= 400) {
                     console.warn(`[v7-Poll] USDT API returned status ${response.status} for ${user.user_id}. Response:`, response.data);
                     if (attempt < retries) {
@@ -194,7 +194,7 @@ class TronListener {
                 let skippedCount = 0;
 
                 for (const tx of transactions) {
-                    // (無論是否處理，都先更新 latestTimestamp 以避免重複查詢)
+                    // (無论是否处理，都先更新 latestTimestamp 以避免重复查询)
                     if (!latestTimestamp || tx.block_timestamp > latestTimestamp) {
                         latestTimestamp = tx.block_timestamp;
                     }
@@ -209,7 +209,7 @@ class TronListener {
                         block_timestamp: tx.block_timestamp
                     };
 
-                    // (處理交易，檢查是否成功處理)
+                    // (处理交易，检查是否成功处理)
                     const wasProcessed = await this._processDeposit(eventData);
                     if (wasProcessed) {
                         processedCount++;
@@ -218,17 +218,17 @@ class TronListener {
                     }
                 }
 
-                // (只在有新交易時輸出日誌)
+                // (只在有新交易时输出日志)
                 if (transactions.length > 0) {
                     if (processedCount > 0 || skippedCount > 0) {
                         console.log(`[v7-Poll] 💰 USDT poll for ${user.user_id}: ${processedCount} processed, ${skippedCount} skipped`);
                     }
                 }
 
-                // (確保返回 latestTimestamp，即使所有交易都被跳過)
+                // (确保返回 latestTimestamp，即使所有交易都被跳过)
                 return latestTimestamp;
             } catch (error) {
-                // (如果是 DNS 錯誤或超時，嘗試重試)
+                // (如果是 DNS 错误或超时，尝試重試)
                 const isRetryable = error.code === 'EAI_AGAIN' || 
                                     error.code === 'ECONNABORTED' || 
                                     error.code === 'ETIMEDOUT' ||
@@ -240,7 +240,7 @@ class TronListener {
                     continue;
                 }
                 
-                // (最後一次嘗試失敗或非重試錯誤)
+                // (最後一次尝試失败或非重試错误)
                 logPollError(error, `Failed to poll USDT txs for ${user.user_id} (attempt ${attempt}/${retries})`);
                 return null;
             }
@@ -264,7 +264,7 @@ class TronListener {
                     }
                 );
 
-                // (檢查響應狀態)
+                // (检查响应狀态)
                 if (response.status >= 400) {
                     console.warn(`[v7-Poll] TRX API returned status ${response.status} for ${user.user_id}. Response:`, response.data);
                     if (attempt < retries) {
@@ -286,7 +286,7 @@ class TronListener {
                 const depositHex = this.tronWeb.address.toHex(user.tron_deposit_address);
 
                 for (const tx of transactions) {
-                    // (無論是否處理，都先更新 latestTimestamp 以避免重複查詢)
+                    // (無论是否处理，都先更新 latestTimestamp 以避免重复查询)
                     if (!latestTimestamp || tx.block_timestamp > latestTimestamp) {
                         latestTimestamp = tx.block_timestamp;
                     }
@@ -314,7 +314,7 @@ class TronListener {
                         continue;
                     }
 
-                    // (處理交易，檢查是否成功處理)
+                    // (处理交易，检查是否成功处理)
                     const wasProcessed = await this._processTrxDeposit({
                         txID: tx.txID || tx.transaction_id,
                         from: this._safeHexToBase58(paramValue.owner_address),
@@ -330,17 +330,17 @@ class TronListener {
                     }
                 }
 
-                // (只在有新交易時輸出日誌)
+                // (只在有新交易时输出日志)
                 if (transactions.length > 0) {
                     if (processedCount > 0 || skippedCount > 0) {
                         console.log(`[v7-Poll] 🔷 TRX poll for ${user.user_id}: ${processedCount} processed, ${skippedCount} skipped, ${filteredCount} filtered`);
                     }
                 }
 
-                // (確保返回 latestTimestamp，即使所有交易都被跳過或過濾)
+                // (确保返回 latestTimestamp，即使所有交易都被跳过或过滤)
                 return latestTimestamp;
             } catch (error) {
-                // (如果是 DNS 錯誤或超時，嘗試重試)
+                // (如果是 DNS 错误或超时，尝試重試)
                 const isRetryable = error.code === 'EAI_AGAIN' || 
                                     error.code === 'ECONNABORTED' || 
                                     error.code === 'ETIMEDOUT' ||
@@ -352,7 +352,7 @@ class TronListener {
                     continue;
                 }
                 
-                // (最後一次嘗試失敗或非重試錯誤)
+                // (最後一次尝試失败或非重試错误)
                 logPollError(error, `Failed to poll TRX txs for ${user.user_id} (attempt ${attempt}/${retries})`);
                 return null;
             }
@@ -362,8 +362,8 @@ class TronListener {
 
 
     /**
-     * 處理入帳邏輯 (★★★ v8.49 修正：使用 this.tronWeb 進行地址比較 ★★★)
-     * @returns {boolean} 返回 true 表示成功處理，false 表示跳過（重複或無效）
+     * 处理入帐逻辑 (★★★ v8.49 修正：使用 this.tronWeb 進行地址比较 ★★★)
+     * @returns {boolean} 返回 true 表示成功处理，false 表示跳过（重复或無效）
      */
     async _processDeposit(event) {
         const txID = event.transaction_id;
@@ -372,11 +372,11 @@ class TronListener {
         
         const amountValue = event.result.value; 
 
-        // 1. 檢查 TX 是否已處理
+        // 1. 检查 TX 是否已处理
         try {
             const existingTx = await db.query('SELECT 1 FROM platform_transactions WHERE tx_hash = $1', [txID]);
             if (existingTx.rows.length > 0) {
-                // (重複交易，靜默跳過)
+                // (重复交易，静默跳过)
                 return false;
             }
         } catch (checkError) {
@@ -384,10 +384,10 @@ class TronListener {
             return false;
         }
 
-        // 2. 查找用戶地址
+        // 2. 查找用户地址
         let user;
         try {
-            // (★★★ v8.49 修正：使用 tronWeb 實例將地址轉為 HEX 進行比較，防止大小寫問題 ★★★)
+            // (★★★ v8.49 修正：使用 tronWeb 實例将地址转为 HEX 進行比较，防止大小寫问题 ★★★)
             const toAddressHex = this.tronWeb.address.toHex(toAddress);
             const userResult = await db.query(
                 'SELECT id, user_id, balance, tron_deposit_address FROM users WHERE tron_deposit_address IS NOT NULL'
@@ -398,7 +398,7 @@ class TronListener {
             );
 
             if (!user) {
-                // (非用戶地址，靜默跳過)
+                // (非用户地址，静默跳过)
                 return false;
             }
         } catch (findError) {
@@ -406,23 +406,23 @@ class TronListener {
             return false;
         }
 
-        // 3. 轉換金額
+        // 3. 转换金额
         const amountBigInt = BigInt(amountValue); 
         const amount = Number(amountBigInt) / (10**USDT_DECIMALS);
 
         if (amount <= 0) {
-            // (零金額，靜默跳過)
+            // (零金额，静默跳过)
             return false;
         }
 
         console.log(`[v7-Poll] 💰 Processing USDT deposit: User ${user.user_id} | ${amount} USDT | TX: ${txID}`);
 
-        // 4. 資料庫事務
+        // 4. 资料库事务
         const client = await db.pool.connect();
         try {
             await client.query('BEGIN');
             
-            // 4a. 更新餘額
+            // 4a. 更新余额
             const newBalance = parseFloat(user.balance) + amount;
             const updateUserResult = await client.query(
                 'UPDATE users SET balance = $1 WHERE id = $2 RETURNING *', 
@@ -448,7 +448,7 @@ class TronListener {
                 this.io.to(userSocketId).emit('user_info_updated', updatedUser);
             }
 
-            return true; // (返回 true 表示成功處理)
+            return true; // (返回 true 表示成功处理)
         } catch (txError) {
             await client.query('ROLLBACK');
             console.error(`[v7-Poll] ❌ Transaction failed for tx ${txID} (User: ${user.user_id}):`, txError.message);
@@ -461,14 +461,14 @@ class TronListener {
     async _processTrxDeposit(event, user) {
         const txID = event.txID;
         if (!txID) {
-            return false; // (返回 false 表示未處理)
+            return false; // (返回 false 表示未处理)
         }
 
         try {
             const existingTx = await db.query('SELECT 1 FROM platform_transactions WHERE tx_hash = $1', [txID]);
             if (existingTx.rows.length > 0) {
-                // (重複交易，靜默跳過，不輸出日誌以減少噪音)
-                return false; // (返回 false 表示已存在，但已處理)
+                // (重复交易，静默跳过，不输出日志以減少噪音)
+                return false; // (返回 false 表示已存在，但已处理)
             }
         } catch (checkError) {
             console.error(`[v7-Poll] DB Error checking TRX tx ${txID}:`, checkError);
@@ -478,7 +478,7 @@ class TronListener {
         const amountSun = BigInt(event.amountSun);
         const amount = Number(amountSun) / (10 ** TRX_DECIMALS);
         if (amount <= 0) {
-            // (零金額交易，靜默跳過)
+            // (零金额交易，静默跳过)
             return false;
         }
 
@@ -492,7 +492,7 @@ class TronListener {
             );
             await client.query('COMMIT');
             console.log(`[v7-Poll] ✅ Recorded TRX activation: User ${user.user_id} | ${amount} TRX | TX: ${txID}`);
-            return true; // (返回 true 表示成功處理)
+            return true; // (返回 true 表示成功处理)
         } catch (txError) {
             await client.query('ROLLBACK');
             console.error(`[v7-Poll] ❌ Failed to record TRX tx ${txID} (User: ${user.user_id}):`, txError.message);

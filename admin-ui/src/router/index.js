@@ -1,11 +1,11 @@
-// 檔案: admin-ui/src/router/index.js (★★★ v7.4 修正版 ★★★)
+// 档案: admin-ui/src/router/index.js (★★★ v7.4 修正版 ★★★)
 
 import { createRouter, createWebHistory } from 'vue-router'
 import { jwtDecode } from 'jwt-decode';
 import { ElMessage } from 'element-plus';
-import permissionsStore from '@/store'; // (★★★ 1. 導入 Store ★★★)
+import permissionsStore from '@/store'; // (★★★ 1. 导入 Store ★★★)
 
-// (導入所有組件)
+// (导入所有组件)
 import Login from '../views/Login.vue'
 import Layout from '../views/Layout.vue' 
 import Dashboard from '../views/Dashboard.vue' 
@@ -22,6 +22,8 @@ import UserLevels from '../views/settings/UserLevels.vue'
 import AccountManagement from '../views/admin/AccountManagement.vue'
 import Permissions from '../views/admin/Permissions.vue'
 import IpWhitelist from '../views/admin/IpWhitelist.vue'
+import AuditLogs from '../views/admin/AuditLogs.vue'
+import CollectionLogs from '../views/CollectionLogs.vue'
 
 const routes = [
   { path: '/login', name: 'Login', component: Login },
@@ -30,12 +32,13 @@ const routes = [
     component: Layout,
     redirect: '/dashboard', 
     children: [
-      // (★★★ 2. 添加 meta.permission 用於路由守衛 ★★★)
+      // (★★★ 2. 添加 meta.permission 用于路由守卫 ★★★)
       { path: 'dashboard', name: 'Dashboard', component: Dashboard, meta: { requiresAuth: true, permission: 'dashboard:read' } },
       { path: 'users', name: 'UserManagement', component: UserManagement, meta: { requiresAuth: true, permission: 'users:read' } },
       { path: 'users/deposit-addresses', name: 'UserDepositAddresses', component: UserDepositAddresses, meta: { requiresAuth: true, permission: 'users_addresses:read' } },
       { path: 'bets', name: 'BetManagement', component: BetManagement, meta: { requiresAuth: true, permission: 'bets:read' } },
       { path: 'reports', name: 'ReportManagement', component: ReportManagement, meta: { requiresAuth: true, permission: 'reports:read' } },
+      { path: 'collection-logs', name: 'CollectionLogs', component: CollectionLogs, meta: { requiresAuth: true, permission: 'reports:read' } },
       { path: 'wallet-monitoring', name: 'WalletMonitoring', component: WalletMonitoring, meta: { requiresAuth: true, permission: 'wallets:read' } },
       { path: 'finance/withdrawals', name: 'WithdrawalReview', component: WithdrawalReview, meta: { requiresAuth: true, permission: 'withdrawals:read' } },
       { path: 'finance/deposits', name: 'DepositHistory', component: DepositHistory, meta: { requiresAuth: true, permission: 'deposits:read' } },
@@ -45,6 +48,7 @@ const routes = [
       { path: '/admin/accounts', name: 'AccountManagement', component: AccountManagement, meta: { requiresAuth: true, permission: 'admin_accounts:read' } },
       { path: '/admin/permissions', name: 'Permissions', component: Permissions, meta: { requiresAuth: true, permission: 'admin_permissions:read' } },
       { path: '/admin/ip-whitelist', name: 'IpWhitelist', component: IpWhitelist, meta: { requiresAuth: true, permission: 'admin_ip_whitelist:read' } },
+      { path: '/admin/audit-logs', name: 'AuditLogs', component: AuditLogs, meta: { requiresAuth: true, permission: 'admin_permissions:read' } },
     ]
   }
 ]
@@ -54,7 +58,7 @@ const router = createRouter({
   routes
 })
 
-// (★★★ 3. 升級路由守衛 ★★★)
+// (★★★ 3. 升级路由守卫 ★★★)
 router.beforeEach(async (to, from, next) => {
   const token = localStorage.getItem('admin_token');
 
@@ -64,21 +68,21 @@ router.beforeEach(async (to, from, next) => {
         const decoded = jwtDecode(token);
         if (decoded.exp * 1000 < Date.now()) throw new Error('Token expired');
         
-        // (★★★ 4. 檢查 Store 是否已加載 ★★★)
+        // (★★★ 4. 检查 Store 是否已加载 ★★★)
         if (!permissionsStore.isLoaded) {
             console.log('[Router Guard] Token valid, loading permissions...');
             await permissionsStore.loadPermissions();
         }
 
-        // (★★★ 5. 檢查路由權限 ★★★)
+        // (★★★ 5. 检查路由权限 ★★★)
         const requiredPermission = to.meta.permission;
         if (requiredPermission) {
             const [resource, action] = requiredPermission.split(':');
             if (!permissionsStore.has(resource, action)) {
                  console.warn(`[Router Guard] Denied. Role does not have permission ${requiredPermission} for route ${to.name}.`);
-                 ElMessage.warning('您的權限不足，無法訪問此頁面。');
+                 ElMessage.warning('您的权限不足，無法访问此页面。');
                  
-                 // (如果連儀表板都沒權限，強制登出)
+                 // (如果連仪表板都没权限，强制登出)
                  if (to.name === 'Dashboard') {
                      localStorage.removeItem('admin_token');
                      permissionsStore.clearPermissions();
@@ -90,7 +94,7 @@ router.beforeEach(async (to, from, next) => {
         next();
 
       } catch (error) {
-        // (Token 過期 或 loadPermissions 失敗)
+        // (Token 过期 或 loadPermissions 失败)
         console.error('Router Guard: Token/Permission check failed.', error.message);
         localStorage.removeItem('admin_token');
         permissionsStore.clearPermissions();
@@ -102,7 +106,7 @@ router.beforeEach(async (to, from, next) => {
       next({ name: 'Login' });
     }
   } else {
-    // (訪問 /login 頁面)
+    // (访问 /login 页面)
     if (token && to.name === 'Login') {
       next({ name: 'Dashboard' });
     } else {

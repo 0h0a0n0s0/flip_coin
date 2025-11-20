@@ -1,7 +1,7 @@
 <template>
   <el-container class="layout-container">
     <el-header class="layout-header">
-      <span>FlipCoin 管理後台 (用戶: {{ username }})</span>
+      <span>FlipCoin 管理後台 (用户: {{ username }})</span>
       <el-button type="danger" @click="handleLogout">登出</el-button>
     </el-header>
     <el-container>
@@ -19,13 +19,13 @@
           
           <el-menu-item index="/dashboard" v-if="$permissions.has('dashboard', 'read')">
              <el-icon><DataLine /></el-icon>
-            <span>儀表板</span>
+            <span>仪表板</span>
           </el-menu-item>
           
           <el-sub-menu index="user-management" v-if="$permissions.has('users', 'read') || $permissions.has('users_addresses', 'read')">
-            <template #title><el-icon><User /></el-icon><span>用戶管理</span></template>
+            <template #title><el-icon><User /></el-icon><span>用户管理</span></template>
             <el-menu-item index="/users" v-if="$permissions.has('users', 'read')">用户列表</el-menu-item>
-            <el-menu-item index="/users/deposit-addresses" v-if="$permissions.has('users_addresses', 'read')">用戶充值地址</el-menu-item>
+            <el-menu-item index="/users/deposit-addresses" v-if="$permissions.has('users_addresses', 'read')">用户充值地址</el-menu-item>
           </el-sub-menu>
           
           <el-sub-menu index="bet-management" v-if="$permissions.has('bets', 'read')">
@@ -34,28 +34,30 @@
           </el-sub-menu>
           
           <el-sub-menu index="report-management" v-if="$permissions.has('reports', 'read') || $permissions.has('wallets', 'read')">
-            <template #title><el-icon><PieChart /></el-icon><span>數據報表管理</span></template>
-            <el-menu-item index="/reports" v-if="$permissions.has('reports', 'read')">盈虧報表</el-menu-item>
-            <el-menu-item index="/wallet-monitoring" v-if="$permissions.has('wallets', 'read')">錢包監控</el-menu-item> 
+            <template #title><el-icon><PieChart /></el-icon><span>数据报表管理</span></template>
+            <el-menu-item index="/reports" v-if="$permissions.has('reports', 'read')">盈虧报表</el-menu-item>
+            <el-menu-item index="/collection-logs" v-if="$permissions.has('reports', 'read')">归集记录</el-menu-item>
+            <el-menu-item index="/wallet-monitoring" v-if="$permissions.has('wallets', 'read')">钱包监控</el-menu-item> 
           </el-sub-menu>
           
-          <el-sub-menu index="finance-management" v-if="$permissions.has('withdrawals', 'read') || $permissions.has('deposits', 'read')"> <template #title><el-icon><Money /></el-icon><span>財務管理</span></template>
+          <el-sub-menu index="finance-management" v-if="$permissions.has('withdrawals', 'read') || $permissions.has('deposits', 'read')"> <template #title><el-icon><Money /></el-icon><span>财务管理</span></template>
             <el-menu-item index="/finance/withdrawals" v-if="$permissions.has('withdrawals', 'read')">提款審核</el-menu-item>
-            <el-menu-item index="/finance/deposits" v-if="$permissions.has('deposits', 'read')">充值記錄</el-menu-item>
+            <el-menu-item index="/finance/deposits" v-if="$permissions.has('deposits', 'read')">充值记录</el-menu-item>
           </el-sub-menu>
           
           <el-sub-menu index="admin-management" v-if="$permissions.has('admin_accounts', 'read') || $permissions.has('admin_permissions', 'read') || $permissions.has('admin_ip_whitelist', 'read')">
             <template #title><el-icon><Lock /></el-icon><span>後台管理</span></template>
-            <el-menu-item index="/admin/accounts" v-if="$permissions.has('admin_accounts', 'read')">帳號管理</el-menu-item>
-            <el-menu-item index="/admin/permissions" v-if="$permissions.has('admin_permissions', 'read')">權限組設定</el-menu-item>
+            <el-menu-item index="/admin/accounts" v-if="$permissions.has('admin_accounts', 'read')">帐号管理</el-menu-item>
+            <el-menu-item index="/admin/permissions" v-if="$permissions.has('admin_permissions', 'read')">权限组设定</el-menu-item>
             <el-menu-item index="/admin/ip-whitelist" v-if="$permissions.has('admin_ip_whitelist', 'read')">後台ip白名单</el-menu-item>
+            <el-menu-item index="/admin/audit-logs" v-if="$permissions.has('admin_permissions', 'read')">操作稽核日志</el-menu-item>
           </el-sub-menu>
 
           <el-sub-menu index="system-settings" v-if="$permissions.has('settings_game', 'read') || $permissions.has('settings_regions', 'read') || $permissions.has('settings_levels', 'read')">
-            <template #title><el-icon><Setting /></el-icon><span>系統設定</span></template>
-            <el-menu-item index="/settings/game-parameters" v-if="$permissions.has('settings_game', 'read')">遊戲參數</el-menu-item>
-            <el-menu-item index="/settings/blocked-regions" v-if="$permissions.has('settings_regions', 'read')">阻擋地區</el-menu-item>
-            <el-menu-item index="/settings/user-levels" v-if="$permissions.has('settings_levels', 'read')">用戶等級</el-menu-item>
+            <template #title><el-icon><Setting /></el-icon><span>系统设定</span></template>
+            <el-menu-item index="/settings/game-parameters" v-if="$permissions.has('settings_game', 'read')">遊戏参数</el-menu-item>
+            <el-menu-item index="/settings/blocked-regions" v-if="$permissions.has('settings_regions', 'read')">阻挡地区</el-menu-item>
+            <el-menu-item index="/settings/user-levels" v-if="$permissions.has('settings_levels', 'read')">用户等级</el-menu-item>
           </el-sub-menu>
         </el-menu>
       </el-aside> 
@@ -101,7 +103,7 @@ export default {
         }
       } catch (error) {
         console.error('Failed to decode token:', error);
-        ElMessage.error('Token 驗證失敗，請重新登入。');
+        ElMessage.error('Token 验证失败，请重新登入。');
         this.handleLogout(true);
       }
     },
@@ -119,7 +121,7 @@ export default {
 }
 </script>
 <style scoped>
-/* ... (保留所有現有樣式) ... */
+/* ... (保留所有現有样式) ... */
 .layout-container {
   height: 100vh;
 }

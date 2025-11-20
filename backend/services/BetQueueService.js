@@ -1,7 +1,7 @@
-// 檔案: backend/services/BetQueueService.js (★★★ v8.9 修正版 ★★★)
+// 档案: backend/services/BetQueueService.js (★★★ v8.9 修正版 ★★★)
 
 const db = require('../db');
-// (★★★ v8.9 修正：從 server.js 改為 services/settingsCache ★★★)
+// (★★★ v8.9 修正：从 server.js 改为 services/settingsCache ★★★)
 const { getSettingsCache } = require('./settingsCache.js'); 
 
 class BetQueueService {
@@ -10,26 +10,26 @@ class BetQueueService {
      * @param {object} connectedUsers - (user_id -> socket.id) 的 Map
      * @param {object} gameOpener - GameOpenerService 實例
      */
-    // (★★★ v8.9 修正：移除 settingsCache 參數 ★★★)
+    // (★★★ v8.9 修正：移除 settingsCache 参数 ★★★)
     constructor(io, connectedUsers, gameOpener) {
         this.io = io;
         this.connectedUsers = connectedUsers;
         this.gameOpener = gameOpener;
-        // (★★★ v8.9 修正：在 constructor 中獲取快取 ★★★)
+        // (★★★ v8.9 修正：在 constructor 中获取快取 ★★★)
         this.settingsCache = getSettingsCache(); 
 
-        this.queue = []; // 儲存 { user, choice, amount, resolve, reject }
+        this.queue = []; // 储存 { user, choice, amount, resolve, reject }
         this.isProcessing = false;
 
         console.log("✅ [v7] BetQueueService initialized.");
     }
 
     /**
-     * (由 API 路由調用) 將下注請求加入隊列
-     * @returns {Promise<object>} 結算後的 Bet 物件
+     * (由 API 路由调用) 将下注请求加入隊列
+     * @returns {Promise<object>} 结算後的 Bet 物件
      */
     addBetToQueue(user, choice, amount) {
-        // ... (此函數保持不變) ...
+        // ... (此函数保持不变) ...
         console.log(`[v7 Queue] Received bet from ${user.user_id} ($${amount} on ${choice}). Queue size: ${this.queue.length}`);
         return new Promise((resolve, reject) => {
             this.queue.push({ user, choice, amount, resolve, reject });
@@ -38,10 +38,10 @@ class BetQueueService {
     }
 
     /**
-     * (內部) 依序處理隊列
+     * (内部) 依序处理隊列
      */
     async _processQueue() {
-        // ... (此函數保持不變) ...
+        // ... (此函数保持不变) ...
         if (this.isProcessing || this.queue.length === 0) {
             return; 
         }
@@ -64,19 +64,19 @@ class BetQueueService {
     }
 
     /**
-     * (內部) 處理單個下注的完整生命週期
+     * (内部) 处理单個下注的完整生命週期
      */
     async _handleBetLifecycle({ user, choice, amount }) {
         const userId = user.user_id;
         let betId = null;
         let client;
 
-        // --- 1. 交易 1：扣款 & 建立 Pending 注單 ---
+        // --- 1. 交易 1：扣款 & 建立 Pending 注单 ---
         try {
             client = await db.pool.connect();
             await client.query('BEGIN');
 
-            // 1a. 鎖定並檢查餘額
+            // 1a. 锁定并检查余额
             const balanceResult = await client.query(
                 "SELECT balance, status FROM users WHERE id = $1 FOR UPDATE", 
                 [user.id]
@@ -85,10 +85,10 @@ class BetQueueService {
             const userStatus = balanceResult.rows[0].status;
 
             if (userStatus !== 'active') {
-                throw new Error("帳號已被禁用 (Account disabled)");
+                throw new Error("帐号已被禁用 (Account disabled)");
             }
             if (currentBalance < amount) {
-                throw new Error("餘額不足 (Insufficient balance)");
+                throw new Error("余额不足 (Insufficient balance)");
             }
 
             // 1b. 扣款
@@ -97,7 +97,7 @@ class BetQueueService {
                 [amount, user.id]
             );
             
-            // 1c. 寫入 Pending 注單
+            // 1c. 寫入 Pending 注单
             const betResult = await client.query(
                 `INSERT INTO bets (user_id, choice, amount, status, bet_time) 
                  VALUES ($1, $2, $3, 'pending', NOW()) 
@@ -107,7 +107,7 @@ class BetQueueService {
             betId = betResult.rows[0].id;
             
             await client.query('COMMIT');
-            client.release(); // (釋放 TX 1)
+            client.release(); // (释放 TX 1)
             
             console.log(`[v7 Bet] User ${userId} bet ${betId} (Pending). Balance deducted.`);
             this._notifySocketBetUpdate(userId, betResult.rows[0]);
@@ -121,7 +121,7 @@ class BetQueueService {
             throw error; 
         }
 
-        // --- 2. 鏈上開獎 (A -> B) ---
+        // --- 2. 链上开奖 (A -> B) ---
         let txHash;
         try {
             txHash = await this.gameOpener.triggerBetTransaction();
@@ -131,22 +131,22 @@ class BetQueueService {
             throw onChainError; 
         }
 
-        // --- 3. 交易 2：結算 & 派獎 ---
+        // --- 3. 交易 2：结算 & 派奖 ---
         try {
-            // 3a. 判斷輸贏
+            // 3a. 判断输赢
             const isHead = this.gameOpener.determineOutcome(txHash);
             const didWin = (isHead && choice === 'head') || (!isHead && choice === 'tail');
             const status = didWin ? 'won' : 'lost';
 
-            // 3b. 獲取派彩
-            // (★★★ v8.9 修正：確保 this.settingsCache 是最新的 ★★★)
-            const multiplier = parseInt(this.settingsCache['PAYOUT_MULTIPLIER']?.value || 2, 10);
+            // 3b. 获取派彩
+            // (★★★ v8.9 修正：确保 this.settingsCache 是最新的 ★★★)
+            const multiplier = parseInt(getSettingsCache()['PAYOUT_MULTIPLIER']?.value || 2, 10);
             const payoutAmount = didWin ? (amount * multiplier) : 0;
             
             client = await db.pool.connect();
             await client.query('BEGIN');
 
-            // 3c. 更新注單
+            // 3c. 更新注单
             const settledBetResult = await client.query(
                 `UPDATE bets 
                  SET status = $1, tx_hash = $2, settle_time = NOW(), payout_multiplier = $3
@@ -155,7 +155,7 @@ class BetQueueService {
             );
             const settledBet = settledBetResult.rows[0];
 
-            // 3d. 更新餘額 (如果贏了) 和 連勝
+            // 3d. 更新余额 (如果赢了) 和 連胜
             let updatedUser;
             if (didWin) {
                 const userResult = await client.query(
@@ -178,7 +178,7 @@ class BetQueueService {
             }
 
             await client.query('COMMIT');
-            client.release(); // (釋放 TX 2)
+            client.release(); // (释放 TX 2)
 
             console.log(`[v7 Bet] Bet ${betId} Settled. User ${userId} ${status}.`);
             
@@ -201,10 +201,10 @@ class BetQueueService {
     }
     
     /**
-     * (輔助) 處理退款 (當開獎或結算失敗時)
+     * (辅助) 处理退款 (当开奖或结算失败时)
      */
     async _refundBet(betId, userId, amount, status, errorMsg) {
-        // ... (此函數保持不變) ...
+        // ... (此函数保持不变) ...
         try {
             await db.query("UPDATE bets SET status = $1, notes = $2 WHERE id = $3", [status, errorMsg, betId]);
             const userResult = await db.query(
@@ -219,16 +219,16 @@ class BetQueueService {
         }
     }
 
-    // (輔助) Socket.IO 通知
+    // (辅助) Socket.IO 通知
     _notifySocketBetUpdate(userId, betData) {
-        // ... (此函數保持不變) ...
+        // ... (此函数保持不变) ...
         const socketId = this.connectedUsers[userId];
         if (socketId) {
             this.io.to(socketId).emit('bet_updated', betData);
         }
     }
     _notifySocketUserInfo(userId, userData) {
-        // ... (此函數保持不變) ...
+        // ... (此函数保持不变) ...
         const socketId = this.connectedUsers[userId];
         if (socketId) {
             this.io.to(socketId).emit('user_info_updated', userData);
@@ -236,7 +236,7 @@ class BetQueueService {
     }
 }
 
-// (★★★ v8.9 修正：移除 settingsCache 參數 ★★★)
+// (★★★ v8.9 修正：移除 settingsCache 参数 ★★★)
 let instance = null;
 function getBetQueueInstance(io, connectedUsers, gameOpener) { // (移除 settingsCache)
     if (!instance) {

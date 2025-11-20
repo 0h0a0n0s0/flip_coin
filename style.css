@@ -220,9 +220,9 @@ to { transform: rotateY(360deg); }
 /* New streak info container */
 .streak-info-container {
   display: flex;
-  flex-direction: row;       /* ★★★ 改為 row (水平排列) ★★★ */
-  gap: 15px;                 /* ★★★ 調整左右間距 ★★★ */
-  align-items: center;       /* ★★★ 垂直居中對齊 ★★★ */
+  flex-direction: row;       /* ★★★ 改为 row (水平排列) ★★★ */
+  gap: 15px;                 /* ★★★ 调整左右间距 ★★★ */
+  align-items: center;       /* ★★★ 垂直居中对齐 ★★★ */
 }
 
 /* Base styles for streak spans (moved from index.html) */
@@ -235,27 +235,27 @@ to { transform: rotateY(360deg); }
     display: none; 
     white-space: nowrap; 
 }
-/* ★★★ 新增：為連勝/連敗 span 添加固定寬度和居中 ★★★ */
+/* ★★★ 新增：为連胜/連败 span 添加固定寬度和居中 ★★★ */
 #userStreakDisplay {
   min-width: 80px; /* 保留至少 80px 寬度 */
   text-align: center; /* 文字居中 */
 }
 
-/* ★★★ 新增：為最高連勝 span 移除背景（覆蓋預設）★★★ */
+/* ★★★ 新增：为最高連胜 span 移除背景（覆蓋预设）★★★ */
 #userMaxStreakDisplay {
-  /* background-color: transparent !important; */ /* <-- 刪除或註解掉這行 */
-  background-color: #f8f8e0; /* ★★★ 還原預設的黃色背景 ★★★ */
-  color: #646400; /* ★★★ 還原預設的文字顏色 ★★★ */
+  /* background-color: transparent !important; */ /* <-- 刪除或注解掉這行 */
+  background-color: #f8f8e0; /* ★★★ 还原预设的黄色背景 ★★★ */
+  color: #646400; /* ★★★ 还原预设的文字颜色 ★★★ */
 }
 
-/* 排行榜區塊 */
+/* 排行榜区块 */
 #leaderboardSection {
-  /* (可以根據需要添加額外樣式) */
+  /* (可以根据需要添加额外样式) */
 }
 
 /* 排行榜列表 */
 #leaderboardList {
-  padding-left: 25px; /* 為排名數字留出空間 */
+  padding-left: 25px; /* 为排名数字留出空间 */
   font-size: 15px;
 }
 
@@ -263,7 +263,7 @@ to { transform: rotateY(360deg); }
   padding: 10px 0;
   border-bottom: 1px solid #eee;
   display: flex; /* 使用 flex 方便排版 */
-  justify-content: space-between; /* 將地址推到右側 */
+  justify-content: space-between; /* 将地址推到右侧 */
   align-items: center;
 }
 #leaderboardList li:last-child {
@@ -273,7 +273,7 @@ to { transform: rotateY(360deg); }
 #leaderboardList .address {
   font-family: monospace;
   color: #666;
-  margin-left: 15px; /* 與連勝紀錄分開 */
+  margin-left: 15px; /* 与連胜纪录分开 */
 }
 
 
@@ -282,39 +282,39 @@ to { transform: rotateY(360deg); }
 /* --- Tablet Breakpoint (<= 768px) --- */
 @media (max-width: 768px) {
   body {
-      padding: 15px; /* 減少頁面邊距 */
+      padding: 15px; /* 減少页面边距 */
   }
 
   header {
-      flex-direction: column; /* Header 內容垂直堆疊 */
-      align-items: flex-start; /* 左對齊 */
+      flex-direction: column; /* Header 内容垂直堆叠 */
+      align-items: flex-start; /* 左对齐 */
       gap: 15px;
       margin-bottom: 20px;
   }
 
   header h1 {
-      font-size: 24px; /* 縮小標題字體 */
+      font-size: 24px; /* 缩小标题字体 */
   }
 
-  /* 讓 Header 右側按鈕區塊也堆疊 */
+  /* 让 Header 右侧按钮区块也堆叠 */
   header div {
-      flex-wrap: wrap; /* 允許換行 */
+      flex-wrap: wrap; /* 允许换行 */
       gap: 10px;
   }
 
   main {
-      gap: 20px; /* 減少區塊間距 */
+      gap: 20px; /* 減少区块间距 */
   }
 
   section {
-      padding: 20px; /* 減少區塊內邊距 */
+      padding: 20px; /* 減少区块内边距 */
   }
 
-  /* 遊戲標題區塊調整 */
+  /* 遊戏标题区块调整 */
   .game-header-container {
-      flex-direction: column; /* 垂直堆疊 */
-      align-items: flex-start; /* 左對齊 */
-      gap: 10px; /* 增加間距 */
+      flex-direction: column; /* 垂直堆叠 */
+      align-items: flex-start; /* 左对齐 */
+      gap: 10px; /* 增加间距 */
       padding-bottom: 10px;
   }
   .streak-info-container {
@@ -322,15 +322,15 @@ to { transform: rotateY(360deg); }
       gap: 10px;
   }
    #userStreakDisplay, #userMaxStreakDisplay {
-      font-size: 13px; /* 稍小字體 */
+      font-size: 13px; /* 稍小字体 */
       padding: 6px 10px;
    }
-   h2 { /* 恢復一些底部間距 */
+   h2 { /* 恢复一些底部间距 */
       margin-bottom: 10px;
    }
 
 
-  /* 投注歷史列表 */
+  /* 投注历史列表 */
   #historyList {
       max-height: 250px; /* 稍微減小高度 */
   }
@@ -348,13 +348,13 @@ to { transform: rotateY(360deg); }
   }
 
   header div {
-      width: 100%; /* 讓按鈕區塊佔滿寬度 */
-      justify-content: space-between; /* 將按鈕推向兩側 */
+      width: 100%; /* 让按钮区块占满寬度 */
+      justify-content: space-between; /* 将按钮推向两侧 */
   }
   #userIdDisplay, #userWalletAddressDisplay {
-     flex-grow: 1; /* 允許文字區塊伸展 */
+     flex-grow: 1; /* 允许文字区块伸展 */
      text-align: center; /* 文字居中 */
-     margin: 0 5px; /* 增加左右邊距 */
+     margin: 0 5px; /* 增加左右边距 */
   }
   button, #connectWalletBtn, #logoutBtn {
       padding: 8px 12px;
@@ -365,12 +365,12 @@ to { transform: rotateY(360deg); }
       padding: 15px;
   }
 
-  /* 遊戲區塊 */
+  /* 遊戏区块 */
   .game-header-container h2 {
-      font-size: 18px; /* 縮小遊戲標題 */
+      font-size: 18px; /* 缩小遊戏标题 */
   }
   .streak-info-container {
-      gap: 8px; /* 縮小連勝間距 */
+      gap: 8px; /* 缩小連胜间距 */
   }
    #userStreakDisplay, #userMaxStreakDisplay {
       font-size: 12px;
@@ -378,22 +378,22 @@ to { transform: rotateY(360deg); }
    }
 
   .coin-container {
-      width: 100px; /* 縮小硬幣 */
+      width: 100px; /* 缩小硬币 */
       height: 100px;
       margin: 20px auto;
   }
 
-  /* 投注選項和按鈕 */
+  /* 投注选项和按钮 */
   #gameSection label {
       font-size: 16px;
   }
   #gameSection input[type="number"] {
-      width: calc(100% - 110px); /* 讓輸入框適應寬度 */
+      width: calc(100% - 110px); /* 让输入框適应寬度 */
       font-size: 14px;
       margin-right: 5px;
   }
   #gameSection button {
-      width: 90px; /* 固定按鈕寬度 */
+      width: 90px; /* 固定按钮寬度 */
   }
 
   /* 排行榜 */
@@ -408,7 +408,7 @@ to { transform: rotateY(360deg); }
       padding: 8px 0;
   }
 
-  /* 投注歷史 */
+  /* 投注历史 */
   #historySection h2 {
        font-size: 18px;
   }
@@ -421,7 +421,7 @@ to { transform: rotateY(360deg); }
   }
 }
 
-/* (★★★ v2 新增：昵稱 標籤和按鈕樣式 ★★★) */
+/* (★★★ v2 新增：昵称 标签和按钮样式 ★★★) */
 .tag-nickname {
   background-color: #e0eaf8;
   color: #4a69bd;
@@ -433,9 +433,9 @@ to { transform: rotateY(360deg); }
   margin-left: 5px;
 }
 
-/* (★★★ v2 新增：彈窗 (Modal) 樣式 ★★★) */
+/* (★★★ v2 新增：弹窗 (Modal) 样式 ★★★) */
 .modal {
-  display: none; /* 預設隱藏 */
+  display: none; /* 预设隐藏 */
   position: fixed;
   z-index: 2000;
   left: 0;
@@ -496,7 +496,7 @@ to { transform: rotateY(360deg); }
   border: 1px solid #555;
   color: #fff;
   border-radius: 8px;
-  box-sizing: border-box; /* 確保 padding 不會撐爆寬度 */
+  box-sizing: border-box; /* 确保 padding 不会撐爆寬度 */
 }
 .input-field:focus {
   outline: none;
@@ -507,11 +507,11 @@ to { transform: rotateY(360deg); }
 .modal-footer {
   display: flex;
   justify-content: flex-end;
-  gap: 10px; /* 按鈕間距 */
+  gap: 10px; /* 按钮间距 */
 }
 
-/* (★★★ 個人中心樣式 ★★★) */
-/* 1. header 中的「個人中心」按鈕樣式 */
+/* (★★★ 個人中心样式 ★★★) */
+/* 1. header 中的「個人中心」按钮样式 */
 button.btn-secondary {
   background-color: #6c757d;
 }
@@ -519,11 +519,11 @@ button.btn-secondary:hover {
   background-color: #5a6268;
 }
 
-/* 2. Modal 彈窗樣式 (覆蓋舊有) */
+/* 2. Modal 弹窗样式 (覆蓋旧有) */
 .modal-content {
   background-color: #2c2c2e; /* 深色背景 */
   color: #f5f5f7; /* 亮色文字 */
-  margin: 10% auto; /* (調整垂直邊距) */
+  margin: 10% auto; /* (调整垂直边距) */
   padding: 25px 30px;
   border: 1px solid #444;
   border-radius: 12px;
@@ -534,26 +534,26 @@ button.btn-secondary:hover {
   animation: modalopen 0.3s ease-out;
 }
 .pc-modal-content {
-  max-width: 700px; /* 個人中心彈窗再寬一點 */
+  max-width: 700px; /* 個人中心弹窗再寬一点 */
 }
 .modal-body {
-  margin-top: 10px; /* (調整間距) */
+  margin-top: 10px; /* (调整间距) */
   margin-bottom: 20px;
 }
 .modal-footer {
-  margin-top: 25px; /* (調整間距) */
+  margin-top: 25px; /* (调整间距) */
   display: flex;
   justify-content: flex-end;
-  gap: 10px; /* 按鈕間距 */
+  gap: 10px; /* 按钮间距 */
 }
 
-/* 3. 彈窗內的資訊列表 */
+/* 3. 弹窗内的资讯列表 */
 .pc-info-list {
   list-style: none;
   padding: 0;
   margin: 0;
   display: grid;
-  grid-template-columns: repeat(2, 1fr); /* 兩欄佈局 */
+  grid-template-columns: repeat(2, 1fr); /* 两栏布局 */
   gap: 15px 20px;
 }
 .pc-info-list li {
@@ -573,9 +573,9 @@ button.btn-secondary:hover {
 .pc-info-list li .text-sm {
   font-size: 14px;
 }
-/* 用於邀請碼的簡易列表 */
+/* 用于邀请码的简易列表 */
 .pc-info-list.simple {
-   grid-template-columns: 1fr; /* 單欄 */
+   grid-template-columns: 1fr; /* 单栏 */
    gap: 10px;
 }
 .pc-info-list.simple li {
@@ -588,7 +588,7 @@ button.btn-secondary:hover {
 }
 
 
-/* 4. 彈窗內的表單區域 */
+/* 4. 弹窗内的表单区域 */
 .pc-form-section {
   border-top: 1px solid #444;
   padding-top: 20px;
@@ -604,15 +604,15 @@ button.btn-secondary:hover {
   gap: 10px;
 }
 .form-group .input-field {
-  flex-grow: 1; /* 讓輸入框佔滿剩餘空間 */
+  flex-grow: 1; /* 让输入框占满剩余空间 */
 }
 .form-group .btn-small {
-  padding: 10px 15px; /* 統一按鈕大小 */
+  padding: 10px 15px; /* 统一按钮大小 */
   font-size: 14px;
-  white-space: nowrap; /* 防止 "儲存" 換行 */
+  white-space: nowrap; /* 防止 "储存" 换行 */
 }
 
-/* Header 登入/註冊按鈕 */
+/* Header 登入/注册按钮 */
 #authContainer {
   display: flex;
   align-items: center;
@@ -630,7 +630,7 @@ button.btn-secondary:hover {
   color: #007aff;
 }
 
-/* Modal 彈窗內的 Lable (v6 新增) */
+/* Modal 弹窗内的 Lable (v6 新增) */
 .modal-body label {
   display: block;
   margin-top: 15px;
@@ -642,7 +642,7 @@ button.btn-secondary:hover {
   margin-top: 0;
 }
 
-/* (★★★ v7-M2 新增：Modal Tab 樣式 ★★★) */
+/* (★★★ v7-M2 新增：Modal Tab 样式 ★★★) */
 .modal-tabs {
   display: flex;
   border-bottom: 1px solid #444;
@@ -656,7 +656,7 @@ button.btn-secondary:hover {
   font-size: 16px;
   cursor: pointer;
   border-bottom: 3px solid transparent;
-  margin-bottom: -1px; /* (讓按鈕的底線蓋過 tab-container 的底線) */
+  margin-bottom: -1px; /* (让按钮的底线蓋过 tab-container 的底线) */
 }
 .modal-tab-btn:hover {
   color: #fff;
@@ -667,12 +667,12 @@ button.btn-secondary:hover {
   font-weight: bold;
 }
 
-/* (Tab 內容) */
+/* (Tab 内容) */
 .modal-tab-content {
-  display: none; /* 預設隱藏 */
+  display: none; /* 预设隐藏 */
 }
 .modal-tab-content.active {
-  display: block; /* 顯示 active 的 Tab */
+  display: block; /* 显示 active 的 Tab */
   animation: tabfade 0.4s;
 }
 @keyframes tabfade {
@@ -680,7 +680,7 @@ button.btn-secondary:hover {
   to { opacity: 1; }
 }
 
-/* (充值 Tab 內的樣式) */
+/* (充值 Tab 内的样式) */
 .deposit-warning {
   background-color: #f8e0e0;
   color: #a00000;
@@ -696,7 +696,7 @@ button.btn-secondary:hover {
   line-height: 1.6;
 }
 
-/* 個人中心的新 <select> 樣式 */
+/* 個人中心的新 <select> 样式 */
 .modal-body select.input-field {
   height: 45px;
   background-color: #3a3a3c;
@@ -706,7 +706,7 @@ button.btn-secondary:hover {
   width: 100%;
 }
 
-/* 提款歷史列表 */
+/* 提款历史列表 */
 .pc-history-list {
   list-style: none;
   padding: 0;
@@ -714,7 +714,7 @@ button.btn-secondary:hover {
   overflow-y: auto;
   border: 1px solid #444;
   border-radius: 6px;
-  background-color: #3a3a3c; /* (新增背景色以區分) */
+  background-color: #3a3a3c; /* (新增背景色以区分) */
 }
 .pc-history-list li {
   padding: 10px 15px;
@@ -729,7 +729,7 @@ button.btn-secondary:hover {
 .pc-history-list li span {
   display: block;
 }
-/* (新增：讓連結可點擊) */
+/* (新增：让連结可点击) */
 .pc-history-list li a {
   color: #409EFF;
   text-decoration: none;
@@ -741,6 +741,43 @@ button.btn-secondary:hover {
   font-weight: bold;
   font-size: 15px;
   color: #ffd04b;
+}
+
+/* --- Notyf Toast Customization --- */
+.notyf {
+  position: fixed !important;
+  top: 0 !important;
+  left: 0 !important;
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+  padding: 0 20px;
+}
+.notyf__wrapper {
+  width: auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+}
+.notyf__toast.notyf-toast {
+  background: rgba(0, 0, 0, 0.85);
+  color: #fff;
+  border-radius: 12px;
+  padding: 14px 20px;
+  text-align: center;
+  font-size: 15px;
+  letter-spacing: 0.4px;
+  pointer-events: auto;
+  max-width: 260px;
+  min-width: 180px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+}
+.notyf__toast.notyf-toast .notyf__message {
+  color: #fff;
 }
 .pc-history-list li .history-status-pending,
 .pc-history-list li .history-status-processing { color: #e6a23c; }

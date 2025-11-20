@@ -1,6 +1,6 @@
 <template>
   <div class="user-management-container">
-    <h2>用戶管理</h2>
+    <h2>用户管理</h2>
 
     <el-card shadow="never" class="search-card">
       <el-form :inline="true" :model="searchParams" @submit.native.prevent="handleSearch" class="search-form">
@@ -9,8 +9,8 @@
           <el-input v-model="searchParams.userId" placeholder="用户ID (模糊)" clearable></el-input>
         </el-form-item>
 
-        <el-form-item label="用戶帳號">
-          <el-input v-model="searchParams.username" placeholder="登入帳號 (模糊)" clearable></el-input>
+        <el-form-item label="用户帐号">
+          <el-input v-model="searchParams.username" placeholder="登入帐号 (模糊)" clearable></el-input>
         </el-form-item>
         
         <el-form-item label="用户昵称">
@@ -41,8 +41,8 @@
             v-model="searchParams.dateRange"
             type="datetimerange"
             range-separator="至"
-            start-placeholder="開始時間"
-            end-placeholder="結束時間"
+            start-placeholder="开始时间"
+            end-placeholder="结束时间"
             value-format="YYYY-MM-DDTHH:mm:ssZ"
           />
         </el-form-item>
@@ -52,14 +52,14 @@
             v-model="searchParams.activityDateRange"
             type="datetimerange"
             range-separator="至"
-            start-placeholder="開始時間"
-            end-placeholder="結束時間"
+            start-placeholder="开始时间"
+            end-placeholder="结束时间"
             value-format="YYYY-MM-DDTHH:mm:ssZ"
           />
         </el-form-item>
 
         <el-form-item>
-          <el-button type="primary" @click="handleSearch">查詢</el-button>
+          <el-button type="primary" @click="handleSearch">查询</el-button>
         </el-form-item>
         
       </el-form>
@@ -69,8 +69,8 @@
       <el-table :data="tableData" style="width: 100%" :cell-style="{ paddingTop: '8px', paddingBottom: '8px' }">
         
         <el-table-column prop="user_id" label="用户ID" width="120" fixed="left" />
-        <el-table-column prop="username" label="用戶帳號" width="150" />
-        <el-table-column prop="balance" label="平台餘額 (USDT)" width="150">
+        <el-table-column prop="username" label="用户帐号" width="150" />
+        <el-table-column prop="balance" label="平台余额 (USDT)" width="150">
            <template #default="scope">{{ formatCurrency(scope.row.balance) }}</template>
         </el-table-column>
         <el-table-column prop="nickname" label="用户昵称" width="120" />
@@ -90,7 +90,7 @@
            <template #default="scope">{{ formatDateTime(scope.row.last_activity_at) }}</template>
         </el-table-column>
         
-        <el-table-column prop="max_streak" label="最高連勝" width="100" />
+        <el-table-column prop="max_streak" label="最高連胜" width="100" />
         <el-table-column prop="created_at" label="注册时间" width="180">
            <template #default="scope">{{ formatDateTime(scope.row.created_at) }}</template>
         </el-table-column>
@@ -134,7 +134,7 @@
 
     <el-dialog
         v-model="editDialogVisible"
-        title="编辑用戶"
+        title="编辑用户"
         width="600px"
         :close-on-click-modal="false"
     >
@@ -142,13 +142,13 @@
         <el-form-item label="用户ID">
           <el-input :value="editForm.currentUser.user_id" disabled />
         </el-form-item>
-         <el-form-item label="用戶帳號">
+         <el-form-item label="用户帐号">
           <el-input :value="editForm.currentUser.username" disabled />
         </el-form-item>
         
-        <el-form-item label="平台餘額 (USDT)" prop="balance">
-           <el-input-number v-model="editForm.balance" :min="0" :precision="6" placeholder="用戶平台餘額" />
-           <div class="form-tip">(警告：手動修改餘額不會留下金流記錄)</div>
+        <el-form-item label="平台余额 (USDT)" prop="balance">
+           <el-input-number v-model="editForm.balance" :min="0" :precision="6" placeholder="用户平台余额" />
+           <div class="form-tip">(警告：手动修改余额不会留下金流记录)</div>
         </el-form-item>
         
         <el-form-item label="用户昵称" prop="nickname">
@@ -156,16 +156,16 @@
         </el-form-item>
         <el-form-item label="用户等级" prop="level">
           <el-input-number v-model="editForm.level" :min="1" placeholder="请输入用户等级" />
-           <div class="form-tip">(注意：手動調整等級不會派發升級獎金)</div>
+           <div class="form-tip">(注意：手动调整等级不会派发升级奖金)</div>
         </el-form-item>
         <el-form-item label="推荐人邀请码" prop="referrer_code">
           <el-input v-model="editForm.referrer_code" placeholder="(留空可清除推薦人)" clearable />
-           <div class="form-tip">(必須是已存在的其他用戶的「自身邀请码」)</div>
+           <div class="form-tip">(必须是已存在的其他用户的「自身邀请码」)</div>
         </el-form-item>
       </el-form>
       <template #footer>
         <el-button @click="editDialogVisible = false">取消</el-button>
-        <el-button type="primary" @click="handleSubmitEdit" :loading="editLoading">確認儲存</el-button>
+        <el-button type="primary" @click="handleSubmitEdit" :loading="editLoading">确认储存</el-button>
       </template>
     </el-dialog>
 
@@ -188,7 +188,7 @@
 </template>
 
 <script>
-// ( ... <script> 標籤內的邏輯保持不變 ... )
+// ( ... <script> 标签内的逻辑保持不变 ... )
 import { ElMessage } from 'element-plus';
 
 export default {
@@ -226,7 +226,7 @@ export default {
         nickname: [{ max: 50, message: '昵称长度不能超过 50 个字符', trigger: 'blur' }],
         level: [{ required: true, message: '等级不能为空' }, { type: 'integer', min: 1, message: '等级必须是正整数', trigger: 'blur' }],
         referrer_code: [{ max: 8, message: '邀请码长度不能超过 8 个字符', trigger: 'blur' }],
-        balance: [{ required: true, message: '餘額不能为空' }, { type: 'number', min: 0, message: '餘額必須是非負數', trigger: 'blur' }]
+        balance: [{ required: true, message: '余额不能为空' }, { type: 'number', min: 0, message: '余额必须是非负数', trigger: 'blur' }]
       },
       referralDialogVisible: false,
       referralData: {
@@ -271,7 +271,7 @@ export default {
         const oldStatus = newStatus === 'active' ? 'banned' : 'active';
         try {
             await this.$api.updateUserStatus(row.id, newStatus);
-            ElMessage.success(`用戶 ${row.user_id} 狀態已更新為 ${newStatus}`);
+            ElMessage.success(`用户 ${row.user_id} 狀态已更新为 ${newStatus}`);
         } catch (error) {
             console.error('Failed to update status:', error);
             row.status = oldStatus; 
@@ -326,7 +326,7 @@ export default {
               balance: this.editForm.balance, 
             };
             await this.$api.updateUser(this.editForm.currentUser.id, dataToSubmit);
-            ElMessage.success('用戶資料更新成功');
+            ElMessage.success('用户资料更新成功');
             this.editDialogVisible = false;
             await this.fetchUsers();
           } catch (error) {
@@ -350,7 +350,7 @@ export default {
             this.referralData.list = referrals;
         } catch (error) {
              console.error('Failed to fetch referrals:', error);
-             ElMessage.error('載入推薦列表失敗');
+             ElMessage.error('载入推薦列表失败');
         } finally {
             this.referralData.loading = false;
         }
@@ -366,17 +366,17 @@ export default {
 .el-form-item { margin-bottom: 10px; }
 .form-tip { font-size: 12px; color: #909399; margin-top: 5px; line-height: 1.2; }
 
-/* (★★★ 關鍵修復 ★★★) */
+/* (★★★ 关键修复 ★★★) */
 .search-form :deep(.el-input) {
   width: 180px;
 }
 
-/* (★★★ 關鍵修復：新增此規則以鎖定 el-select 的寬度 ★★★) */
+/* (★★★ 关键修复：新增此规則以锁定 el-select 的寬度 ★★★) */
 .search-form :deep(.el-select) {
   width: 180px;
 }
 
-/* (日期範圍選擇器需要更寬) */
+/* (日期范围选择器需要更寬) */
 .search-form :deep(.el-date-picker) {
   width: 240px;
 }

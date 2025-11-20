@@ -1,22 +1,78 @@
 <template>
   <div class="game-parameters-container">
-    <h2>遊戲參數設定</h2>
+    <h2>系统参数设定</h2>
+    <p class="page-description">管理遊戏参数、金流参数等系统设定。</p>
 
     <el-card shadow="never" v-loading="loading">
-      <el-form ref="formRef" :model="form" label-width="150px">
-        <el-form-item label="派獎倍數" prop="PAYOUT_MULTIPLIER"
-          :rules="[{ required: true, message: '派獎倍數不能為空' }, { validator: validateInteger, trigger: 'blur' }]">
-          <el-input v-model="form.PAYOUT_MULTIPLIER.value" style="width: 200px;" placeholder="請輸入正整數">
-             <template #append>倍</template>
-          </el-input>
-          <div class="form-tip">
-            {{ form.PAYOUT_MULTIPLIER.description }} (v1 dApp 需要重啟後端服務才能生效)
-          </div>
-        </el-form-item>
-        <el-form-item>
-          <el-button type="primary" @click="handleSubmit" :loading="submitLoading">儲存設定</el-button>
-        </el-form-item>
-      </el-form>
+      <el-tabs v-model="activeTab">
+        
+        <el-tab-pane label="遊戏参数 (Game)" name="Game">
+          <el-form v-if="formGroups.Game" ref="gameFormRef" :model="formGroups.Game" label-width="200px" class="settings-form">
+            <el-form-item
+              label="派奖倍数 (PAYOUT_MULTIPLIER)"
+              prop="PAYOUT_MULTIPLIER.value"
+              :rules="[{ required: true, message: '派奖倍数不能为空' }, { validator: validateInteger, trigger: 'blur' }]"
+            >
+              <el-input v-model="formGroups.Game.PAYOUT_MULTIPLIER.value" style="width: 200px;" placeholder="请输入正整数">
+                <template #append>倍</template>
+              </el-input>
+              <div class-="form-tip">{{ formGroups.Game.PAYOUT_MULTIPLIER.description }}</div>
+            </el-form-item>
+            
+            <el-form-item>
+              <el-button type="primary" @click="handleSubmit('Game')" :loading="submitLoading">储存遊戏参数</el-button>
+            </el-form-item>
+          </el-form>
+          <el-empty v-else description="無遊戏参数"></el-empty>
+        </el-tab-pane>
+
+        <el-tab-pane label="金流参数 (Finance)" name="Finance">
+           <el-form v-if="formGroups.Finance" ref="financeFormRef" :model="formGroups.Finance" label-width="200px" class="settings-form">
+            
+            <el-form-item
+              label="自动出款门槛 (AUTO_WITHDRAW_THRESHOLD)"
+              prop="AUTO_WITHDRAW_THRESHOLD.value"
+              :rules="[{ required: true, message: '门槛不能为空' }, { validator: validateNumeric, trigger: 'blur' }]"
+            >
+              <el-input v-model="formGroups.Finance.AUTO_WITHDRAW_THRESHOLD.value" style="width: 200px;" placeholder="例如: 10">
+                <template #append>USDT</template>
+              </el-input>
+              <div class="form-tip">{{ formGroups.Finance.AUTO_WITHDRAW_THRESHOLD.description }}</div>
+            </el-form-item>
+
+             <el-form-item
+              label="开放 TRC20 充值 (ALLOW_TRC20)"
+              prop="ALLOW_TRC20.value"
+              :rules="[{ required: true, message: '必须选择' }]"
+            >
+               <el-switch v-model="formGroups.Finance.ALLOW_TRC20.value" active-value="true" inactive-value="false" />
+               <div class="form-tip">{{ formGroups.Finance.ALLOW_TRC20.description }}</div>
+            </el-form-item>
+
+             <el-form-item
+              label="开放 BSC 充值 (ALLOW_BSC)"
+              prop="ALLOW_BSC.value"
+              :rules="[{ required: true, message: '必须选择' }]"
+            >
+               <el-switch v-model="formGroups.Finance.ALLOW_BSC.value" active-value="true" inactive-value="false" />
+               <div class="form-tip">{{ formGroups.Finance.ALLOW_BSC.description }}</div>
+            </el-form-item>
+            
+            <el-form-item>
+              <el-button type="primary" @click="handleSubmit('Finance')" :loading="submitLoading">储存金流参数</el-button>
+            </el-form-item>
+          </el-form>
+           <el-empty v-else description="無金流参数"></el-empty>
+        </el-tab-pane>
+        
+        <el-tab-pane label="其他参数" name="General">
+           <el-form v-if="formGroups.General" ref="generalFormRef" :model="formGroups.General" label-width="200px" class="settings-form">
+              <el-empty description="無其他参数"></el-empty>
+           </el-form>
+           <el-empty v-else description="無其他参数"></el-empty>
+        </el-tab-pane>
+
+      </el-tabs>
     </el-card>
   </div>
 </template>
@@ -30,80 +86,114 @@ export default {
        return {
            loading: true,
            submitLoading: false,
-           form: {
-               // (預設結構，確保 template 渲染時不會報錯)
-               PAYOUT_MULTIPLIER: { value: '', description: '' }
+           activeTab: 'Game', // 预设显示哪個 tab
+           
+           // (★★★ v8.1 修改：表单结构改为分组 ★★★)
+           formGroups: {
+               // (预设结构，防止渲染错误)
+               Game: null,
+               Finance: null,
+               General: null
            },
+           
+           // (保留原始 API 回传，用于比对)
+           originalSettings: {}, 
        };
    },
    created() {
-       // (★★★ 確保 created 中呼叫的是 methods 中的 fetchSettings ★★★)
        this.fetchSettings();
    },
    methods: {
-       validateInteger (rule, value, callback) {
-           let checkValue = value; 
-           if (value && typeof value === 'object' && value.hasOwnProperty('value')) {
-               checkValue = value.value; 
+       // (★★★ v8.1 新增：数字验证 ★★★)
+       validateNumeric (rule, value, callback) {
+           // (注意：value 現在是 { value: '...', description: '...' } 中的 value)
+           const num = parseFloat(value);
+           if (isNaN(num) || num < 0) {
+               callback(new Error('必须是非负数'));
            } else {
-           }
-
-           // (後續驗證邏輯使用 checkValue)
-           const num = parseInt(checkValue, 10);
-           
-           if (isNaN(num) || num <= 0 || !Number.isInteger(num)) {
-               console.log('[Validator DEBUG] Validation FAILED.');
-               callback(new Error('必須是正整數'));
-           } else {
-               console.log('[Validator DEBUG] Validation PASSED.');
                callback(); 
            }
        },
+       // (★★★ v8.1 新增：整数验证 ★★★)
+       validateInteger (rule, value, callback) {
+           const num = parseFloat(value);
+           if (isNaN(num) || num <= 0 || !Number.isInteger(num)) {
+               callback(new Error('必须是正整数'));
+           } else {
+               callback(); 
+           }
+       },
+
        async fetchSettings() {
             this.loading = true;
             try {
-                // (★★★ 確保 $api.getSettings 可用 ★★★)
-                const settings = await this.$api.getSettings();
-                // (只更新存在的 key)
-                for (const key in settings) {
-                    if (this.form.hasOwnProperty(key)) {
-                        // (★★★ 確保賦值正確 ★★★)
-                        this.form[key] = {
-                            value: settings[key].value || '', // API 返回的是 { value: '...', description: '...' }
-                            description: settings[key].description || ''
-                        };
-                    } else {
-                        // (如果 API 返回了 form 中不存在的 key，可以動態添加，但目前我們先忽略)
-                        // console.warn(`Setting key '${key}' from API is not defined in the form.`);
-                    }
+                // (★★★ v8.1 修改：API 現在返回分组的物件 ★★★)
+                const settingsByCategory = await this.$api.getSettings();
+                
+                // (储存原始值，用于比对)
+                this.originalSettings = JSON.parse(JSON.stringify(settingsByCategory));
+                // (赋值给表单)
+                this.formGroups = settingsByCategory;
+
+                // (检查预设 tab 是否有内容)
+                if (!this.formGroups[this.activeTab]) {
+                    // 如果 'Game' 没内容，切换到 'Finance'
+                    if (this.formGroups.Finance) this.activeTab = 'Finance';
+                    else if (this.formGroups.General) this.activeTab = 'General';
                 }
+
             } catch (error) {
                 console.error('Failed to fetch settings:', error);
-                ElMessage.error('載入設定失敗');
+                ElMessage.error('载入设定失败');
             }
             finally { this.loading = false; }
        },
-       async handleSubmit() {
-           const formEl = this.$refs.formRef;
+       
+       // (★★★ v8.1 修改：按分组提交 ★★★)
+       async handleSubmit(groupName) {
+           const formRefName = `${groupName.toLowerCase()}FormRef`;
+           const formEl = this.$refs[formRefName];
            if (!formEl) return;
+           
            await formEl.validate(async (valid) => {
                if (valid) {
                    this.submitLoading = true;
+                   const settingsToUpdate = this.formGroups[groupName];
+                   const originalGroupSettings = this.originalSettings[groupName] || {};
+                   
                    try {
-                       const updatePromises = Object.keys(this.form).map(key => {
-                           // (★★★ 確保 $api.updateSetting 可用 ★★★)
-                           return this.$api.updateSetting(key, this.form[key].value);
-                       });
+                       const updatePromises = [];
+                       
+                       // (只提交有变动的 key)
+                       for (const key in settingsToUpdate) {
+                           if (settingsToUpdate[key].value !== originalGroupSettings[key]?.value) {
+                               updatePromises.push(
+                                   this.$api.updateSetting(key, settingsToUpdate[key].value)
+                               );
+                           }
+                       }
+
+                       if (updatePromises.length === 0) {
+                           ElMessage.info('设定未变动');
+                           this.submitLoading = false;
+                           return;
+                       }
+
                        await Promise.all(updatePromises);
-                       ElMessage.success('設定儲存成功');
-                       // (儲存成功後最好重新載入一次，以獲取最新的 description 等)
+                       ElMessage.success('设定储存成功！');
+                       
+                       // (储存成功後重新载入所有设定，以更新 originalSettings)
                        await this.fetchSettings();
+
                    } catch (error) {
                         console.error('Failed to save settings:', error);
-                        ElMessage.error('儲存設定失敗');
+                        ElMessage.error('储存设定失败');
                    }
                    finally { this.submitLoading = false; }
-               } else { return false; }
+               } else { 
+                 ElMessage.error('表单验证失败');
+                 return false; 
+               }
            });
        }
    }
@@ -112,4 +202,7 @@ export default {
 
 <style scoped>
 .form-tip { font-size: 12px; color: #909399; margin-top: 5px; line-height: 1.4; }
+.settings-form {
+  padding-top: 20px;
+}
 </style>

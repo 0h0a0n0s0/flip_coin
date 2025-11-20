@@ -1,16 +1,16 @@
 <template>
   <div class="wallet-monitoring-container">
-    <h2>平台錢包管理</h2> <p class="page-description">管理平台用於 充值、提現、開獎、歸集 的熱錢包地址。</p>
+    <h2>平台钱包管理</h2> <p class="page-description">管理平台用于 充值、提現、开奖、归集 的热钱包地址。</p>
 
     <el-card shadow="never" class="action-card">
-       <el-button type="primary" @click="handleAdd">新增錢包</el-button>
+       <el-button type="primary" @click="handleAdd">新增钱包</el-button>
     </el-card>
 
     <el-card shadow="never" class="search-card">
       <el-form :inline="true" :model="searchParams" @submit.native.prevent="handleSearch" class="search-form">
         <el-form-item label="钱包名称"><el-input v-model="searchParams.name" placeholder="名称 (模糊)" clearable></el-input></el-form-item>
-        <el-form-item label="公鏈類型">
-          <el-select v-model="searchParams.chain_type" placeholder="选择公鏈" clearable>
+        <el-form-item label="公链类型">
+          <el-select v-model="searchParams.chain_type" placeholder="选择公链" clearable>
             <el-option label="全部" value="" />
             <el-option label="BSC (BEP20)" value="BSC" />
             <el-option label="TRON (TRC20)" value="TRC20" />
@@ -20,29 +20,33 @@
           </el-select>
         </el-form-item>
         <el-form-item label="钱包地址"><el-input v-model="searchParams.address" placeholder="地址 (精确)" clearable></el-input></el-form-item>
-        <el-form-item><el-button type="primary" @click="handleSearch">查詢</el-button></el-form-item>
+        <el-form-item><el-button type="primary" @click="handleSearch">查询</el-button></el-form-item>
       </el-form>
     </el-card>
 
     <el-card shadow="never" class="table-card" v-loading="loading">
       <el-table :data="tableData" style="width: 100%">
         <el-table-column prop="name" label="钱包名称" width="180" />
-        <el-table-column prop="chain_type" label="公鏈類型" width="120" />
-        <el-table-column prop="address" label="钱包地址" />
-        
-        <el-table-column label="功能" width="350">
+        <el-table-column prop="chain_type" label="公链类型" width="120" />
+        <el-table-column label="钱包地址">
           <template #default="scope">
-            <el-tag v-if="scope.row.is_gas_reserve" type="success" effect="dark" class="fn-tag">Gas 儲備</el-tag>
-            <el-tag v-if="scope.row.is_collection" type="danger" effect="dark" class="fn-tag">歸集</el-tag>
-            <el-tag v-if="scope.row.is_opener_a" class="fn-tag">開獎A</el-tag>
-            <el-tag v-if="scope.row.is_opener_b" class="fn-tag">開獎B</el-tag>
+            {{ scope.row.address_masked || scope.row.address }}
           </template>
         </el-table-column>
         
-        <el-table-column prop="is_active" label="狀態" width="100">
+        <el-table-column label="功能" width="420">
+          <template #default="scope">
+            <el-tag v-if="scope.row.is_gas_reserve" type="success" effect="dark" class="fn-tag">Gas 储备</el-tag>
+            <el-tag v-if="scope.row.is_collection" type="danger" effect="dark" class="fn-tag">归集</el-tag>
+            <el-tag v-if="scope.row.is_payout" type="warning" effect="dark" class="fn-tag">自动出款</el-tag> <el-tag v-if="scope.row.is_opener_a" class="fn-tag">开奖A</el-tag>
+            <el-tag v-if="scope.row.is_opener_b" class="fn-tag">开奖B</el-tag>
+          </template>
+        </el-table-column>
+        
+        <el-table-column prop="is_active" label="狀态" width="100">
            <template #default="scope">
              <el-tag :type="scope.row.is_active ? 'success' : 'danger'">
-               {{ scope.row.is_active ? '啟用' : '禁用' }}
+               {{ scope.row.is_active ? '启用' : '禁用' }}
              </el-tag>
            </template>
         </el-table-column>
@@ -62,8 +66,8 @@
     <el-dialog v-model="dialogVisible" :title="dialogTitle" width="700px" :close-on-click-modal="false">
       <el-form ref="walletFormRef" :model="walletForm" :rules="formRules" label-width="100px">
         <el-form-item label="钱包名称" prop="name"><el-input v-model="walletForm.name" placeholder="请输入钱包名称"></el-input></el-form-item>
-        <el-form-item label="公鏈類型" prop="chain_type">
-          <el-select v-model="walletForm.chain_type" placeholder="请选择公鏈">
+        <el-form-item label="公链类型" prop="chain_type">
+          <el-select v-model="walletForm.chain_type" placeholder="请选择公链">
             <el-option label="BSC (BEP20)" value="BSC" />
             <el-option label="TRON (TRC20)" value="TRC20" />
             <el-option label="ETH (ERC20)" value="ETH" />
@@ -71,38 +75,65 @@
             <el-option label="Solana" value="SOL" />
           </el-select>
         </el-form-item>
-        <el-form-item label="钱包地址" prop="address"><el-input v-model="walletForm.address" placeholder="请输入錢包地址 (T... 或 0x... 或 Sol...)"></el-input></el-form-item>
+        <el-form-item label="钱包地址" prop="address"><el-input v-model="walletForm.address" placeholder="请输入钱包地址 (T... 或 0x... 或 Sol...)"></el-input></el-form-item>
         
         <el-divider />
         
-        <el-form-item label="錢包功能" prop="functions">
-           <el-checkbox v-model="walletForm.is_gas_reserve" label="Gas 儲備 (TRX/BNB)" />
-           <el-checkbox v-model="walletForm.is_collection" label="歸集 (USDT)" />
+        <el-form-item label="钱包功能" prop="functions">
+           <el-checkbox v-model="walletForm.is_gas_reserve" label="Gas 储备 (TRX/BNB)" />
+           <el-checkbox v-model="walletForm.is_collection" label="归集 (USDT)" />
+           <el-checkbox v-model="walletForm.is_payout" label="自动出款 (USDT)" />
         </el-form-item>
-         <el-form-item label="開獎功能" prop="opener">
-           <el-checkbox v-model="walletForm.is_opener_a" label="開獎地址 A (支付方)" />
-           <el-checkbox v-model="walletForm.is_opener_b" label="開獎地址 B (接收方)" />
+         <el-form-item label="开奖功能" prop="opener">
+           <el-checkbox v-model="walletForm.is_opener_a" label="开奖地址 A (支付方)" />
+           <el-checkbox v-model="walletForm.is_opener_b" label="开奖地址 B (接收方)" />
         </el-form-item>
-        <el-form-item label="錢包狀態" prop="is_active">
+        <el-form-item label="钱包狀态" prop="is_active">
            <el-switch
               v-model="walletForm.is_active"
-              active-text="啟用"
+              active-text="启用"
               inactive-text="禁用"
               inline-prompt
             />
         </el-form-item>
 
+        <!-- (★★★ 归集参数设定区块 ★★★) -->
+        <el-divider v-if="walletForm.is_collection" />
+        <div v-if="walletForm.is_collection" class="collection-settings-block">
+          <h4>归集参数设定</h4>
+          <el-form-item label="每x天扫描一次" prop="scan_interval_days">
+            <el-input-number 
+              v-model="walletForm.scan_interval_days" 
+              :min="1" 
+              :max="30" 
+              style="width: 200px;"
+              placeholder="天数"
+            />
+            <div class="form-tip">每隔多少天执行一次归集扫描</div>
+          </el-form-item>
+          <el-form-item label="用户n天無充值时归集" prop="days_without_deposit">
+            <el-input-number 
+              v-model="walletForm.days_without_deposit" 
+              :min="1" 
+              :max="365" 
+              style="width: 200px;"
+              placeholder="天数"
+            />
+            <div class="form-tip">用户最後一笔充值後多少天無新充值，則执行归集</div>
+          </el-form-item>
+        </div>
+
       </el-form>
       <template #footer>
         <el-button @click="dialogVisible = false">取消</el-button>
-        <el-button type="primary" @click="handleSubmit" :loading="submitLoading">確認</el-button>
+        <el-button type="primary" @click="handleSubmit" :loading="submitLoading">确认</el-button>
       </template>
     </el-dialog>
   </div>
 </template>
 
 <script>
-// ( ... <script> 標籤內的邏輯保持不變 ... )
+// ( ... <script> 标签内的逻辑保持不变 ... )
 import { ElMessage, ElMessageBox } from 'element-plus';
 
 export default {
@@ -125,12 +156,15 @@ export default {
            is_collection: false,
            is_opener_a: false, 
            is_opener_b: false,
-           is_active: true
+           is_payout: false,
+           is_active: true,
+           scan_interval_days: 1,
+           days_without_deposit: 7
          },
          
          formRules: {
              name: [{ required: true, message: '请输入钱包名称', trigger: 'blur' }],
-             chain_type: [{ required: true, message: '请选择公鏈類型', trigger: 'change' }],
+             chain_type: [{ required: true, message: '请选择公链类型', trigger: 'change' }],
              address: [
                  { required: true, message: '请输入钱包地址', trigger: 'blur' },
              ],
@@ -177,25 +211,46 @@ export default {
            is_collection: false,
            is_opener_a: false, 
            is_opener_b: false,
-           is_active: true
+           is_payout: false,
+           is_active: true,
+           scan_interval_days: 1,
+           days_without_deposit: 7
          };
       },
       handleAdd() {
-          this.dialogTitle = '新增平台錢包';
+          this.dialogTitle = '新增平台钱包';
           Object.assign(this.walletForm, this.getEmptyForm());
           this.dialogVisible = true;
           this.$nextTick(() => { this.$refs.walletFormRef?.clearValidate(); });
       },
-      handleEdit(row) {
-          this.dialogTitle = '編輯平台錢包';
+      async handleEdit(row) {
+          this.dialogTitle = '编辑平台钱包';
           Object.assign(this.walletForm, {
              id: row.id, name: row.name, chain_type: row.chain_type, address: row.address,
              is_gas_reserve: row.is_gas_reserve, 
              is_collection: row.is_collection,
              is_opener_a: row.is_opener_a, 
              is_opener_b: row.is_opener_b,
-             is_active: row.is_active
+             is_payout: row.is_payout,
+             is_active: row.is_active,
+             scan_interval_days: 1,
+             days_without_deposit: 7
           });
+          
+          // 如果是归集钱包，载入归集设定
+          if (row.is_collection && row.address) {
+              try {
+                  const settings = await this.$api.getCollectionSettings();
+                  const walletSetting = settings.find(s => s.collection_wallet_address === row.address);
+                  if (walletSetting) {
+                      this.walletForm.scan_interval_days = walletSetting.scan_interval_days;
+                      this.walletForm.days_without_deposit = walletSetting.days_without_deposit;
+                  }
+              } catch (error) {
+                  console.error('Failed to load collection settings:', error);
+              }
+          }
+          
           this.dialogVisible = true;
           this.$nextTick(() => { this.$refs.walletFormRef?.clearValidate(); });
       },
@@ -208,28 +263,57 @@ export default {
                   try {
                       if (this.walletForm.id) {
                           await this.$api.updateWallet(this.walletForm.id, this.walletForm);
-                          ElMessage.success('錢包更新成功');
-                      } else {
-                          // (★★★ v8.6 錯誤修復：這裡呼叫的是 this.addWallet ★★★)
-                          // await this.addWallet(this.walletForm); 
                           
-                          // (★★★ v8.6 修正：應為 this.$api.addWallet ★★★)
-                          await this.$api.addWallet(this.walletForm); //
-                          ElMessage.success('錢包新增成功');
+                          // 如果是归集钱包，更新归集设定
+                          if (this.walletForm.is_collection && this.walletForm.address) {
+                              try {
+                                  await this.$api.updateCollectionSettings({
+                                      collection_wallet_address: this.walletForm.address,
+                                      scan_interval_days: this.walletForm.scan_interval_days,
+                                      days_without_deposit: this.walletForm.days_without_deposit,
+                                      is_active: true
+                                  });
+                              } catch (error) {
+                                  console.error('Failed to update collection settings:', error);
+                              }
+                          }
+                          
+                          ElMessage.success('钱包更新成功');
+                      } else {
+                          await this.$api.addWallet(this.walletForm);
+                          
+                          // 如果是归集钱包，創建归集设定
+                          if (this.walletForm.is_collection && this.walletForm.address) {
+                              try {
+                                  await this.$api.updateCollectionSettings({
+                                      collection_wallet_address: this.walletForm.address,
+                                      scan_interval_days: this.walletForm.scan_interval_days,
+                                      days_without_deposit: this.walletForm.days_without_deposit,
+                                      is_active: true
+                                  });
+                              } catch (error) {
+                                  console.error('Failed to create collection settings:', error);
+                              }
+                          }
+                          
+                          ElMessage.success('钱包新增成功');
                       }
                       this.dialogVisible = false;
                       this.fetchWallets();
-                  } catch (error) { console.error('Failed to submit wallet:', error); }
+                  } catch (error) { 
+                      console.error('Failed to submit wallet:', error);
+                      ElMessage.error('操作失败：' + (error.response?.data?.error || error.message));
+                  }
                   finally { this.submitLoading = false; }
               } else { return false; }
           });
       },
       handleDelete(row) {
-          ElMessageBox.confirm(`確定要刪除錢包 "${row.name}" (${row.address}) 嗎？`, '提示', { confirmButtonText: '確定', cancelButtonText: '取消', type: 'warning' })
+          ElMessageBox.confirm(`确定要刪除钱包 "${row.name}" (${row.address}) 吗？`, '提示', { confirmButtonText: '确定', cancelButtonText: '取消', type: 'warning' })
           .then(async () => {
               try {
                   await this.$api.deleteWallet(row.id);
-                  ElMessage.success('錢包刪除成功');
+                  ElMessage.success('钱包刪除成功');
                   this.fetchWallets();
               } catch (error) { console.error('Failed to delete wallet:', error); }
           }).catch(() => {});
@@ -252,11 +336,31 @@ export default {
   margin-right: 15px;
 }
 
-/* (★★★ 修改 2: 新增 CSS 規則 ★★★) */
+/* (★★★ 修改 2: 新增 CSS 规則 ★★★) */
 .search-form :deep(.el-input) {
   width: 180px;
 }
 .search-form :deep(.el-select) {
   width: 180px;
+}
+
+.collection-settings-block {
+  margin-top: 20px;
+  padding: 20px;
+  background-color: #f5f7fa;
+  border-radius: 4px;
+}
+
+.collection-settings-block h4 {
+  margin-top: 0;
+  margin-bottom: 20px;
+  color: #303133;
+}
+
+.form-tip {
+  font-size: 12px;
+  color: #909399;
+  margin-top: 5px;
+  line-height: 1.4;
 }
 </style>

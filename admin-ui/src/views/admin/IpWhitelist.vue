@@ -1,13 +1,13 @@
 <template>
   <div class="ip-whitelist-container">
-    <h2>後台 IP 白名單</h2>
+    <h2>後台 IP 白名单</h2>
     <p class="page-description">
       <el-alert type="warning" show-icon :closable="false">
-        <strong>警告：</strong> 此功能啟用後，只有列表中的 IP 才能訪問後台。
+        <strong>警告：</strong> 此功能启用後，只有列表中的 IP 才能访问後台。
         <br>
-        如果您不確定自己的公網 IP，請在新增前查詢，並使用 /32 格式 (例如 123.123.123.123/32)。
+        如果您不确定自己的公网 IP，请在新增前查询，并使用 /32 格式 (例如 123.123.123.123/32)。
         <br>
-        如果白名單為空，則允許所有 IP 訪問 (安全模式)。
+        如果白名单为空，則允许所有 IP 访问 (安全模式)。
       </el-alert>
     </p>
     <el-card shadow="never" class="add-card">
@@ -15,8 +15,8 @@
         <el-form-item label="IP / CIDR" prop="ip_range">
           <el-input v-model="addForm.ip_range" placeholder="例如: 123.123.123.123/32"></el-input>
         </el-form-item>
-        <el-form-item label="描述 (選填)">
-           <el-input v-model="addForm.description" placeholder="例如: 辦公室 IP"></el-input>
+        <el-form-item label="描述 (选填)">
+           <el-input v-model="addForm.description" placeholder="例如: 办公室 IP"></el-input>
         </el-form-item>
         <el-form-item>
           <el-button type="primary" @click="handleAddIp" :loading="addLoading">新增</el-button>
@@ -24,11 +24,11 @@
       </el-form>
     </el-card>
     <el-card shadow="never" class="table-card" v-loading="loading">
-       <template #header><div>IP 白名單列表</div></template>
+       <template #header><div>IP 白名单列表</div></template>
       <el-table :data="tableData" style="width: 100%">
-        <el-table-column prop="ip_range" label="IP / CIDR 範圍" />
+        <el-table-column prop="ip_range" label="IP / CIDR 范围" />
         <el-table-column prop="description" label="描述" />
-        <el-table-column prop="created_at" label="新增時間" width="180">
+        <el-table-column prop="created_at" label="新增时间" width="180">
            <template #default="scope">{{ formatDateTime(scope.row.created_at) }}</template>
         </el-table-column>
         <el-table-column label="操作" width="100" fixed="right">
@@ -41,7 +41,7 @@
   </div>
 </template>
 <script>
-// ( ... <script> 標籤內的邏輯保持不變 ... )
+// ( ... <script> 标签内的逻辑保持不变 ... )
 import { ElMessage, ElMessageBox } from 'element-plus';
 export default {
   name: 'IpWhitelistView',
@@ -52,7 +52,7 @@ export default {
            addFormRules: {
                ip_range: [
                    { required: true, message: '请输入 IP / CIDR', trigger: 'blur' },
-                   { pattern: /^([0-9]{1,3}\.){3}[0-9]{1,3}(\/([0-9]|[1-2][0-9]|3[0-2]))$/, message: '格式錯誤，請使用 CIDR (e.g., 1.2.3.4/32)', trigger: 'blur' }
+                   { pattern: /^([0-9]{1,3}\.){3}[0-9]{1,3}(\/([0-9]|[1-2][0-9]|3[0-2]))$/, message: '格式错误，请使用 CIDR (e.g., 1.2.3.4/32)', trigger: 'blur' }
                ],
            }
        };
@@ -81,11 +81,11 @@ export default {
            });
        },
        handleDelete(row) {
-           ElMessageBox.confirm(`確定要刪除 IP 規則 "${row.ip_range}" 嗎？`, '警告', { confirmButtonText: '確定刪除', cancelButtonText: '取消', type: 'warning' })
+           ElMessageBox.confirm(`确定要刪除 IP 规則 "${row.ip_range}" 吗？`, '警告', { confirmButtonText: '确定刪除', cancelButtonText: '取消', type: 'warning' })
            .then(async () => {
                try {
                    await this.$api.deleteIpFromWhitelist(row.id);
-                   ElMessage.success('IP 規則刪除成功');
+                   ElMessage.success('IP 规則刪除成功');
                    await this.fetchWhitelist();
                } catch (error) { console.error('Failed to delete IP:', error); }
            }).catch(() => {});
@@ -104,7 +104,7 @@ export default {
 .table-card { margin-bottom: 20px; }
 .el-form-item { margin-bottom: 10px; }
 
-/* (★★★ 修改 4: 新增 CSS 規則 ★★★) */
+/* (★★★ 修改 4: 新增 CSS 规則 ★★★) */
 .search-form :deep(.el-input) {
   width: 180px;
 }

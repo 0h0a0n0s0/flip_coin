@@ -1,10 +1,10 @@
-// 檔案: backend/middleware/auth.js (新檔案)
+// 档案: backend/middleware/auth.js (新档案)
 
 const jwt = require('jsonwebtoken');
 
 module.exports = function(req, res, next) {
-    // 1. 從 Request Header 獲取 'Authorization'
-    // 格式預期為: "Bearer TOKEN_STRING"
+    // 1. 从 Request Header 获取 'Authorization'
+    // 格式预期为: "Bearer TOKEN_STRING"
     const authHeader = req.header('Authorization');
 
     if (!authHeader) {
@@ -18,18 +18,18 @@ module.exports = function(req, res, next) {
              return res.status(401).json({ error: 'Access denied. Token format invalid.' });
         }
 
-        // 3. 驗證 Token
+        // 3. 验证 Token
         const decoded = jwt.verify(token, process.env.JWT_SECRET);
 
-        // 4. 將解碼後的用戶資訊附加到 req 物件上
+        // 4. 将解码後的用户资讯附加到 req 物件上
         req.user = decoded;
         
-        // 5. 允許請求繼續
+        // 5. 允许请求继续
         next();
 
     } catch (ex) {
         console.error('[Auth Middleware] Invalid token.', ex.message);
-        // (★★★ 關鍵修改：從 400 改為 401 ★★★)
+        // (★★★ 关键修改：从 400 改为 401 ★★★)
         res.status(401).json({ error: 'Invalid token.' });
     }
 };

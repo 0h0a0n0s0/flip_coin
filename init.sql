@@ -13,6 +13,7 @@ DROP TABLE IF EXISTS admin_ip_whitelist CASCADE;
 DROP TABLE IF EXISTS admin_roles CASCADE;
 DROP TABLE IF EXISTS admin_permissions CASCADE;
 DROP TABLE IF EXISTS admin_role_permissions CASCADE;
+DROP TABLE IF EXISTS withdrawals CASCADE;
 
 -- (建立 RBAC 相關新表)
 CREATE TABLE admin_roles (
@@ -97,7 +98,7 @@ CREATE TABLE platform_transactions (
     chain VARCHAR(20) NULL,
     amount NUMERIC NOT NULL DEFAULT 0, 
     gas_fee NUMERIC NOT NULL DEFAULT 0, 
-    tx_hash VARCHAR(255) UNIQUE, 
+    tx_hash VARCHAR(255) NULL, 
     status VARCHAR(20) NOT NULL DEFAULT 'completed',
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
@@ -113,7 +114,7 @@ CREATE TABLE admin_users (
     id SERIAL PRIMARY KEY,
     username VARCHAR(50) UNIQUE NOT NULL,
     password_hash VARCHAR(100) NOT NULL,
-    role_id INT REFERENCES admin_roles(id) ON DELETE SET NULL, -- (使用 role_id)
+    role_id INT REFERENCES admin_roles(id) ON DELETE SET NULL,
     status VARCHAR(20) NOT NULL DEFAULT 'active',
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
@@ -131,6 +132,7 @@ CREATE TABLE platform_wallets (
     is_collection BOOLEAN NOT NULL DEFAULT false,
     is_opener_a BOOLEAN NOT NULL DEFAULT false,
     is_opener_b BOOLEAN NOT NULL DEFAULT false,
+    is_payout BOOLEAN NOT NULL DEFAULT false,
     is_active BOOLEAN NOT NULL DEFAULT true,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
@@ -142,6 +144,7 @@ CREATE TABLE system_settings (
     key VARCHAR(50) PRIMARY KEY,
     value TEXT NOT NULL,
     description TEXT,
+    category VARCHAR(50) NOT NULL DEFAULT 'General',
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
@@ -226,35 +229,36 @@ SELECT 1, id FROM admin_permissions;
 -- 4. 綁定 'Admin' (Role ID 2) 的權限 (管理用戶/注單/報表)
 INSERT INTO admin_role_permissions (role_id, permission_id)
 SELECT 2, id FROM admin_permissions WHERE resource IN 
-('dashboard', 'users', 'users_addresses', 'bets', 'reports', 'wallets', 'deposits');
+('dashboard', 'users', 'users_addresses', 'bets', 'reports', 'wallets', 'deposits', 'withdrawals');
 
 -- 5. 綁定 'Operator' (Role ID 3) 的權限 (僅可讀取)
 INSERT INTO admin_role_permissions (role_id, permission_id)
 SELECT 3, id FROM admin_permissions WHERE action = 'read' 
-AND resource IN ('dashboard', 'users', 'users_addresses', 'bets', 'reports', 'wallets', 'deposits');
+AND resource IN ('dashboard', 'users', 'users_addresses', 'bets', 'reports', 'wallets', 'deposits', 'withdrawals');
 
 -- ----------------------------------------------------
 -- (插入初始數據)
 -- ----------------------------------------------------
 
 -- 1. 插入 'admin' 帳號並指定為 'Super Admin' (Role ID 1)
--- (★★★ 關鍵修復：使用 (role_id) 並傳入 (1) ★★★)
 INSERT INTO admin_users (username, password_hash, role_id, status)
 VALUES ('admin', '$2b$10$AcqgPjrFH7EoZv6Fv0LJ4OMmPbiTom7QrSSTjE6oK92.2JgFs63Wq', 1, 'active'); 
--- (↑↑↑ 警告：這是我從您的日誌 [log4.txt, source 33] 複製的 HASH。如果您換了新 HASH，請替換這裡。)
-
 
 -- 2. 插入 Level 1
 INSERT INTO user_levels (level, name, max_bet_amount, required_bets_for_upgrade, min_bet_amount_for_upgrade, upgrade_reward_amount) 
 VALUES (1, 'Level 1', 100, 10, 0.01, 0.005); 
 
--- 3. 插入系統設定
-INSERT INTO system_settings (key, value, description) 
-VALUES ('PAYOUT_MULTIPLIER', '2', '派獎倍數 (整數)'); 
-INSERT INTO system_settings (key, value, description) 
-VALUES ('ALLOW_BSC', 'true', '是否開放 BSC 充值 (true/false)');
-INSERT INTO system_settings (key, value, description) 
-VALUES ('ALLOW_TRC20', 'true', '是否開放 TRC20 充值 (true/false)');
+-- 3. 插入系統設定 (★★★ v8.1 修改 ★★★)
+INSERT INTO system_settings (key, value, description, category) 
+VALUES ('PAYOUT_MULTIPLIER', '2', '派獎倍數 (整數)', 'Game'); 
+
+INSERT INTO system_settings (key, value, description, category) 
+VALUES ('ALLOW_TRC20', 'true', '是否開放 TRC20 充值 (true/false)', 'Finance');
+INSERT INTO system_settings (key, value, description, category) 
+VALUES ('ALLOW_BSC', 'true', '是否開放 BSC 充值 (true/false)', 'Finance');
+
+INSERT INTO system_settings (key, value, description, category) 
+VALUES ('AUTO_WITHDRAW_THRESHOLD', '10', '自動出款門檻 (小於等於此金額將嘗試自動出款)', 'Finance');
 
 -- 4. 插入本地 IP 到白名單
 INSERT INTO admin_ip_whitelist (ip_range, description) VALUES ('127.0.0.1/32', 'Localhost Access');
@@ -266,11 +270,11 @@ INSERT INTO admin_ip_whitelist (ip_range, description) VALUES ('125.229.37.48/32
 CREATE TABLE withdrawals (
     id SERIAL PRIMARY KEY,
     user_id VARCHAR(8) NOT NULL REFERENCES users(user_id) ON DELETE SET NULL,
-    chain_type VARCHAR(20) NOT NULL, -- 'TRC20', 'BSC', 'ETH' 等
+    chain_type VARCHAR(20) NOT NULL,
     address VARCHAR(255) NOT NULL,
     amount NUMERIC NOT NULL,
-    status VARCHAR(20) NOT NULL DEFAULT 'pending', -- pending, rejected, processing, completed
-    gas_fee NUMERIC NOT NULL DEFAULT 0, -- 平台實際支付的 Gas 成本
+    status VARCHAR(20) NOT NULL DEFAULT 'pending',
+    gas_fee NUMERIC NOT NULL DEFAULT 0,
     tx_hash VARCHAR(255) NULL,
     rejection_reason TEXT NULL,
     request_time TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
@@ -279,3 +283,83 @@ CREATE TABLE withdrawals (
 );
 CREATE INDEX idx_withdrawals_status ON withdrawals(status);
 CREATE INDEX idx_withdrawals_user_id ON withdrawals(user_id);
+
+-- ----------------------------
+-- 建立 collection_logs (歸集記錄表)
+-- ----------------------------
+CREATE TABLE collection_logs (
+    id SERIAL PRIMARY KEY,
+    user_id VARCHAR(8) NOT NULL REFERENCES users(user_id) ON DELETE SET NULL,
+    user_deposit_address VARCHAR(255) NOT NULL,
+    collection_wallet_address VARCHAR(255) NOT NULL,
+    amount NUMERIC NOT NULL,
+    tx_hash VARCHAR(255) NULL,
+    energy_used INT NULL,
+    status VARCHAR(20) NOT NULL DEFAULT 'pending',
+    error_message TEXT NULL,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX idx_collection_logs_user_id ON collection_logs(user_id);
+CREATE INDEX idx_collection_logs_created_at ON collection_logs(created_at);
+CREATE INDEX idx_collection_logs_status ON collection_logs(status);
+
+-- ----------------------------
+-- 建立 collection_settings (歸集設定表)
+-- ----------------------------
+CREATE TABLE collection_settings (
+    id SERIAL PRIMARY KEY,
+    collection_wallet_address VARCHAR(255) NOT NULL,
+    scan_interval_days INT NOT NULL DEFAULT 1,
+    days_without_deposit INT NOT NULL DEFAULT 7,
+    is_active BOOLEAN NOT NULL DEFAULT true,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(collection_wallet_address)
+);
+
+-- ----------------------------
+-- 建立 collection_cursor (歸集游標表，記錄當前處理位置)
+-- ----------------------------
+CREATE TABLE collection_cursor (
+    id SERIAL PRIMARY KEY,
+    collection_wallet_address VARCHAR(255) NOT NULL,
+    last_user_id VARCHAR(8) NULL,
+    last_processed_date DATE NOT NULL DEFAULT CURRENT_DATE,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(collection_wallet_address)
+);
+
+-- ----------------------------
+-- 建立 admin_audit_logs (後台操作稽核)
+-- ----------------------------
+CREATE TABLE admin_audit_logs (
+    id SERIAL PRIMARY KEY,
+    admin_id INT REFERENCES admin_users(id) ON DELETE SET NULL,
+    admin_username VARCHAR(50),
+    action VARCHAR(100) NOT NULL,
+    resource VARCHAR(100),
+    resource_id VARCHAR(100),
+    description TEXT,
+    ip_address VARCHAR(100),
+    user_agent TEXT,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX idx_admin_audit_logs_action ON admin_audit_logs(action);
+CREATE INDEX idx_admin_audit_logs_created_at ON admin_audit_logs(created_at);
+
+-- ----------------------------
+-- 插入初始平台錢包數據
+-- ----------------------------
+INSERT INTO platform_wallets (name, chain_type, address, is_gas_reserve, is_collection, is_opener_a, is_opener_b, is_payout, is_active) VALUES
+('自動出款錢包', 'TRC20', 'TWVJfRMJApn1gpoVAs3NBacgN6sHYaV2mE', false, false, false, false, true, true),
+('歸集', 'TRC20', 'TQxXoL3uCx3BKTBffQLA1rExjv6a3fzaDh', false, true, false, false, false, true),
+('GAS', 'TRC20', 'TCWSGfSkwNVEuVKThV8HT6LnBQPwZKS5ef', true, false, false, false, false, true),
+('開獎錢包B', 'TRC20', 'TMy7h9jUeXnHTBzhabvXen8ea1fPUenDfV', false, false, false, true, false, true),
+('開獎錢包A', 'TRC20', 'TCDRJuvuvnjiRLbKRQShqAKdhqymhWCEAV', false, false, true, false, false, true);
+
+-- ----------------------------
+-- 插入歸集錢包的初始設定（預設值：每天掃描一次，7天無充值則歸集）
+-- ----------------------------
+INSERT INTO collection_settings (collection_wallet_address, scan_interval_days, days_without_deposit, is_active) VALUES
+('TQxXoL3uCx3BKTBffQLA1rExjv6a3fzaDh', 1, 7, true);

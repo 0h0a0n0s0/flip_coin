@@ -3,10 +3,10 @@
 const { Pool } = require('pg');
 
 const pool = new Pool({
-    connectionString: process.env.DATABASE_URL, // 從環境變數讀取資料庫連接字串
+    connectionString: process.env.DATABASE_URL, // 从环境变数读取资料库連接字串
 });
 
 module.exports = {
     query: (text, params) => pool.query(text, params),
-    pool: pool // (★★★ M-Fix 4: 導出 pool ★★★)
+    pool: pool // (★★★ M-Fix 4: 导出 pool ★★★)
 };

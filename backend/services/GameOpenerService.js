@@ -1,11 +1,11 @@
-// 檔案: backend/services/GameOpenerService.js (★★★ v8.49 修正版 ★★★)
+// 档案: backend/services/GameOpenerService.js (★★★ v8.49 修正版 ★★★)
 
 const TronWeb = require('tronweb'); 
 const db = require('../db');
 const { getSettingsCache } = require('./settingsCache.js'); 
 const util = require('util');
 
-// (★★★ v8.49 修正：從 .env 讀取節點 ★★★)
+// (★★★ v8.49 修正：从 .env 读取节点 ★★★)
 const NILE_NODE_HOST = process.env.NILE_NODE_HOST;
 if (!NILE_NODE_HOST) {
     throw new Error("CRITICAL: NILE_NODE_HOST is not set in .env file!");
@@ -15,7 +15,7 @@ class GameOpenerService {
     constructor() {
         this.settingsCache = getSettingsCache();
 
-        // (★★★ v8.49 修正：使用 tronweb@5.3.2 的建構函式並指定新節點 ★★★)
+        // (★★★ v8.49 修正：使用 tronweb@5.3.2 的建构函式并指定新节点 ★★★)
         this.tronWeb = new TronWeb({
             fullHost: NILE_NODE_HOST,
             solidityHost: NILE_NODE_HOST,
@@ -32,13 +32,13 @@ class GameOpenerService {
         this.addressB = null;
 
         this._loadPlatformWallets();
-        // (★★★ v8.49 修改日誌 ★★★)
+        // (★★★ v8.49 修改日志 ★★★)
         console.log(`✅ [v7] GameOpenerService initialized (v8.49 tronweb@5.3.2 / GetBlock Node).`);
     }
 
-    // (_loadPlatformWallets 保持不變)
+    // (_loadPlatformWallets 保持不变)
     async _loadPlatformWallets() {
-        // ... (保持不變) ...
+        // ... (保持不变) ...
         try {
             const chainType = 'TRC20'; 
             const wallets = await db.query(
@@ -71,7 +71,7 @@ class GameOpenerService {
         }
     }
 
-    // (triggerBetTransaction 保持不變)
+    // (triggerBetTransaction 保持不变)
     async triggerBetTransaction() {
         if (!this.walletA_PrivateKey || !this.addressA || !this.addressB) {
             throw new Error("Opener wallets (A or B) are not configured.");
@@ -92,7 +92,7 @@ class GameOpenerService {
             const receipt = await this.tronWeb.trx.sendRawTransaction(signedTx);
             
             if (!receipt || !receipt.txid) {
-                 // (v8.49 修正：tronweb@5.x 成功時 receipt.result 為 true)
+                 // (v8.49 修正：tronweb@5.x 成功时 receipt.result 为 true)
                 if (receipt && receipt.result === true) {
                     // 這是成功的
                 } else {
@@ -112,9 +112,9 @@ class GameOpenerService {
         }
     }
 
-    // (determineOutcome 保持不變)
+    // (determineOutcome 保持不变)
     determineOutcome(txHash) {
-        // ... (保持不變) ...
+        // ... (保持不变) ...
         const lastChar = txHash.slice(-1);
         const decimalValue = parseInt(lastChar, 16);
         const isHead = decimalValue % 2 === 0;
@@ -123,9 +123,9 @@ class GameOpenerService {
     }
 }
 
-// (日誌輔助函數 保持不變)
+// (日志辅助函数 保持不变)
 function logError(error, context, address) {
-    // ... (保持不變) ...
+    // ... (保持不变) ...
     console.error(`[v7 Opener] ${context} for address ${address}. Details:`);
     try {
         if (error && error.message) {
@@ -138,7 +138,7 @@ function logError(error, context, address) {
     }
 }
 
-// (單例模式保持不變)
+// (单例模式保持不变)
 let instance = null;
 function getGameOpenerInstance() {
     if (!instance) {

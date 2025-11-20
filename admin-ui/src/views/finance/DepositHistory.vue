@@ -1,20 +1,35 @@
 <template>
   <div class="deposit-history-container">
-    <h2>充值記錄</h2>
+    <h2>充值记录</h2>
 
     <el-card shadow="never" class="search-card">
       <el-form :inline="true" :model="searchParams" @submit.native.prevent="handleSearch" class="search-form">
-        <el-form-item label="用戶名"><el-input v-model="searchParams.username" placeholder="用戶名 (模糊)" clearable></el-input></el-form-item>
+        <el-form-item label="用户名"><el-input v-model="searchParams.username" placeholder="用户名 (模糊)" clearable></el-input></el-form-item>
+        <el-form-item label="用户ID"><el-input v-model="searchParams.user_id" placeholder="精确用户ID" clearable></el-input></el-form-item>
         <el-form-item label="TX Hash"><el-input v-model="searchParams.tx_hash" placeholder="Hash (精确)" clearable></el-input></el-form-item>
-        <el-form-item label="充值狀態">
+        <el-form-item label="充值狀态">
           <el-select v-model="searchParams.status" placeholder="选择状态" clearable>
             <el-option label="已完成" value="completed" />
-            <el-option label="待處理" value="pending" />
-            <el-option label="失敗" value="failed" />
+            <el-option label="待处理" value="pending" />
+            <el-option label="失败" value="failed" />
           </el-select>
         </el-form-item>
+        <el-form-item label="时间区间">
+          <el-date-picker
+            v-model="searchParams.dateRange"
+            type="datetimerange"
+            range-separator="至"
+            start-placeholder="开始时间"
+            end-placeholder="结束时间"
+            format="YYYY-MM-DD HH:mm:ss"
+            value-format="YYYY-MM-DDTHH:mm:ssZ"
+            :default-time="['00:00:00', '23:59:59']"
+            unlink-panels
+            clearable
+          />
+        </el-form-item>
         <el-form-item>
-          <el-button type="primary" @click="handleSearch">查詢</el-button>
+          <el-button type="primary" @click="handleSearch">查询</el-button>
         </el-form-item>
       </el-form>
     </el-card>
@@ -22,15 +37,15 @@
     <el-card shadow="never" class="table-card" v-loading="loading">
       <el-table :data="tableData" style="width: 100%">
         <el-table-column prop="id" label="ID" width="80" />
-        <el-table-column prop="username" label="用戶名" width="130" />
-         <el-table-column prop="user_id" label="用戶ID" width="130" />
-        <el-table-column prop="chain" label="區塊鏈" width="100" />
+        <el-table-column prop="username" label="用户名" width="130" />
+         <el-table-column prop="user_id" label="用户ID" width="130" />
+        <el-table-column prop="chain" label="区块链" width="100" />
         
-        <el-table-column prop="amount" label="充值金額" width="120" sortable>
+        <el-table-column prop="amount" label="充值金额" width="120" sortable>
            <template #default="scope">{{ formatCurrency(scope.row.amount) }}</template>
         </el-table-column>
         
-        <el-table-column prop="created_at" label="到帳時間" width="170">
+        <el-table-column prop="created_at" label="到帐时间" width="170">
            <template #default="scope">{{ formatDateTime(scope.row.created_at) }}</template>
         </el-table-column>
         
@@ -43,7 +58,7 @@
             </template>
         </el-table-column>
 
-        <el-table-column prop="status" label="狀態" width="100" fixed="right">
+        <el-table-column prop="status" label="狀态" width="100" fixed="right">
           <template #default="scope">
             <el-tag :type="getStatusTagType(scope.row.status)">
               {{ formatStatus(scope.row.status) }}
@@ -68,6 +83,34 @@
 </template>
 
 <script>
+const pad = (num) => String(num).padStart(2, '0');
+const formatForPicker = (date) => {
+  const year = date.getFullYear();
+  const month = pad(date.getMonth() + 1);
+  const day = pad(date.getDate());
+  const hours = pad(date.getHours());
+  const minutes = pad(date.getMinutes());
+  const seconds = pad(date.getSeconds());
+  const offset = -date.getTimezoneOffset();
+  const sign = offset >= 0 ? '+' : '-';
+  const absOffset = Math.abs(offset);
+  const offsetHours = pad(Math.floor(absOffset / 60));
+  const offsetMinutes = pad(absOffset % 60);
+  return `${year}-${month}-${day}T${hours}:${minutes}:${seconds}${sign}${offsetHours}:${offsetMinutes}`;
+};
+const toISOString = (value) => {
+  if (!value) return undefined;
+  const parsed = new Date(value);
+  return Number.isNaN(parsed.getTime()) ? undefined : parsed.toISOString();
+};
+const createTodayRange = () => {
+  const start = new Date();
+  start.setHours(0, 0, 0, 0);
+  const end = new Date();
+  end.setHours(23, 59, 59, 999);
+  return [formatForPicker(start), formatForPicker(end)];
+};
+
 export default {
   name: 'DepositHistory',
   data() {
@@ -77,12 +120,17 @@ export default {
       totalItems: 0, 
       pagination: { page: 1, limit: 10 },
       searchParams: {
-        username: '', status: '', tx_hash: ''
+        username: '',
+        user_id: '',
+        status: '',
+        tx_hash: '',
+        dateRange: null,
       },
     };
   },
   created() {
-    this.fetchData();
+    this.setDefaultDateRange();
+    this.handleSearch();
   },
   methods: {
     async fetchData() {
@@ -94,8 +142,17 @@ export default {
           username: this.searchParams.username || undefined,
           status: this.searchParams.status || undefined,
           tx_hash: this.searchParams.tx_hash || undefined,
+          user_id: this.searchParams.user_id || undefined,
         };
-        // (★★★ v8.1 調用新 API ★★★)
+
+        if (this.searchParams.dateRange && this.searchParams.dateRange.length === 2) {
+          const [start, end] = this.searchParams.dateRange;
+          const startIso = toISOString(start);
+          const endIso = toISOString(end);
+          if (startIso) { params.start_time = startIso; }
+          if (endIso) { params.end_time = endIso; }
+        }
+        // (★★★ v8.1 调用新 API ★★★)
         const response = await this.$api.getDeposits(params);
         this.tableData = response.list;
         this.totalItems = response.total;
@@ -106,19 +163,22 @@ export default {
       }
     },
     
+    setDefaultDateRange() {
+      this.searchParams.dateRange = createTodayRange();
+    },
     handleSearch() { this.pagination.page = 1; this.fetchData(); },
     handleSizeChange(newLimit) { this.pagination.limit = newLimit; this.pagination.page = 1; this.fetchData(); },
     handlePageChange(newPage) { this.pagination.page = newPage; this.fetchData(); },
 
-    // --- (格式化輔助函數) ---
+    // --- (格式化辅助函数) ---
     formatDateTime(isoString) {
       if (!isoString) return ''; 
       try { return new Date(isoString).toLocaleString('zh-TW', { timeZone: 'Asia/Taipei' }); } 
       catch (e) { return isoString; }
     },
     formatStatus(status) {
-      // (目前 TronListener 只會寫入 completed)
-      const map = { 'pending': '待處理', 'completed': '已完成', 'failed': '失敗' };
+      // (目前 TronListener 只会寫入 completed)
+      const map = { 'pending': '待处理', 'completed': '已完成', 'failed': '失败' };
       return map[status] || status;
     },
     getStatusTagType(status) {
@@ -151,5 +211,6 @@ export default {
 .tx-link { color: #409EFF; text-decoration: none; word-break: break-all; }
 .tx-link:hover { text-decoration: underline; }
 .search-form :deep(.el-input) { width: 180px; }
-.search-form :deep(.el-select) { width: 180px; }
+.search-form :deep(.el-select),
+.search-form :deep(.el-date-editor) { width: 300px; }
 </style>

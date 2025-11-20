@@ -1,4 +1,4 @@
-// 檔案: backend/services/settingsCache.js (★★★ v8.9 新檔案 ★★★)
+// 档案: backend/services/settingsCache.js (★★★ v8.9 新档案 ★★★)
 const db = require('../db');
 
 let settingsCache = {};
@@ -14,7 +14,7 @@ async function loadSettings() {
         console.log(`[v7 Settings] Loaded ${Object.keys(settingsCache).length} settings.`);
     } catch (error) {
          console.error("[v7 Settings] CRITICAL: Failed to load system settings:", error);
-         // (即使載入失敗，也初始化為空對象)
+         // (即使载入失败，也初始化为空对象)
          settingsCache = {};
     }
 }

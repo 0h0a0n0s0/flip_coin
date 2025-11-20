@@ -1,26 +1,24 @@
-// 檔案: backend/services/TronCollectionService.js (★★★ v8.49 完整修正版 ★★★)
+// 档案: backend/services/TronCollectionService.js (★★★ v9.0 新归集逻辑版 ★★★)
 
 const TronWeb = require('tronweb');
 const db = require('../db');
 const { getKmsInstance } = require('./KmsService');
 const util = require('util'); 
 
-// (★★★ v8.49 修正：從 .env 讀取節點 ★★★)
+// (从 .env 读取节点)
 const NILE_NODE_HOST = process.env.NILE_NODE_HOST;
 if (!NILE_NODE_HOST) {
     throw new Error("CRITICAL: NILE_NODE_HOST is not set in .env file!");
 }
 
-// (★★★ v8.49 核心修正：使用 Nile 測試網的 USDT 合約地址 ★★★)
+// (Nile 測試网的 USDT 合约地址)
 const DEFAULT_USDT_CONTRACT = 'TXYZopYRdj2D9XRtbG411XZZ3kM5VkAeBf';
 const USDT_CONTRACT_ADDRESS = process.env.USDT_CONTRACT_ADDRESS || DEFAULT_USDT_CONTRACT; 
 const USDT_DECIMALS = 6;
-const ACTIVATION_TRX_AMOUNT_SUN = 1000000; // 1 TRX
-const COLLECTION_THRESHOLD_USDT = 1.0; 
 
-// (日誌輔助函數保持不變)
+// (日志辅助函数)
 function logError(error, context, address) {
-    console.error(`[v7 Collect] ${context} for address ${address}. Details:`);
+    console.error(`[Collection] ${context} for address ${address}. Details:`);
     try {
         if (error && error.message) {
             console.error(JSON.stringify(error, Object.getOwnPropertyNames(error), 2));
@@ -32,16 +30,14 @@ function logError(error, context, address) {
     }
 }
 
-
 class TronCollectionService {
     
     constructor() {
-        // (★★★ v8.49 修正：使用 tronweb@5.3.2 的建構函式並指定新節點 ★★★)
         this.tronWeb = new TronWeb({
             fullHost: NILE_NODE_HOST,
             solidityHost: NILE_NODE_HOST,
             privateKey: '01',
-            timeout: 120000 // (增加 timeout 從 60 秒到 120 秒)
+            timeout: 120000
         });
         
         this.tronWeb.setFullNode(NILE_NODE_HOST);
@@ -50,349 +46,609 @@ class TronCollectionService {
 
         this.usdtContractHex = this.tronWeb.address.toHex(USDT_CONTRACT_ADDRESS);
         
-        // (★★★ v8.49 修改日誌 ★★★)
-        console.log(`✅ [v7] TronCollectionService (NILE TESTNET) initialized (v8.49 tronweb@5.3.2 / Node: ${NILE_NODE_HOST}).`);
-        console.log(`[v7 Collection] USDT Contract Address (Base58): ${USDT_CONTRACT_ADDRESS}`);
-        console.log(`[v7 Collection] USDT Contract Address (HEX): ${this.usdtContractHex}`);
-
+        console.log(`✅ [Collection] TronCollectionService (NILE TESTNET) initialized.`);
+        console.log(`[Collection] USDT Contract Address: ${USDT_CONTRACT_ADDRESS}`);
 
         this.kmsService = getKmsInstance();
-        this.gasReserveWallet = null; 
-        this.collectionWallets = []; 
+        this.collectionWallet = null; // 归集钱包（单一）
+        this.gasReserveWallet = null; // 用于启用/补 TRX 的钱包
         
         this._loadPlatformWallets();
     }
 
-    // (_loadPlatformWallets 保持不變)
+    // (载入归集钱包)
     async _loadPlatformWallets() {
-        // ... (保持不變) ...
         try {
             const wallets = await db.query(
                 "SELECT * FROM platform_wallets WHERE chain_type = 'TRC20' AND is_active = true"
             );
-            const gasWalletRow = wallets.rows.find(w => w.is_gas_reserve);
-            if (gasWalletRow) {
-                const pkEnvVar = `TRON_PK_${gasWalletRow.address}`;
+
+            const collectionRow = wallets.rows.find(w => w.is_collection);
+            if (collectionRow) {
+                const pkEnvVar = `TRON_PK_${collectionRow.address}`;
                 const privateKey = process.env[pkEnvVar];
                 if (!privateKey) {
-                    console.error(`[v7 Collection] CRITICAL: Gas Reserve Wallet (${gasWalletRow.address}) found in DB, but its Private Key (${pkEnvVar}) is NOT in .env!`);
+                    console.error(`[Collection] CRITICAL: Collection Wallet (${collectionRow.address}) found in DB, but its Private Key (${pkEnvVar}) is NOT in .env!`);
                 } else {
-                    this.gasReserveWallet = { address: gasWalletRow.address, privateKey: privateKey };
-                    console.log(`[v7 Collection] Gas Reserve Wallet (TRC20) loaded: ${this.gasReserveWallet.address}`);
+                    this.collectionWallet = { address: collectionRow.address, privateKey: privateKey };
+                    console.log(`[Collection] Collection Wallet loaded: ${this.collectionWallet.address}`);
                 }
             } else {
-                 console.error("[v7 Collection] CRITICAL: No active 'is_gas_reserve' wallet (TRC20) found in 'platform_wallets' table.");
+                console.warn("[Collection] No active collection wallet found.");
             }
-            this.collectionWallets = wallets.rows.filter(w => w.is_collection).map(w => w.address);
-            if (this.collectionWallets.length === 0) {
-                 console.error("[v7 Collection] CRITICAL: No active 'is_collection' wallet (TRC20) found in 'platform_wallets' table.");
+
+            const gasRow = wallets.rows.find(w => w.is_gas_reserve);
+            if (gasRow) {
+                const pkEnvVar = `TRON_PK_${gasRow.address}`;
+                const privateKey = process.env[pkEnvVar];
+                if (!privateKey) {
+                    console.error(`[Collection] CRITICAL: Gas Reserve Wallet (${gasRow.address}) found in DB, but its Private Key (${pkEnvVar}) is NOT in .env!`);
+                } else {
+                    this.gasReserveWallet = { address: gasRow.address, privateKey: privateKey };
+                    console.log(`[Collection] Gas Reserve Wallet loaded: ${this.gasReserveWallet.address}`);
+                }
             } else {
-                 console.log(`[v7 Collection] Collection Wallets (TRC20) loaded: ${this.collectionWallets.join(', ')}`);
+                console.warn("[Collection] No active gas reserve wallet found.");
             }
         } catch (error) {
-            console.error("[v7 Collection] Error loading platform wallets:", error);
+            console.error("[Collection] Error loading platform wallets:", error);
         }
     }
 
-    // (activateAddress - v8.49)
+    /**
+     * @description 启用用户地址（转 1 TRX）
+     */
     async activateAddress(toAddress) {
         if (!this.gasReserveWallet) {
-            console.error(`[v7 Activate] Failed: No Gas Reserve Wallet loaded.`);
+            console.warn("[Collection] activateAddress skipped: gas reserve wallet not configured.");
             return false;
         }
-        console.log(`[v7 Activate] Attempting to activate ${toAddress} with 1 TRX...`);
+
+        console.log(`[Collection] Attempting to activate ${toAddress} with 1 TRX...`);
         try {
             this.tronWeb.setPrivateKey(this.gasReserveWallet.privateKey);
 
-            const tx = await this.tronWeb.transactionBuilder.sendTrx(toAddress, ACTIVATION_TRX_AMOUNT_SUN, this.gasReserveWallet.address);
+            const tx = await this.tronWeb.transactionBuilder.sendTrx(
+                toAddress,
+                1_000_000, // 1 TRX
+                this.gasReserveWallet.address
+            );
             const signedTx = await this.tronWeb.trx.sign(tx);
             const receipt = await this.tronWeb.trx.sendRawTransaction(signedTx);
-            
+
             if (receipt && receipt.result === true) {
-                console.log(`[v7 Activate] SUCCESS: Address ${toAddress} activated. TX: ${receipt.txid}`);
+                console.log(`[Collection] Address ${toAddress} activated. TX: ${receipt.txid}`);
                 return true;
-            } else {
-                 console.error(`[v7 Activate] FAILED (No Result): Address ${toAddress}. Receipt:`, receipt);
-                 return false;
             }
+
+            console.warn(`[Collection] Activation tx failed for ${toAddress}`, receipt);
+            return false;
         } catch (error) {
-            logError(error, 'CRITICAL Error activating', toAddress);
+            logError(error, 'activateAddress error', toAddress);
             return false;
         }
     }
-    
-    // (★★★ v8.49 核心修正：使用 HEX 地址參數 (來自 GPT 分析) ★★★)
-    async _getUsdtBalance(userAddress, retries = 3) {
-        for (let attempt = 1; attempt <= retries; attempt++) {
-            try {
-                // (★★★ v8.49 修正 1：將 T... 地址轉換為 41... HEX 地址 ★★★)
-                const userAddressHex = this.tronWeb.address.toHex(userAddress);
-                const gasWalletAddressHex = this.tronWeb.address.toHex(this.gasReserveWallet.address);
 
-                // (預期請求: https://go.getblock.io/YOUR_API_KEY/wallet/triggerconstantcontract)
-                const transaction = await this.tronWeb.transactionBuilder.triggerConstantContract(
-                    this.usdtContractHex, // (使用 HEX 合約地址)
-                    'balanceOf(address)', // 函數選擇器
-                    {}, // 選項
-                    [{ type: 'address', value: userAddressHex }], // (★★★ v8.49 修正 2：使用 HEX 參數 ★★★)
-                    gasWalletAddressHex // (★★★ v8.49 修正 3：呼叫者也用 HEX ★★★)
-                );
-
-                if (!transaction || !transaction.constant_result || !transaction.constant_result[0]) {
-                    throw new Error('balanceOf call failed: No constant_result');
-                }
-                
-                const balance = '0x' + transaction.constant_result[0];
-                return balance;
-                
-            } catch (error) {
-                const isRetryable = error.message && (
-                    error.message.includes('timeout') ||
-                    error.message.includes('ECONNABORTED') ||
-                    error.message.includes('EAI_AGAIN') ||
-                    error.message.includes('ETIMEDOUT') ||
-                    error.code === 'ECONNABORTED' ||
-                    error.code === 'EAI_AGAIN' ||
-                    error.code === 'ETIMEDOUT'
-                );
-                
-                if (isRetryable && attempt < retries) {
-                    console.warn(`[v7 Collect] balanceOf failed (attempt ${attempt}/${retries}) for ${userAddress}, retrying... Error:`, error.message);
-                    await new Promise(resolve => setTimeout(resolve, 3000 * attempt));
-                    continue;
-                }
-                
-                // (log19.txt 的 "Smart contract is not exist" 錯誤會在這裡被捕獲)
-                logError(error, `_getUsdtBalance (triggerConstantContract) (attempt ${attempt}/${retries})`, userAddress);
-                throw error;
-            }
+    /**
+     * @description 获取归集钱包的当前能量
+     */
+    async _getCollectionWalletEnergy() {
+        if (!this.collectionWallet) {
+            throw new Error('Collection wallet not loaded');
+        }
+        
+        try {
+            const account = await this.tronWeb.trx.getAccount(this.collectionWallet.address);
+            return account.energy || 0;
+        } catch (error) {
+            logError(error, 'Error getting collection wallet energy', this.collectionWallet.address);
+            throw error;
         }
     }
 
+    /**
+     * @description 获取用户地址的 USDT 余额
+     */
+    async _getUsdtBalance(userAddress) {
+        try {
+            const userAddressHex = this.tronWeb.address.toHex(userAddress);
+            const collectionAddressHex = this.tronWeb.address.toHex(this.collectionWallet.address);
 
-    // (collectFunds 函數 - v8.49)
-    async collectFunds() {
-        if (!this.gasReserveWallet || this.collectionWallets.length === 0) {
-            console.warn("[v7 Collect] Skipping collection run: Gas or Collection wallet not configured.");
-            return;
-        }
-        
-        const usersResult = await db.query(
-            "SELECT id, user_id, deposit_path_index, tron_deposit_address FROM users WHERE tron_deposit_address IS NOT NULL"
-        );
-        
-        if (usersResult.rows.length === 0) {
-            return; // (沒有用戶地址，直接返回)
-        }
+            const transaction = await this.tronWeb.transactionBuilder.triggerConstantContract(
+                this.usdtContractHex,
+                'balanceOf(address)',
+                {},
+                [{ type: 'address', value: userAddressHex }],
+                collectionAddressHex
+            );
 
-        console.log(`[v7 Collect] 🔍 Starting collection sweep for ${usersResult.rows.length} addresses...`);
-        
-        let collectedCount = 0;
-        let topUpCount = 0;
-        let skippedCount = 0;
-
-        for (const user of usersResult.rows) {
-            const userAddress = user.tron_deposit_address;
-            const userPathIndex = user.deposit_path_index;
-            
-            let usdtBalance = 0;
-            let trxBalance = 0;
-
-            // --- 步驟 1: 檢查 TRX 餘額 (getBalance) ---
-            try {
-                trxBalance = await this.tronWeb.trx.getBalance(userAddress);
-            } catch (gasCheckError) {
-                trxBalance = 0; 
-                // (靜默處理，不輸出日誌)
-            }
-
-            // --- 步驟 2: 補 Gas (如果帳戶未啟用) ---
-            if (trxBalance < 1000000) { // (小於 1 TRX - 包含 0)
-                try {
-                    await this._topUpGas(userAddress);
-                    topUpCount++;
-                    await new Promise(resolve => setTimeout(resolve, 5000));
-                } catch (topUpError) {
-                    // (永久性錯誤，跳過此地址)
-                    if (topUpError.message && topUpError.message.includes('Permanent error')) {
-                        skippedCount++;
-                        continue;
-                    }
-                    // (臨時性錯誤，記錄並跳過)
-                    console.warn(`[v7 Collect] ⚠️ Failed to top up gas for ${userAddress}: ${topUpError.message}`);
-                    skippedCount++;
-                    continue;
-                }
+            if (!transaction || !transaction.constant_result || !transaction.constant_result[0]) {
+                throw new Error('balanceOf call failed: No constant_result');
             }
             
-            let usdtBalanceBigNumberStr;
-            // --- 步驟 3: 檢查 USDT 餘額 (使用 triggerConstantContract) ---
-            try {
-                usdtBalanceBigNumberStr = await this._getUsdtBalance(userAddress);
-                usdtBalance = parseFloat(BigInt(usdtBalanceBigNumberStr).toString()) / (10**USDT_DECIMALS);
-            } catch (balanceError) {
-                // (靜默處理，跳過此地址)
-                skippedCount++;
-                continue;
-            }
-
-            if (usdtBalance < COLLECTION_THRESHOLD_USDT) {
-                skippedCount++;
-                continue; // (餘額不足，跳過)
-            }
-            
-            console.log(`[v7 Collect] 💰 Found ${usdtBalance.toFixed(6)} USDT in ${userAddress} (User: ${user.user_id})`);
-
-            // --- 步驟 4: 歸集 (使用 triggerSmartContract) ---
-            try {
-                const userPrivateKey = this.kmsService.getPrivateKey('TRC20', userPathIndex);
-                const amountBigNumberStr = (await this._getUsdtBalance(userAddress)).toString();
-                await this._transferUsdt(userPrivateKey, userAddress, amountBigNumberStr);
-                collectedCount++;
-            } catch (transferError) {
-                console.error(`[v7 Collect] ❌ Failed to transfer USDT from ${userAddress}: ${transferError.message}`);
-                skippedCount++;
-                continue;
-            }
-        }
-        
-        // (輸出統計資訊)
-        if (collectedCount > 0 || topUpCount > 0) {
-            console.log(`[v7 Collect] ✅ Collection sweep finished: ${collectedCount} collected, ${topUpCount} topped up, ${skippedCount} skipped`);
-        } else if (skippedCount > 0) {
-            console.log(`[v7 Collect] ℹ️ Collection sweep finished: ${skippedCount} addresses skipped (no balance or errors)`);
+            const balance = '0x' + transaction.constant_result[0];
+            return BigInt(balance).toString();
+        } catch (error) {
+            logError(error, 'Error getting USDT balance', userAddress);
+            throw error;
         }
     }
 
-    // (_topUpGas 函數 - v8.49)
-    async _topUpGas(toAddress, retries = 3) {
-        for (let attempt = 1; attempt <= retries; attempt++) {
-            try {
-                this.tronWeb.setPrivateKey(this.gasReserveWallet.privateKey);
-                
-                const tx = await this.tronWeb.transactionBuilder.sendTrx(toAddress, ACTIVATION_TRX_AMOUNT_SUN, this.gasReserveWallet.address);
-                const signedTx = await this.tronWeb.trx.sign(tx);
-                const receipt = await this.tronWeb.trx.sendRawTransaction(signedTx);
-                
-                // (檢查 receipt 是否成功)
-                if (receipt && receipt.result === true && receipt.txid) {
-                    console.log(`[v7 Collect] ✅ Gas/Activation top-up sent to ${toAddress}. TXID: ${receipt.txid}`);
-                    return receipt;
-                } else if (receipt && receipt.code) {
-                    // (檢查是否為永久性錯誤)
-                    const isPermanentError = receipt.code === 'CONTRACT_VALIDATE_ERROR' || 
-                                            receipt.code === 'BANDWIDTH_ERROR' ||
-                                            receipt.message && receipt.message.includes('does not exist');
-                    
-                    if (isPermanentError) {
-                        // (永久性錯誤，不解碼 HEX 訊息，直接拋出)
-                        const errorMsg = receipt.message ? Buffer.from(receipt.message, 'hex').toString('utf8') : receipt.code;
-                        console.error(`[v7 Collect] ❌ Permanent error in _topUpGas for ${toAddress}: ${receipt.code} - ${errorMsg}`);
-                        throw new Error(`Permanent error: ${receipt.code} - ${errorMsg}`);
-                    } else {
-                        // (臨時性錯誤，可以重試)
-                        console.warn(`[v7 Collect] ⚠️ Temporary error in _topUpGas for ${toAddress}: ${receipt.code}`);
-                        if (attempt < retries) {
-                            await new Promise(resolve => setTimeout(resolve, 3000 * attempt));
-                            continue;
-                        }
-                        throw new Error(`sendRawTransaction failed: ${receipt.code}`);
-                    }
-                } else {
-                    // (未知格式的 receipt)
-                    console.warn(`[v7 Collect] ⚠️ Unexpected receipt format:`, receipt);
-                    if (attempt < retries) {
-                        await new Promise(resolve => setTimeout(resolve, 3000 * attempt));
-                        continue;
-                    }
-                    throw new Error(`sendRawTransaction failed: Unexpected receipt format. Receipt: ${JSON.stringify(receipt)}`);
-                }
-            } catch (error) {
-                // (檢查是否為永久性錯誤)
-                const isPermanentError = error.message && (
-                    error.message.includes('Permanent error') ||
-                    error.message.includes('does not exist') ||
-                    error.message.includes('CONTRACT_VALIDATE_ERROR')
-                );
-                
-                if (isPermanentError) {
-                    // (永久性錯誤，不重試)
-                    logError(error, `Permanent error in _topUpGas (attempt ${attempt}/${retries})`, toAddress);
-                    throw error;
-                }
-                
-                // (臨時性錯誤，可以重試)
-                const isRetryable = error.message && (
-                    error.message.includes('timeout') ||
-                    error.message.includes('ECONNABORTED') ||
-                    error.message.includes('EAI_AGAIN') ||
-                    error.message.includes('ETIMEDOUT') ||
-                    error.code === 'ECONNABORTED' ||
-                    error.code === 'EAI_AGAIN' ||
-                    error.code === 'ETIMEDOUT'
-                );
-                
-                if (isRetryable && attempt < retries) {
-                    console.warn(`[v7 Collect] ⚠️ Temporary error in _topUpGas (attempt ${attempt}/${retries}) for ${toAddress}, retrying... Error:`, error.message);
-                    await new Promise(resolve => setTimeout(resolve, 5000 * attempt));
-                    continue;
-                }
-                
-                logError(error, `Error in _topUpGas (attempt ${attempt}/${retries})`, toAddress);
-                throw error;
+    /**
+     * @description 检查用户地址是否已 approve 归集钱包
+     */
+    async _checkAllowance(userAddress) {
+        try {
+            const userAddressHex = this.tronWeb.address.toHex(userAddress);
+            const collectionAddressHex = this.tronWeb.address.toHex(this.collectionWallet.address);
+
+            const transaction = await this.tronWeb.transactionBuilder.triggerConstantContract(
+                this.usdtContractHex,
+                'allowance(address,address)',
+                {},
+                [
+                    { type: 'address', value: userAddressHex },
+                    { type: 'address', value: collectionAddressHex }
+                ],
+                collectionAddressHex
+            );
+
+            if (!transaction || !transaction.constant_result || !transaction.constant_result[0]) {
+                throw new Error('allowance call failed: No constant_result');
             }
+            
+            const allowance = '0x' + transaction.constant_result[0];
+            return BigInt(allowance).toString();
+        } catch (error) {
+            logError(error, 'Error checking allowance', userAddress);
+            throw error;
         }
     }
 
-    // (_transferUsdt 函數 - v8.49)
-    async _transferUsdt(userPrivateKey, userAddress, amountBigNumberStr) {
-        const collectionAddress = this.collectionWallets[0]; 
-        
-        console.log(`[v7 Collect] Transferring ${Number(BigInt(amountBigNumberStr)) / (10**USDT_DECIMALS)} USDT from ${userAddress} to ${collectionAddress}...`);
-        
+    /**
+     * @description 用户地址执行 approve（一次性，不消耗能量和TRX）
+     */
+    async _approveCollection(userPrivateKey, userAddress) {
         try {
             this.tronWeb.setPrivateKey(userPrivateKey);
             
-            // 1. 建立交易
-            // (★★★ v8.49 核心修正：使用 HEX 地址參數 (來自 GPT 分析) ★★★)
-            const collectionAddressHex = this.tronWeb.address.toHex(collectionAddress);
+            const collectionAddressHex = this.tronWeb.address.toHex(this.collectionWallet.address);
             const userAddressHex = this.tronWeb.address.toHex(userAddress);
-
+            
+            // 使用最大 uint256 值作为 approve 金额
+            const maxUint256 = '0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff';
+            
             const transaction = await this.tronWeb.transactionBuilder.triggerSmartContract(
-                this.usdtContractHex, // (使用 HEX 合約地址)
-                'transfer(address,uint256)', // 函數選擇器
-                { feeLimit: 15000000, callValue: 0 }, // 選項
-                [ // 參數
-                    { type: 'address', value: collectionAddressHex }, // (★★★ v8.49 修正 ★★★)
-                    { type: 'uint256', value: amountBigNumberStr } 
+                this.usdtContractHex,
+                'approve(address,uint256)',
+                { feeLimit: 0, callValue: 0 }, // 不消耗能量和TRX
+                [
+                    { type: 'address', value: collectionAddressHex },
+                    { type: 'uint256', value: maxUint256 }
                 ],
-                userAddressHex // (★★★ v8.49 修正 ★★★)
+                userAddressHex
             );
 
             if (!transaction || !transaction.result || !transaction.result.result) {
-                throw new Error('transfer build failed: No transaction object returned');
+                throw new Error('approve build failed: No transaction object returned');
             }
 
-            // 2. 簽名
             const signedTx = await this.tronWeb.trx.sign(transaction.transaction);
-
-            // 3. 廣播
             const receipt = await this.tronWeb.trx.sendRawTransaction(signedTx);
             
             if (!receipt || !receipt.txid) {
-                throw new Error('transfer broadcast failed: No txid returned');
+                throw new Error('approve broadcast failed: No txid returned');
             }
             
-            console.log(`[v7 Collect] SUCCESS: Transfer initiated. TX: ${receipt.txid}`);
-            
+            console.log(`[Collection] ✅ Approve successful for ${userAddress}. TX: ${receipt.txid}`);
+            return receipt.txid;
         } catch (error) {
-             logError(error, `Error in _transferUsdt (triggerSmartContract)`, userAddress);
-             throw error; 
+            logError(error, 'Error in approve', userAddress);
+            throw error;
         }
+    }
+
+    /**
+     * @description 归集钱包执行 transferFrom（消耗能量）
+     */
+    async _transferFrom(userAddress, amountBigNumberStr) {
+        if (!this.collectionWallet) {
+            throw new Error('Collection wallet not loaded');
+        }
+        
+        try {
+            this.tronWeb.setPrivateKey(this.collectionWallet.privateKey);
+            
+            const collectionAddressHex = this.tronWeb.address.toHex(this.collectionWallet.address);
+            const userAddressHex = this.tronWeb.address.toHex(userAddress);
+
+            const transaction = await this.tronWeb.transactionBuilder.triggerSmartContract(
+                this.usdtContractHex,
+                'transferFrom(address,address,uint256)',
+                { feeLimit: 0, callValue: 0 }, // 使用能量，不燃燒TRX
+                [
+                    { type: 'address', value: userAddressHex },
+                    { type: 'address', value: collectionAddressHex },
+                    { type: 'uint256', value: amountBigNumberStr }
+                ],
+                collectionAddressHex
+            );
+
+            if (!transaction || !transaction.result || !transaction.result.result) {
+                throw new Error('transferFrom build failed: No transaction object returned');
+            }
+
+            // 检查能量消耗
+            const energyUsed = transaction.energy_used || 0;
+            console.log(`[Collection] Estimated energy for transferFrom: ${energyUsed}`);
+
+            const signedTx = await this.tronWeb.trx.sign(transaction.transaction);
+            const receipt = await this.tronWeb.trx.sendRawTransaction(signedTx);
+            
+            if (!receipt || !receipt.txid) {
+                throw new Error('transferFrom broadcast failed: No txid returned');
+            }
+            
+            // 获取實際消耗的能量
+            let actualEnergyUsed = energyUsed;
+            try {
+                const txInfo = await this.tronWeb.trx.getTransactionInfo(receipt.txid);
+                if (txInfo && txInfo.receipt && txInfo.receipt.energy_usage_total) {
+                    actualEnergyUsed = txInfo.receipt.energy_usage_total;
+                }
+            } catch (e) {
+                console.warn(`[Collection] Could not get actual energy usage for TX ${receipt.txid}`);
+            }
+            
+            console.log(`[Collection] ✅ TransferFrom successful. TX: ${receipt.txid}, Energy: ${actualEnergyUsed}`);
+            return { txHash: receipt.txid, energyUsed: actualEnergyUsed };
+        } catch (error) {
+            logError(error, 'Error in transferFrom', userAddress);
+            throw error;
+        }
+    }
+
+    /**
+     * @description 获取最近一笔归集交易的實際能量消耗（用于估算）
+     */
+    async _getAverageEnergyUsage() {
+        try {
+            const result = await db.query(
+                `SELECT energy_used FROM collection_logs 
+                 WHERE energy_used IS NOT NULL AND status = 'completed' 
+                 ORDER BY created_at DESC LIMIT 10`
+            );
+            
+            if (result.rows.length === 0) {
+                // 预设值：TRC20 transferFrom 通常消耗约 30000-40000 能量
+                return 35000;
+            }
+            
+            const totalEnergy = result.rows.reduce((sum, row) => sum + (row.energy_used || 0), 0);
+            return Math.ceil(totalEnergy / result.rows.length);
+        } catch (error) {
+            console.warn('[Collection] Error getting average energy usage, using default:', error.message);
+            return 35000; // 预设值
+        }
+    }
+
+    /**
+     * @description 检查用户是否应该归集
+     */
+    async _shouldCollect(user) {
+        try {
+            // 检查 USDT 余额
+            const balanceStr = await this._getUsdtBalance(user.tron_deposit_address);
+            const balance = parseFloat(BigInt(balanceStr).toString()) / (10**USDT_DECIMALS);
+            
+            if (balance <= 0) {
+                return { shouldCollect: false, reason: 'No USDT balance' };
+            }
+            
+            // 检查归集设定
+            const settingsResult = await db.query(
+                `SELECT * FROM collection_settings 
+                 WHERE collection_wallet_address = $1 AND is_active = true`,
+                [this.collectionWallet.address]
+            );
+            
+            if (settingsResult.rows.length === 0) {
+                return { shouldCollect: false, reason: 'No collection settings' };
+            }
+            
+            const settings = settingsResult.rows[0];
+            const daysWithoutDeposit = settings.days_without_deposit;
+            
+            // 检查最近一笔充值时间
+            const depositResult = await db.query(
+                `SELECT created_at FROM platform_transactions 
+                 WHERE user_id = $1 AND type = 'deposit' AND status = 'completed' 
+                 ORDER BY created_at DESC LIMIT 1`,
+                [user.user_id]
+            );
+            
+            if (depositResult.rows.length === 0) {
+                // 没有充值记录，检查用户創建时间
+                const userResult = await db.query(
+                    `SELECT created_at FROM users WHERE user_id = $1`,
+                    [user.user_id]
+                );
+                if (userResult.rows.length > 0) {
+                    const userCreatedAt = new Date(userResult.rows[0].created_at);
+                    const daysSinceCreation = (Date.now() - userCreatedAt.getTime()) / (1000 * 60 * 60 * 24);
+                    if (daysSinceCreation < daysWithoutDeposit) {
+                        return { shouldCollect: false, reason: `Created ${Math.floor(daysSinceCreation)} days ago, need ${daysWithoutDeposit} days` };
+                    }
+                }
+            } else {
+                const lastDepositTime = new Date(depositResult.rows[0].created_at);
+                const daysSinceDeposit = (Date.now() - lastDepositTime.getTime()) / (1000 * 60 * 60 * 24);
+                if (daysSinceDeposit < daysWithoutDeposit) {
+                    return { shouldCollect: false, reason: `Last deposit ${Math.floor(daysSinceDeposit)} days ago, need ${daysWithoutDeposit} days` };
+                }
+            }
+            
+            // 检查是否已有 pending 的归集记录
+            const pendingResult = await db.query(
+                `SELECT id FROM collection_logs 
+                 WHERE user_id = $1 AND status = 'pending'`,
+                [user.user_id]
+            );
+            
+            if (pendingResult.rows.length > 0) {
+                return { shouldCollect: false, reason: 'Already has pending collection' };
+            }
+            
+            return { shouldCollect: true, balance: balance };
+        } catch (error) {
+            logError(error, 'Error checking if should collect', user.tron_deposit_address);
+            return { shouldCollect: false, reason: `Error: ${error.message}` };
+        }
+    }
+
+    /**
+     * @description 执行归集流程
+     */
+    async collectFunds() {
+        if (!this.collectionWallet) {
+            console.warn("[Collection] Skipping collection: Collection wallet not configured.");
+            return;
+        }
+        
+        // 检查是否应该执行扫描（根据 scan_interval_days）
+        const settingsResult = await db.query(
+            `SELECT * FROM collection_settings 
+             WHERE collection_wallet_address = $1 AND is_active = true`,
+            [this.collectionWallet.address]
+        );
+        
+        if (settingsResult.rows.length === 0) {
+            console.warn("[Collection] No active collection settings found.");
+            return;
+        }
+        
+        const settings = settingsResult.rows[0];
+        const scanIntervalDays = settings.scan_interval_days;
+        
+        // 检查上次扫描时间
+        const cursorResult = await db.query(
+            `SELECT * FROM collection_cursor 
+             WHERE collection_wallet_address = $1`,
+            [this.collectionWallet.address]
+        );
+        
+        let cursor = cursorResult.rows[0];
+        const today = new Date().toISOString().split('T')[0];
+        
+        if (cursor) {
+            const lastProcessedDate = new Date(cursor.last_processed_date);
+            const daysSinceLastScan = (Date.now() - lastProcessedDate.getTime()) / (1000 * 60 * 60 * 24);
+            
+            if (daysSinceLastScan < scanIntervalDays) {
+                console.log(`[Collection] Last scan was ${Math.floor(daysSinceLastScan)} days ago, need ${scanIntervalDays} days. Skipping.`);
+                return;
+            }
+        } else {
+            // 創建新的 cursor
+            await db.query(
+                `INSERT INTO collection_cursor (collection_wallet_address, last_processed_date) 
+                 VALUES ($1, $2)`,
+                [this.collectionWallet.address, today]
+            );
+        }
+        
+        // 获取当前能量
+        let currentEnergy;
+        try {
+            currentEnergy = await this._getCollectionWalletEnergy();
+            console.log(`[Collection] Current energy: ${currentEnergy}`);
+        } catch (error) {
+            console.error('[Collection] Failed to get collection wallet energy:', error.message);
+            return;
+        }
+        
+        // 获取平均能量消耗
+        const avgEnergy = await this._getAverageEnergyUsage();
+        console.log(`[Collection] Average energy per transfer: ${avgEnergy}`);
+        
+        // 估算可以处理的地址数量
+        const estimatedCapacity = Math.floor(currentEnergy / avgEnergy);
+        console.log(`[Collection] Estimated capacity: ${estimatedCapacity} addresses`);
+        
+        if (estimatedCapacity <= 0) {
+            console.log(`[Collection] Insufficient energy (${currentEnergy}). Stopping for today.`);
+            // 更新 cursor，标记今天已处理（但没有处理任何地址）
+            await db.query(
+                `UPDATE collection_cursor SET last_processed_date = $1, updated_at = NOW() 
+                 WHERE collection_wallet_address = $2`,
+                [today, this.collectionWallet.address]
+            );
+            return;
+        }
+        
+        // 获取需要归集的用户列表（按 user_id 顺序）
+        let startUserId = null;
+        if (cursor && cursor.last_user_id) {
+            startUserId = cursor.last_user_id;
+        }
+        
+        let usersQuery = `
+            SELECT id, user_id, deposit_path_index, tron_deposit_address 
+            FROM users 
+            WHERE tron_deposit_address IS NOT NULL
+        `;
+        
+        if (startUserId) {
+            usersQuery += ` AND user_id > $1 ORDER BY user_id ASC LIMIT $2`;
+        } else {
+            usersQuery += ` ORDER BY user_id ASC LIMIT $1`;
+        }
+        
+        const usersResult = startUserId 
+            ? await db.query(usersQuery, [startUserId, estimatedCapacity * 2]) // 多查一些，因为有些可能不符合条件
+            : await db.query(usersQuery, [estimatedCapacity * 2]);
+        
+        if (usersResult.rows.length === 0) {
+            console.log('[Collection] No users to process. Resetting cursor.');
+            // 重置 cursor，从头开始
+            await db.query(
+                `UPDATE collection_cursor SET last_user_id = NULL, last_processed_date = $1, updated_at = NOW() 
+                 WHERE collection_wallet_address = $2`,
+                [today, this.collectionWallet.address]
+            );
+            return;
+        }
+        
+        console.log(`[Collection] 🔍 Starting collection sweep for ${usersResult.rows.length} addresses...`);
+        
+        let processedCount = 0;
+        let collectedCount = 0;
+        let skippedCount = 0;
+        let lastProcessedUserId = null;
+        let actualEnergyUsed = 0;
+        
+        for (const user of usersResult.rows) {
+            // 检查能量是否足够
+            if (actualEnergyUsed >= currentEnergy) {
+                console.log(`[Collection] Energy exhausted. Processed ${processedCount} addresses.`);
+                break;
+            }
+            
+            // 检查是否应该归集
+            const shouldCollectResult = await this._shouldCollect(user);
+            if (!shouldCollectResult.shouldCollect) {
+                skippedCount++;
+                lastProcessedUserId = user.user_id;
+                continue;
+            }
+            
+            // 检查能量是否足够（预估）
+            const remainingEnergy = currentEnergy - actualEnergyUsed;
+            if (remainingEnergy < avgEnergy) {
+                console.log(`[Collection] Insufficient energy for next transfer. Stopping.`);
+                break;
+            }
+            
+            try {
+                // Step 1: 检查并执行 approve（如果需要）
+                const allowanceStr = await this._checkAllowance(user.tron_deposit_address);
+                const allowance = BigInt(allowanceStr);
+                const balanceStr = await this._getUsdtBalance(user.tron_deposit_address);
+                const balance = BigInt(balanceStr);
+                
+                if (allowance < balance) {
+                    console.log(`[Collection] Approving for user ${user.user_id}...`);
+                    try {
+                        const userPrivateKey = this.kmsService.getPrivateKey('TRC20', user.deposit_path_index);
+                        await this._approveCollection(userPrivateKey, user.tron_deposit_address);
+                        // 等待交易确认
+                        await new Promise(resolve => setTimeout(resolve, 5000));
+                    } catch (approveError) {
+                        // approve 失败（可能是用户地址没有能量），跳过该用户
+                        console.warn(`[Collection] Approve failed for user ${user.user_id}: ${approveError.message}. Skipping.`);
+                        skippedCount++;
+                        lastProcessedUserId = user.user_id;
+                        continue;
+                    }
+                }
+                
+                // Step 2: 执行 transferFrom
+                console.log(`[Collection] Collecting ${shouldCollectResult.balance} USDT from user ${user.user_id}...`);
+                const transferResult = await this._transferFrom(user.tron_deposit_address, balanceStr);
+                
+                // 记录归集日志
+                await db.query(
+                    `INSERT INTO collection_logs 
+                     (user_id, user_deposit_address, collection_wallet_address, amount, tx_hash, energy_used, status) 
+                     VALUES ($1, $2, $3, $4, $5, $6, 'completed')`,
+                    [
+                        user.user_id,
+                        user.tron_deposit_address,
+                        this.collectionWallet.address,
+                        shouldCollectResult.balance,
+                        transferResult.txHash,
+                        transferResult.energyUsed
+                    ]
+                );
+                
+                actualEnergyUsed += transferResult.energyUsed;
+                collectedCount++;
+                lastProcessedUserId = user.user_id;
+                
+                // 等待一下，避免过于频繁
+                await new Promise(resolve => setTimeout(resolve, 2000));
+                
+            } catch (error) {
+                console.error(`[Collection] ❌ Failed to collect from user ${user.user_id}:`, error.message);
+                
+                // 记录失败日志
+                await db.query(
+                    `INSERT INTO collection_logs 
+                     (user_id, user_deposit_address, collection_wallet_address, amount, status, error_message) 
+                     VALUES ($1, $2, $3, $4, 'failed', $5)`,
+                    [
+                        user.user_id,
+                        user.tron_deposit_address,
+                        this.collectionWallet.address,
+                        shouldCollectResult.balance || 0,
+                        error.message.substring(0, 500)
+                    ]
+                );
+                
+                skippedCount++;
+                lastProcessedUserId = user.user_id;
+                
+                // 如果是能量不足错误，停止处理
+                if (error.message && (error.message.includes('energy') || error.message.includes('ENERGY'))) {
+                    console.log(`[Collection] Energy error detected. Stopping.`);
+                    break;
+                }
+            }
+            
+            processedCount++;
+        }
+        
+        // 更新 cursor
+        if (lastProcessedUserId) {
+            await db.query(
+                `UPDATE collection_cursor SET last_user_id = $1, last_processed_date = $2, updated_at = NOW() 
+                 WHERE collection_wallet_address = $3`,
+                [lastProcessedUserId, today, this.collectionWallet.address]
+            );
+        } else {
+            // 如果没有处理任何用户，重置 cursor
+            await db.query(
+                `UPDATE collection_cursor SET last_user_id = NULL, last_processed_date = $1, updated_at = NOW() 
+                 WHERE collection_wallet_address = $2`,
+                [today, this.collectionWallet.address]
+            );
+        }
+        
+        console.log(`[Collection] ✅ Collection sweep finished: ${collectedCount} collected, ${skippedCount} skipped, ${processedCount} processed`);
     }
 }
 
-// (單例模式保持不變)
+// (单例模式)
 let instance = null;
 function getTronCollectionInstance() {
     if (!instance) {

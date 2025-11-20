@@ -1,4 +1,4 @@
-// 檔案: backend/services/KmsService.js (★★★ v8.49 修正版 ★★★)
+// 档案: backend/services/KmsService.js (★★★ v8.49 修正版 ★★★)
 
 const { ethers } = require('ethers');
 const bip39 = require('bip39');
@@ -6,11 +6,11 @@ const HDKey = require('hdkey');
 const TronWeb = require('tronweb');
 const db = require('../db');
 
-// (HD 錢包派生路徑)
-const EVM_PATH = "m/44'/60'/0'/0"; // (用於 BSC, ETH, Polygon)
-const TRON_PATH = "m/44'/195'/0'/0"; // (用於 TRC20)
+// (HD 钱包派生路径)
+const EVM_PATH = "m/44'/60'/0'/0"; // (用于 BSC, ETH, Polygon)
+const TRON_PATH = "m/44'/195'/0'/0"; // (用于 TRC20)
 
-// (★★★ v8.49 修正：從 .env 讀取節點 ★★★)
+// (★★★ v8.49 修正：从 .env 读取节点 ★★★)
 const NILE_NODE_HOST = process.env.NILE_NODE_HOST;
 if (!NILE_NODE_HOST) {
     throw new Error("CRITICAL: NILE_NODE_HOST is not set in .env file! (e.g., https://go.getblock.io/YOUR_API_KEY/)");
@@ -25,11 +25,11 @@ class KmsService {
         const seed = bip39.mnemonicToSeedSync(process.env.MASTER_MNEMONIC);
         this.masterNode = HDKey.fromMasterSeed(seed);
         
-        // (★★★ v8.49 修正：使用 tronweb@5.3.2 的建構函式並指定新節點 ★★★)
+        // (★★★ v8.49 修正：使用 tronweb@5.3.2 的建构函式并指定新节点 ★★★)
         this.tronWeb = new TronWeb({
             fullHost: NILE_NODE_HOST,
             solidityHost: NILE_NODE_HOST,
-            privateKey: '01' // 佔位符
+            privateKey: '01' // 占位符
         });
         this.tronWeb.setFullNode(NILE_NODE_HOST);
         this.tronWeb.setSolidityNode(NILE_NODE_HOST);
@@ -59,7 +59,7 @@ class KmsService {
     }
     
     getPrivateKey(chainType, index) {
-        // ... (保持不變) ...
+        // ... (保持不变) ...
         console.log(`[KMS] Getting private key for chain ${chainType}, index ${index}`);
         if (chainType === 'EVM') {
             return this._deriveEvmWallet(index).privateKey;
@@ -71,7 +71,7 @@ class KmsService {
     }
 
     async getNewDepositWallets(client) { 
-        // ... (保持不變) ...
+        // ... (保持不变) ...
         const result = await client.query(
             'SELECT MAX(deposit_path_index) FROM users'
         );
@@ -89,7 +89,7 @@ class KmsService {
     }
 }
 
-// (單例模式保持不變)
+// (单例模式保持不变)
 let instance = null;
 
 function getKmsInstance() {

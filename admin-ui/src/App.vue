@@ -3,7 +3,7 @@
 </template>
 
 <style>
-/* 基礎 CSS 重置 */
+/* 基础 CSS 重置 */
 body, html, #app {
   margin: 0;
   padding: 0;

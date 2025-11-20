@@ -1,11 +1,11 @@
-// 檔案: modules/api.js (★★★ v6.1 中心化 Auth 版 ★★★)
+// 档案: modules/api.js (★★★ v6.1 中心化 Auth 版 ★★★)
 
-// (★★★ API 路徑改為 /api/v1/ ★★★)
+// (★★★ API 路径改为 /api/v1/ ★★★)
 const API_BASE_URL = '/api/v1'; 
 
 /**
- * 統一的錯誤處理和請求函數
- * (★★★ 加入 token 參數 ★★★)
+ * 统一的错误处理和请求函数
+ * (★★★ 加入 token 参数 ★★★)
  */
 async function request(endpoint, options = {}) {
     const url = `${API_BASE_URL}${endpoint}`;
@@ -22,56 +22,56 @@ async function request(endpoint, options = {}) {
     }
 
     try {
-        const response = await fetch(url, config); // 1. 發出請求
+        const response = await fetch(url, config); // 1. 发出请求
 
-        // 2. 嘗試獲取 JSON (無論狀態如何)
+        // 2. 尝試获取 JSON (無论狀态如何)
         let data;
         const contentType = response.headers.get("content-type");
         if (contentType && contentType.includes("application/json")) {
             try {
                 data = await response.json();
             } catch (e) {
-                // (如果 response.ok 為 false 且 body 為空，.json() 會失敗)
+                // (如果 response.ok 为 false 且 body 为空，.json() 会失败)
                 data = null; 
             }
         }
 
-        // 3. 檢查回應狀態
+        // 3. 检查回应狀态
         if (!response.ok) {
-            // (我們有 HTTP 錯誤 4xx 或 5xx)
+            // (我们有 HTTP 错误 4xx 或 5xx)
             const errorMessage = data?.error || `Request failed with status ${response.status}`;
             
-            // 建立一個包含 status 的自定義錯誤
+            // 建立一個包含 status 的自定义错误
             const error = new Error(errorMessage);
-            error.status = response.status; // (★★★ 關鍵：將 status 附加到錯誤物件)
+            error.status = response.status; // (★★★ 关键：将 status 附加到错误物件)
             error.data = data; 
-            throw error; // (此 throw 將被下面的 catch 捕獲)
+            throw error; // (此 throw 将被下面的 catch 捕获)
         }
 
         // 4. 成功 (response.ok)
-        return data || response.text(); // 返回 JSON 數據或文本
+        return data || response.text(); // 返回 JSON 数据或文本
 
     } catch (error) {
-        // 5. 統一處理所有錯誤 (網路錯誤 或 上面拋出的 HTTP 錯誤)
+        // 5. 统一处理所有错误 (网路错误 或 上面拋出的 HTTP 错误)
         
-        // (★★★ 關鍵：區分 4xx 和 5xx ★★★)
+        // (★★★ 关键：区分 4xx 和 5xx ★★★)
         if (error.status >= 400 && error.status < 500) {
-            // 4xx 錯誤 (例如：400 帳號重複, 401 未登入, 403 被禁止)
-            // 這是可預期的業務邏輯錯誤，使用 console.warn
+            // 4xx 错误 (例如：400 帐号重复, 401 未登入, 403 被禁止)
+            // 這是可预期的业务逻辑错误，使用 console.warn
             // console.warn(`[API Validation] ${endpoint} (${error.status}): ${error.message}`);
         } else {
-            // 5xx 錯誤 (伺服器內部錯誤) 或 網路錯誤 (fetch 失敗, error.status 為 undefined)
-            // 這是系統級錯誤，使用 console.error
+            // 5xx 错误 (伺服器内部错误) 或 网路错误 (fetch 失败, error.status 为 undefined)
+            // 這是系统级错误，使用 console.error
             console.error(`[API Error] ${endpoint}:`, error.message);
         }
 
-        // (★★★ 關鍵：將帶有 status 的錯誤拋出給 app.js ★★★)
+        // (★★★ 关键：将带有 status 的错误拋出给 app.js ★★★)
         throw error; 
     }
 }
 
 /**
- * (★★★ 傳統註冊 ★★★)
+ * (★★★ 传统注册 ★★★)
  * @param {string} username 
  * @param {string} password 
  * @returns {Promise<object>} { user, token }
@@ -84,7 +84,7 @@ export function register(username, password) {
 }
 
 /**
- * (★★★ 傳統登入 ★★★)
+ * (★★★ 传统登入 ★★★)
  * @param {string} username 
  * @param {string} password 
  * @returns {Promise<object>} { user, token }
@@ -97,7 +97,7 @@ export function login(username, password) {
 }
 
 /**
- * (★★★ 獲取用戶資訊 ★★★)
+ * (★★★ 获取用户资讯 ★★★)
  * @param {string} token 
  * @returns {Promise<object>} user (包含 balance)
  */
@@ -110,9 +110,9 @@ export function getUserInfo(token) {
 
 
 /**
- * (★★★ 使用 token 驗證 ★★★)
+ * (★★★ 使用 token 验证 ★★★)
  * @param {string} token 
- * @returns {Promise<Array>} 歷史記錄陣列
+ * @returns {Promise<Array>} 历史记录陣列
  */
 export function getHistory(token) {
     return request(`/history`, {
@@ -122,7 +122,7 @@ export function getHistory(token) {
 }
 
 /**
- * (★★★ 公開 API，無需 token ★★★)
+ * (★★★ 公开 API，無需 token ★★★)
  * @returns {Promise<Array>} 排行榜陣列
  */
 export function getLeaderboard() {
@@ -131,7 +131,7 @@ export function getLeaderboard() {
 
 /**
  * (★★★ 中心化下注 ★★★)
- * (v6.2 才會實作後端)
+ * (v6.2 才会實作後端)
  * @param {string} token 
  * @param {string} choice 'head' or 'tail'
  * @param {number} amount
@@ -146,7 +146,7 @@ export function placeBet(token, choice, amount) {
 }
 
 /**
- * (★★★ 更新用戶暱稱 ★★★)
+ * (★★★ 更新用户昵称 ★★★)
  * @param {string} token
  * @param {string} nickname
  * @returns {Promise<object>} updated user
@@ -160,7 +160,7 @@ export function updateNickname(token, nickname) {
 }
 
 /**
- * (★★★ 綁定推薦碼 ★★★)
+ * (★★★ 绑定推薦码 ★★★)
  * @param {string} token
  * @param {string} referrerCode
  * @returns {Promise<object>} updated user
@@ -174,7 +174,7 @@ export function bindReferrer(token, referrerCode) {
 }
 
 /**
- * (★★★ 設置初始提款密碼 ★★★)
+ * (★★★ 设置初始提款密码 ★★★)
  * @param {string} token
  * @param {string} login_password 
  * @param {string} new_password
@@ -189,7 +189,7 @@ export function setWithdrawalPassword(token, login_password, new_password) {
 }
 
 /**
- * (★★★ 修改提款密碼 ★★★)
+ * (★★★ 修改提款密码 ★★★)
  * @param {string} token
  * @param {string} old_password 
  * @param {string} new_password
@@ -216,9 +216,9 @@ export function getWithdrawalHistory(token) {
 }
 
 /**
- * (★★★ 獲取用戶充值歷史 ★★★)
+ * (★★★ 获取用户充值历史 ★★★)
  * @param {string} token
- * @returns {Promise<Array>} 充值歷史列表
+ * @returns {Promise<Array>} 充值历史列表
  */
 export function getDepositHistory(token) {
     return request('/users/deposits', {

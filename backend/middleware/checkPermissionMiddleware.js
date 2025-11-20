@@ -1,15 +1,15 @@
-// 檔案: backend/middleware/checkPermissionMiddleware.js (★★★ v7.3 動態 RBAC 版 ★★★)
+// 档案: backend/middleware/checkPermissionMiddleware.js (★★★ v7.3 动态 RBAC 版 ★★★)
 
 const db = require('../db');
 
 /**
- * 動態權限檢查中間件 (RBAC)
+ * 动态权限检查中间件 (RBAC)
  * @param {string} resource - (例如 'users', 'bets', 'settings_game')
  * @param {string} action - (例如 'read', 'update', 'cud')
  */
 const checkPermission = (resource, action) => {
     return async (req, res, next) => {
-        // 1. 檢查 req.user.role_id 是否存在 (由 authMiddleware 附加)
+        // 1. 检查 req.user.role_id 是否存在 (由 authMiddleware 附加)
         if (!req.user || !req.user.role_id) {
             console.warn(`[RBAC] Denied: User object or role_id not found in request.`);
             return res.status(403).json({ error: 'Forbidden: User role not found.' });
@@ -19,7 +19,7 @@ const checkPermission = (resource, action) => {
         const requiredPermission = `${resource}:${action}`;
 
         try {
-            // 2. 查詢此 role_id 是否擁有指定的 permission
+            // 2. 查询此 role_id 是否拥有指定的 permission
             const query = `
                 SELECT 1
                 FROM admin_role_permissions arp
@@ -32,12 +32,12 @@ const checkPermission = (resource, action) => {
             
             const result = await db.query(query, [role_id, resource, action]);
 
-            // 3. 檢查結果
+            // 3. 检查结果
             if (result.rows.length > 0) {
-                // 權限足夠，放行
+                // 权限足够，放行
                 next();
             } else {
-                // 權限不足，阻擋
+                // 权限不足，阻挡
                 console.warn(`[RBAC] Denied: User ${username} (RoleID: ${role_id}) tried to access ${requiredPermission}.`);
                 return res.status(403).json({ error: 'Forbidden: You do not have permission for this resource.' });
             }

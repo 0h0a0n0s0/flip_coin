@@ -15,10 +15,10 @@
 
         <el-form-item label="注单状态">
           <el-select v-model="searchParams.status" placeholder="选择状态" clearable>
-            <el-option label="處理中" value="pending" />
-            <el-option label="中獎" value="won" />
-            <el-option label="未中獎" value="lost" />
-            <el-option label="失敗" value="failed" />
+            <el-option label="处理中" value="pending" />
+            <el-option label="中奖" value="won" />
+            <el-option label="未中奖" value="lost" />
+            <el-option label="失败" value="failed" />
           </el-select>
         </el-form-item>
 
@@ -27,14 +27,17 @@
             v-model="searchParams.dateRange"
             type="datetimerange"
             range-separator="至"
-            start-placeholder="開始時間"
-            end-placeholder="結束時間"
+            start-placeholder="开始时间"
+            end-placeholder="结束时间"
+            format="YYYY-MM-DD HH:mm:ss"
             value-format="YYYY-MM-DDTHH:mm:ssZ"
+            :default-time="['00:00:00', '23:59:59']"
+            unlink-panels
           />
         </el-form-item>
 
         <el-form-item>
-          <el-button type="primary" @click="handleSearch">查詢</el-button>
+          <el-button type="primary" @click="handleSearch">查询</el-button>
         </el-form-item>
       </el-form>
     </el-card>
@@ -54,11 +57,11 @@
            <template #default="scope">{{ formatCurrency(scope.row.amount) }}</template>
         </el-table-column>
         
-        <el-table-column label="中獎金額 (USDT)" width="150">
+        <el-table-column label="中奖金额 (USDT)" width="150">
            <template #default="scope">{{ formatPrize(scope.row) }}</template>
         </el-table-column>
 
-        <el-table-column prop="tx_hash" label="開獎 Hash" width="180">
+        <el-table-column prop="tx_hash" label="开奖 Hash" width="180">
           <template #default="scope">
             <a v-if="scope.row.tx_hash" :href="`https://sepolia.etherscan.io/tx/${scope.row.tx_hash}`" target="_blank" class="tx-link">
               {{ scope.row.tx_hash.substring(0, 10) }}...
@@ -67,11 +70,11 @@
           </template>
         </el-table-column>
         
-        <el-table-column prop="bet_time" label="下注時間 (系統)" width="180">
+        <el-table-column prop="bet_time" label="下注时间 (系统)" width="180">
            <template #default="scope">{{ formatDateTime(scope.row.bet_time) }}</template>
         </el-table-column>
 
-        <el-table-column prop="settle_time" label="開獎時間 (系統)" width="180">
+        <el-table-column prop="settle_time" label="开奖时间 (系统)" width="180">
            <template #default="scope">{{ formatDateTime(scope.row.settle_time) }}</template>
         </el-table-column>
 
@@ -100,7 +103,31 @@
 </template>
 
 <script>
-// ( ... <script> 標籤內的邏輯保持不變 ... )
+// ( ... <script> 标签内的逻辑保持不变 ... )
+const pad = (num) => String(num).padStart(2, '0');
+const formatForPicker = (date) => {
+  const year = date.getFullYear();
+  const month = pad(date.getMonth() + 1);
+  const day = pad(date.getDate());
+  const hours = pad(date.getHours());
+  const minutes = pad(date.getMinutes());
+  const seconds = pad(date.getSeconds());
+  const offset = -date.getTimezoneOffset();
+  const sign = offset >= 0 ? '+' : '-';
+  const absOffset = Math.abs(offset);
+  const offsetHours = pad(Math.floor(absOffset / 60));
+  const offsetMinutes = pad(absOffset % 60);
+  return `${year}-${month}-${day}T${hours}:${minutes}:${seconds}${sign}${offsetHours}:${offsetMinutes}`;
+};
+
+const createTodayRange = () => {
+  const start = new Date();
+  start.setHours(0, 0, 0, 0);
+  const end = new Date();
+  end.setHours(23, 59, 59, 999);
+  return [formatForPicker(start), formatForPicker(end)];
+};
+
 export default {
   name: 'BetManagementView',
   data() {
@@ -116,12 +143,13 @@ export default {
         betId: '',
         userId: '',
         status: '',
-        dateRange: null, 
+        dateRange: null,
       },
     };
   },
   created() {
-    this.fetchBets();
+    this.setDefaultDateRange();
+    this.handleSearch();
   },
   methods: {
     async fetchBets() {
@@ -145,6 +173,9 @@ export default {
       }
     },
     
+    setDefaultDateRange() {
+      this.searchParams.dateRange = createTodayRange();
+    },
     handleSearch() { this.pagination.page = 1; this.fetchBets(); },
     handleSizeChange(newLimit) { this.pagination.limit = newLimit; this.pagination.page = 1; this.fetchBets(); },
     handlePageChange(newPage) { this.pagination.page = newPage; this.fetchBets(); },
@@ -157,8 +188,8 @@ export default {
     
     formatStatus(status) {
       const map = {
-        'pending': '處理中', 'won': '中獎', 'lost': '未中獎',
-        'failed': '失敗',
+        'pending': '处理中', 'won': '中奖', 'lost': '未中奖',
+        'failed': '失败',
       };
       return map[status] || status;
     },
@@ -197,7 +228,7 @@ export default {
             const prizeAmount = betAmount * multiplier; 
             return this.formatCurrency(prizeAmount);
         } catch(e) {
-            return '計算錯誤';
+            return '计算错误';
         }
       }
       return '-';
@@ -219,7 +250,7 @@ export default {
   text-decoration: underline;
 }
 
-/* (★★★ 修改 2: 新增 CSS 規則 ★★★) */
+/* (★★★ 修改 2: 新增 CSS 规則 ★★★) */
 .search-form :deep(.el-input) {
   width: 180px;
 }

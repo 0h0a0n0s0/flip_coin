@@ -1,6 +1,6 @@
 <template>
   <div class="report-management-container">
-    <h2>營運管理 (盈虧報表)</h2>
+    <h2>营運管理 (盈虧报表)</h2>
 
     <el-card shadow="never" class="search-card">
       <el-form :inline="true" :model="searchParams" @submit.native.prevent="handleSearch" class="search-form">
@@ -19,31 +19,34 @@
             v-model="searchParams.dateRange"
             type="datetimerange"
             range-separator="至"
-            start-placeholder="開始時間"
-            end-placeholder="結束時間"
+            start-placeholder="开始时间"
+            end-placeholder="结束时间"
+            format="YYYY-MM-DD HH:mm:ss"
             value-format="YYYY-MM-DDTHH:mm:ssZ"
             :clearable="false"
+            :default-time="['00:00:00', '23:59:59']"
+            unlink-panels
           />
         </el-form-item>
         <el-form-item>
-          <el-button type="primary" @click="handleSearch" :loading="loading">查詢</el-button>
+          <el-button type="primary" @click="handleSearch" :loading="loading">查询</el-button>
         </el-form-item>
       </el-form>
     </el-card>
 
     <el-card shadow="never" class="result-card" v-loading="loading">
       <template #header>
-        <div>查詢結果</div>
+        <div>查询结果</div>
       </template>
       
       <div v-if="reportData" class="report-grid">
         <div class="report-item"> 
-          <div class="report-label">投注 (總額)</div>
+          <div class="report-label">投注 (总额)</div>
           <div class="report-value">{{ formatCurrency(reportData.total_bet) }} USDT</div>
         </div>
         
         <div class="report-item"> 
-          <div class="report-label">派奖 (總額)</div>
+          <div class="report-label">派奖 (总额)</div>
            <div class="report-value">{{ formatCurrency(reportData.total_payout) }} USDT</div>
         </div>
         <div class="report-item info">
@@ -60,7 +63,7 @@
         </div>
         
         <div class="report-item gas-fee">
-          <div class="report-label">總手續費 (Gas)</div>
+          <div class="report-label">总手续费 (Gas)</div>
            <div class="report-value">{{ formatCurrency(reportData.total_gas_fee) }} USDT</div>
         </div>
 
@@ -69,7 +72,7 @@
             <span>平台盈虧</span>
             <el-tooltip
               effect="dark"
-              content="公式：投注總額 - 派奖總額"
+              content="公式：投注总额 - 派奖总额"
               placement="top"
             >
               <el-icon><InfoFilled /></el-icon>
@@ -80,10 +83,10 @@
         
         <div :class="['report-item', 'net-profit', reportData.platform_net_profit >= 0 ? 'profit' : 'loss']"> 
           <div class="report-label">
-            <span>平台 *淨* 營利</span>
+            <span>平台 *净* 营利</span>
             <el-tooltip
               effect="dark"
-              content="公式：投注 - 派奖 - 獎金 - 手續費"
+              content="公式：投注 - 派奖 - 奖金 - 手续费"
               placement="top"
             >
               <el-icon><InfoFilled /></el-icon>
@@ -93,16 +96,40 @@
         </div>
       </div>
       
-      <el-empty v-else description="請選擇時間範圍並點擊查詢" />
+      <el-empty v-else description="请选择时间范围并点击查询" />
 
     </el-card>
   </div>
 </template>
 
 <script>
-// ( ... <script> 標籤內的邏輯保持不變 ... )
+// ( ... <script> 标签内的逻辑保持不变 ... )
 import { ElMessage } from 'element-plus';
 import { InfoFilled } from '@element-plus/icons-vue';
+
+const pad = (num) => String(num).padStart(2, '0');
+const formatForPicker = (date) => {
+  const year = date.getFullYear();
+  const month = pad(date.getMonth() + 1);
+  const day = pad(date.getDate());
+  const hours = pad(date.getHours());
+  const minutes = pad(date.getMinutes());
+  const seconds = pad(date.getSeconds());
+  const offset = -date.getTimezoneOffset();
+  const sign = offset >= 0 ? '+' : '-';
+  const absOffset = Math.abs(offset);
+  const offsetHours = pad(Math.floor(absOffset / 60));
+  const offsetMinutes = pad(absOffset % 60);
+  return `${year}-${month}-${day}T${hours}:${minutes}:${seconds}${sign}${offsetHours}:${offsetMinutes}`;
+};
+
+const createTodayRange = () => {
+  const start = new Date();
+  start.setHours(0, 0, 0, 0);
+  const end = new Date();
+  end.setHours(23, 59, 59, 999);
+  return [formatForPicker(start), formatForPicker(end)];
+};
 
 export default {
   name: 'ReportManagementView',
@@ -113,13 +140,20 @@ export default {
     return {
       loading: false,
       searchParams: {
-        dateRange: null, 
+        dateRange: null,
         userQuery: 'system', 
       },
       reportData: null, 
     };
   },
+  created() {
+    this.setDefaultDateRange();
+    this.handleSearch();
+  },
   methods: {
+    setDefaultDateRange() {
+      this.searchParams.dateRange = createTodayRange();
+    },
     async handleSearch() {
       if (!this.searchParams.dateRange) {
         ElMessage.error('请选择时间范围');
@@ -158,7 +192,7 @@ export default {
            return '0.00';
         }
       }
-      // (★★★ 修正：v7 應為 USDT，顯示 2 位小數 ★★★)
+      // (★★★ 修正：v7 应为 USDT，显示 2 位小数 ★★★)
       return value.toFixed(2); 
     }
   },
@@ -205,16 +239,16 @@ export default {
   margin-top: 8px;
 }
 
-/* 顏色 */
+/* 颜色 */
 .report-item .report-value { color: #303133; } 
 .report-item.info .report-value { color: #909399; } 
 .report-item.gas-fee .report-value { color: #E6A23C; }
 
-/* 盈虧顏色 */
+/* 盈虧颜色 */
 .report-item.profit .report-value { color: #67c23a; } 
 .report-item.loss .report-value { color: #f56c6c; } 
 
-/* 淨營利 醒目提示 */
+/* 净营利 醒目提示 */
 .report-item.net-profit {
   border-width: 2px;
   border-color: #409EFF;
@@ -229,7 +263,7 @@ export default {
    background-color: #f0f9eb;
 }
 
-/* (★★★ 修改 2: 新增 CSS 規則 ★★★) */
+/* (★★★ 修改 2: 新增 CSS 规則 ★★★) */
 .search-form :deep(.el-input) {
   width: 180px;
 }

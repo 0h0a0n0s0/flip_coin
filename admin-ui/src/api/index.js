@@ -1,4 +1,4 @@
-// 檔案: admin-ui/src/api/index.js (★★★ v7.3 RBAC 擴充版 ★★★)
+// 档案: admin-ui/src/api/index.js (★★★ v7.3 RBAC 扩充版 ★★★)
 
 import request from '@/utils/request';
 
@@ -10,10 +10,10 @@ export function login(data) {
         data: data,
     });
 }
-// (★★★ Y-A: 新增：獲取當前用戶權限 ★★★)
+// (★★★ Y-A: 新增：获取当前用户权限 ★★★)
 export function getMyPermissions() {
     return request({
-        url: '/api/admin/my-permissions', // (我們將在下一步的 server.js 中新增此路由)
+        url: '/api/admin/my-permissions', // (我们将在下一步的 server.js 中新增此路由)
         method: 'get',
     });
 }
@@ -172,7 +172,7 @@ export function deleteUserLevel(level) {
     });
 }
 
-// --- 後台帳號管理 API ---
+// --- 後台帐号管理 API ---
 export function getAdminAccounts() {
     return request({
         url: '/api/admin/accounts',
@@ -190,7 +190,7 @@ export function updateAdminAccount(id, data) {
     return request({
         url: `/api/admin/accounts/${id}`,
         method: 'put',
-        data, // (★★★ Y-B: 注意：前端將傳送 role_id ★★★)
+        data, // (★★★ Y-B: 注意：前端将传送 role_id ★★★)
     });
 }
 export function deleteAdminAccount(id) {
@@ -219,9 +219,17 @@ export function deleteIpFromWhitelist(id) {
     });
 }
 
-// (★★★ Y-C: 新增 RBAC 相關 API ★★★)
+export function getAuditLogs(params) {
+    return request({
+        url: '/api/admin/audit-logs',
+        method: 'get',
+        params
+    });
+}
+
+// (★★★ Y-C: 新增 RBAC 相关 API ★★★)
 /**
- * @description 獲取所有權限組 (Roles)
+ * @description 获取所有权限组 (Roles)
  */
 export function getRoles() {
     return request({
@@ -231,7 +239,7 @@ export function getRoles() {
 }
 
 /**
- * @description 獲取單一權限組的詳細資料 (包含 permission_ids)
+ * @description 获取单一权限组的详細资料 (包含 permission_ids)
  */
 export function getRoleDetails(id) {
     return request({
@@ -241,7 +249,7 @@ export function getRoleDetails(id) {
 }
 
 /**
- * @description 獲取所有可用的權限 (Permissions) (已按 category 分組)
+ * @description 获取所有可用的权限 (Permissions) (已按 category 分组)
  */
 export function getAllPermissions() {
     return request({
@@ -251,7 +259,7 @@ export function getAllPermissions() {
 }
 
 /**
- * @description 新增權限組
+ * @description 新增权限组
  */
 export function addRole(data) {
     // data: { name, description, permission_ids: [...] }
@@ -263,7 +271,7 @@ export function addRole(data) {
 }
 
 /**
- * @description 更新權限組
+ * @description 更新权限组
  */
 export function updateRole(id, data) {
     // data: { name, description, permission_ids: [...] }
@@ -275,7 +283,7 @@ export function updateRole(id, data) {
 }
 
 /**
- * @description 刪除權限組
+ * @description 刪除权限组
  */
 export function deleteRole(id) {
     return request({
@@ -285,7 +293,7 @@ export function deleteRole(id) {
 }
 
 /**
- * @description (獲取充值記錄)
+ * @description (获取充值记录)
  */
 export function getDeposits(params) {
     return request({
@@ -316,8 +324,8 @@ export function rejectWithdrawal(id, reason) { // reason: { reason: '...' }
     });
 }
 /**
- * @description (手動完成提款)
- * @param {number} id - 提款單 ID
+ * @description (手动完成提款)
+ * @param {number} id - 提款单 ID
  * @param {object} data - { tx_hash, gas_fee }
  */
 export function completeWithdrawal(id, data) {
@@ -325,5 +333,27 @@ export function completeWithdrawal(id, data) {
         url: `/api/admin/withdrawals/${id}/complete`,
         method: 'post',
         data: data,
+    });
+}
+
+// --- Collection Management ---
+export function getCollectionSettings() {
+    return request({
+        url: '/api/admin/collection/settings',
+        method: 'get',
+    });
+}
+export function updateCollectionSettings(data) {
+    return request({
+        url: '/api/admin/collection/settings',
+        method: 'post',
+        data: data,
+    });
+}
+export function getCollectionLogs(params) {
+    return request({
+        url: '/api/admin/collection/logs',
+        method: 'get',
+        params: params,
     });
 }

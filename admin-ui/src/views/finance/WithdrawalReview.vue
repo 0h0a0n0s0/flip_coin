@@ -1,22 +1,42 @@
 <template>
   <div class="withdrawal-review-container">
-    <h2>提款審核</h2>
+    <h2 class="title-with-tip">
+      提款審核
+      <el-tooltip content="審核：批准改為出款中；拒绝退回余额；完成需填写TX Hash與Gas" placement="right">
+        <span class="info-tag">i</span>
+      </el-tooltip>
+    </h2>
 
     <el-card shadow="never" class="search-card">
       <el-form :inline="true" :model="searchParams" @submit.native.prevent="handleSearch" class="search-form">
-        <el-form-item label="用戶名"><el-input v-model="searchParams.username" placeholder="用戶名 (模糊)" clearable></el-input></el-form-item>
+        <el-form-item label="用户名"><el-input v-model="searchParams.username" placeholder="用户名 (模糊)" clearable></el-input></el-form-item>
+        <el-form-item label="用户ID"><el-input v-model="searchParams.user_id" placeholder="精确用户ID" clearable></el-input></el-form-item>
         <el-form-item label="提款地址"><el-input v-model="searchParams.address" placeholder="地址 (精确)" clearable></el-input></el-form-item>
         <el-form-item label="TX Hash"><el-input v-model="searchParams.tx_hash" placeholder="Hash (精确)" clearable></el-input></el-form-item>
-        <el-form-item label="提款狀態">
+        <el-form-item label="提款狀态">
           <el-select v-model="searchParams.status" placeholder="选择状态" clearable>
             <el-option label="待審核" value="pending" />
-            <el-option label="審核拒絕" value="rejected" />
+            <el-option label="審核拒绝" value="rejected" />
             <el-option label="出款中" value="processing" />
             <el-option label="出款完成" value="completed" />
           </el-select>
         </el-form-item>
+        <el-form-item label="发起时间">
+          <el-date-picker
+            v-model="searchParams.dateRange"
+            type="datetimerange"
+            range-separator="至"
+            start-placeholder="开始时间"
+            end-placeholder="结束时间"
+            format="YYYY-MM-DD HH:mm:ss"
+            value-format="YYYY-MM-DDTHH:mm:ssZ"
+            :default-time="['00:00:00', '23:59:59']"
+            unlink-panels
+            clearable
+          />
+        </el-form-item>
         <el-form-item>
-          <el-button type="primary" @click="handleSearch">查詢</el-button>
+          <el-button type="primary" @click="handleSearch">查询</el-button>
         </el-form-item>
       </el-form>
     </el-card>
@@ -24,24 +44,25 @@
     <el-card shadow="never" class="table-card" v-loading="loading">
       <el-table :data="tableData" style="width: 100%">
         <el-table-column prop="id" label="ID" width="80" />
-        <el-table-column prop="username" label="用戶名" width="130" />
-        <el-table-column prop="chain_type" label="區塊鏈" width="100" />
+        <el-table-column prop="username" label="用户名" width="130" />
+        <el-table-column prop="user_id" label="用户ID" width="120" />
+        <el-table-column prop="chain_type" label="区块链" width="100" />
         <el-table-column prop="address" label="提款地址" />
         
-        <el-table-column prop="amount" label="提款金額" width="120" sortable>
+        <el-table-column prop="amount" label="提款金额" width="120" sortable>
            <template #default="scope">{{ formatCurrency(scope.row.amount) }}</template>
         </el-table-column>
-        <el-table-column prop="total_profit_loss" label="累計盈虧" width="120" sortable>
+        <el-table-column prop="total_profit_loss" label="累计盈虧" width="120" sortable>
            <template #default="scope">{{ formatCurrency(scope.row.total_profit_loss) }}</template>
         </el-table-column>
         <el-table-column prop="gas_fee" label="Gas 成本" width="100">
            <template #default="scope">{{ formatCurrency(scope.row.gas_fee, true) }}</template>
         </el-table-column>
         
-        <el-table-column prop="request_time" label="發起時間" width="170">
+        <el-table-column prop="request_time" label="发起时间" width="170">
            <template #default="scope">{{ formatDateTime(scope.row.request_time) }}</template>
         </el-table-column>
-        <el-table-column prop="review_time" label="審核時間" width="170">
+        <el-table-column prop="review_time" label="審核时间" width="170">
            <template #default="scope">{{ formatDateTime(scope.row.review_time) }}</template>
         </el-table-column>
         <el-table-column prop="reviewer_name" label="審核人" width="100" />
@@ -55,7 +76,7 @@
             </template>
         </el-table-column>
 
-        <el-table-column prop="status" label="狀態" width="100" fixed="right">
+        <el-table-column prop="status" label="狀态" width="100" fixed="right">
           <template #default="scope">
             <el-tag :type="getStatusTagType(scope.row.status)">
               {{ formatStatus(scope.row.status) }}
@@ -67,10 +88,10 @@
           <template #default="scope">
             <div v-if="scope.row.status === 'pending'">
                 <el-button type="success" link @click="handleApprove(scope.row)" v-if="$permissions.has('withdrawals', 'update')">批准</el-button>
-                <el-button type="danger" link @click="handleReject(scope.row)" v-if="$permissions.has('withdrawals', 'update')">拒絕</el-button>
+                <el-button type="danger" link @click="handleReject(scope.row)" v-if="$permissions.has('withdrawals', 'update')">拒绝</el-button>
             </div>
             <div v-if="scope.row.status === 'processing'">
-                <el-button type="primary" link @click="handleComplete(scope.row)" v-if="$permissions.has('withdrawals', 'update')">手動完成</el-button>
+                <el-button type="primary" link @click="handleComplete(scope.row)" v-if="$permissions.has('withdrawals', 'update')">手动完成</el-button>
             </div>
             <div v-if="scope.row.status === 'rejected'">
                  <el-tooltip :content="scope.row.rejection_reason || '無理由'" placement="top"><el-icon><InfoFilled /></el-icon></el-tooltip>
@@ -98,6 +119,35 @@
 import { ElMessage, ElMessageBox } from 'element-plus';
 import { InfoFilled } from '@element-plus/icons-vue';
 
+const pad = (num) => String(num).padStart(2, '0');
+const formatForPicker = (date) => {
+  const year = date.getFullYear();
+  const month = pad(date.getMonth() + 1);
+  const day = pad(date.getDate());
+  const hours = pad(date.getHours());
+  const minutes = pad(date.getMinutes());
+  const seconds = pad(date.getSeconds());
+  const offset = -date.getTimezoneOffset();
+  const sign = offset >= 0 ? '+' : '-';
+  const absOffset = Math.abs(offset);
+  const offsetHours = pad(Math.floor(absOffset / 60));
+  const offsetMinutes = pad(absOffset % 60);
+  return `${year}-${month}-${day}T${hours}:${minutes}:${seconds}${sign}${offsetHours}:${offsetMinutes}`;
+};
+const toISOString = (value) => {
+  if (!value) return undefined;
+  const parsed = new Date(value);
+  return Number.isNaN(parsed.getTime()) ? undefined : parsed.toISOString();
+};
+
+const createTodayRange = () => {
+  const start = new Date();
+  start.setHours(0, 0, 0, 0);
+  const end = new Date();
+  end.setHours(23, 59, 59, 999);
+  return [formatForPicker(start), formatForPicker(end)];
+};
+
 export default {
   name: 'WithdrawalReview',
   components: { InfoFilled },
@@ -108,12 +158,18 @@ export default {
       totalItems: 0, 
       pagination: { page: 1, limit: 10 },
       searchParams: {
-        username: '', status: '', address: '', tx_hash: ''
+        username: '',
+        user_id: '',
+        status: '',
+        address: '',
+        tx_hash: '',
+        dateRange: null
       },
     };
   },
   created() {
-    this.fetchData();
+    this.setDefaultDateRange();
+    this.handleSearch();
   },
   methods: {
     async fetchData() {
@@ -126,7 +182,15 @@ export default {
           status: this.searchParams.status || undefined,
           address: this.searchParams.address || undefined,
           tx_hash: this.searchParams.tx_hash || undefined,
+          user_id: this.searchParams.user_id || undefined,
         };
+        if (this.searchParams.dateRange && this.searchParams.dateRange.length === 2) {
+          const [start, end] = this.searchParams.dateRange;
+          const startIso = toISOString(start);
+          const endIso = toISOString(end);
+          if (startIso) { params.start_time = startIso; }
+          if (endIso) { params.end_time = endIso; }
+        }
         const response = await this.$api.getWithdrawals(params);
         this.tableData = response.list;
         this.totalItems = response.total;
@@ -137,56 +201,59 @@ export default {
       }
     },
     
+    setDefaultDateRange() {
+      this.searchParams.dateRange = createTodayRange();
+    },
     handleSearch() { this.pagination.page = 1; this.fetchData(); },
     handleSizeChange(newLimit) { this.pagination.limit = newLimit; this.pagination.page = 1; this.fetchData(); },
     handlePageChange(newPage) { this.pagination.page = newPage; this.fetchData(); },
 
     // (批准)
     handleApprove(row) {
-        ElMessageBox.confirm(`確定要批准用戶 [${row.username}] 的 ${row.amount} USDT 提款嗎？<br>狀態將變為 [出款中]，等待財務手動操作。`, '批准確認', { dangerouslyUseHTMLString: true, confirmButtonText: '確定批准', cancelButtonText: '取消', type: 'warning' })
+        ElMessageBox.confirm(`确定要批准用户 [${row.username}] 的 ${row.amount} USDT 提款吗？<br>狀态将变为 [出款中]，等待财务手动操作。`, '批准确认', { dangerouslyUseHTMLString: true, confirmButtonText: '确定批准', cancelButtonText: '取消', type: 'warning' })
         .then(async () => {
             try {
                 await this.$api.approveWithdrawal(row.id);
-                ElMessage.success('批准成功，狀態已更新');
+                ElMessage.success('批准成功，狀态已更新');
                 await this.fetchData();
             } catch (error) { console.error('Failed to approve:', error); }
         }).catch(() => {});
     },
 
-    // (拒絕)
+    // (拒绝)
     handleReject(row) {
-        ElMessageBox.prompt('請輸入拒絕理由 (將退款給用戶)', '拒絕提款', { confirmButtonText: '確認拒絕', cancelButtonText: '取消', inputPattern: /.+/, inputErrorMessage: '拒絕理由不能為空' })
+        ElMessageBox.prompt('请输入拒绝理由 (将退款给用户)', '拒绝提款', { confirmButtonText: '确认拒绝', cancelButtonText: '取消', inputPattern: /.+/, inputErrorMessage: '拒绝理由不能为空' })
         .then(async ({ value }) => {
             try {
                 await this.$api.rejectWithdrawal(row.id, { reason: value });
-                ElMessage.success('拒絕成功，款項已退回用戶餘額');
+                ElMessage.success('拒绝成功，款项已退回用户余额');
                 await this.fetchData();
             } catch (error) { console.error('Failed to reject:', error); }
         }).catch(() => {});
     },
 
-    // (手動完成)
+    // (手动完成)
     handleComplete(row) {
         ElMessageBox.prompt(
-            '請輸入出款 TX Hash（交易哈希）',
-            '標記為完成',
+            '请输入出款 TX Hash（交易哈希）',
+            '标记为完成',
             {
                 confirmButtonText: '下一步',
                 cancelButtonText: '取消',
                 inputPattern: /.+/,
-                inputErrorMessage: 'TX Hash 不能為空',
-                inputPlaceholder: '請輸入完整的交易哈希'
+                inputErrorMessage: 'TX Hash 不能为空',
+                inputPlaceholder: '请输入完整的交易哈希'
             }
         ).then(async ({ value: txHash }) => {
-            // (第二步：輸入 Gas Fee)
+            // (第二步：输入 Gas Fee)
             ElMessageBox.prompt(
-                '請輸入 Gas 成本 (USDT)',
+                '请输入 Gas 成本 (USDT)',
                 'Gas 成本',
                 {
-                    confirmButtonText: '確認完成',
+                    confirmButtonText: '确认完成',
                     cancelButtonText: '取消',
                     inputPattern: /^[0-9]+\.?[0-9]*$/,
-                    inputErrorMessage: 'Gas Fee 必須為有效的數字',
+                    inputErrorMessage: 'Gas Fee 必须为有效的数字',
                     inputPlaceholder: '例如：0.001',
                     inputValue: '0'
                 }
@@ -196,28 +263,28 @@ export default {
                         tx_hash: txHash.trim(),
                         gas_fee: parseFloat(gasFee) || 0
                     });
-                    ElMessage.success('提款已標記為完成');
+                    ElMessage.success('提款已标记为完成');
                     await this.fetchData();
                 } catch (error) {
                     console.error('Failed to complete withdrawal:', error);
-                    ElMessage.error(error.response?.data?.error || '標記完成失敗');
+                    ElMessage.error(error.response?.data?.error || '标记完成失败');
                 }
             }).catch(() => {
-                // (用戶取消，不執行任何操作)
+                // (用户取消，不执行任何操作)
             });
         }).catch(() => {
-            // (用戶取消，不執行任何操作)
+            // (用户取消，不执行任何操作)
         });
     },
 
-    // --- (格式化輔助函數) ---
+    // --- (格式化辅助函数) ---
     formatDateTime(isoString) {
       if (!isoString) return ''; 
       try { return new Date(isoString).toLocaleString('zh-TW', { timeZone: 'Asia/Taipei' }); } 
       catch (e) { return isoString; }
     },
     formatStatus(status) {
-      const map = { 'pending': '待審核', 'rejected': '審核拒絕', 'processing': '出款中', 'completed': '出款完成' };
+      const map = { 'pending': '待審核', 'rejected': '審核拒绝', 'processing': '出款中', 'completed': '出款完成' };
       return map[status] || status;
     },
     getStatusTagType(status) {
@@ -234,7 +301,7 @@ export default {
     getTxLink(chain, hash) {
         if (chain === 'TRC20') return `https://nile.tronscan.org/#/transaction/${hash}`;
         if (chain === 'BSC') return `https://testnet.bscscan.com/tx/${hash}`;
-        if (chain === 'ETH') return `https://sepolia.etherscan.io/tx/${hash}`; // Sepolia 測試網
+        if (chain === 'ETH') return `https://sepolia.etherscan.io/tx/${hash}`; // Sepolia 測試网
         if (chain === 'POLYGON') return `https://mumbai.polygonscan.com/tx/${hash}`;
         if (chain === 'SOL') return `https://solscan.io/tx/${hash}?cluster=testnet`;
         return '#';
@@ -253,4 +320,19 @@ export default {
 
 .search-form :deep(.el-input) { width: 180px; }
 .search-form :deep(.el-select) { width: 180px; }
+.search-form :deep(.el-date-editor) { width: 320px; }
+.title-with-tip { display: flex; align-items: center; gap: 8px; }
+.info-tag {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background-color: #409EFF;
+  color: #fff;
+  font-style: normal;
+  font-size: 12px;
+  cursor: default;
+}
 </style>
