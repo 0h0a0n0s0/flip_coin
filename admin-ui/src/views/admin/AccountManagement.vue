@@ -1,6 +1,6 @@
 <template>
   <div class="account-management-container">
-    <h2>後台帐号管理</h2>
+    <h2>帐号管理</h2>
     <p class="page-description">管理可以登入後台的管理员帐号。</p>
     <el-card shadow="never" class="action-card">
        <el-button type="primary" @click="handleAdd">新增帐号</el-button>

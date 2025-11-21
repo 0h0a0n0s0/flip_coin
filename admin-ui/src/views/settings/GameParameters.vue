@@ -1,22 +1,22 @@
 <template>
   <div class="game-parameters-container">
-    <h2>系统参数设定</h2>
-    <p class="page-description">管理遊戏参数、金流参数等系统设定。</p>
+    <h2>系统参数</h2>
+    <p class="page-description">管理遊戏参数、金流参数、风控参数等系统设定。</p>
 
     <el-card shadow="never" v-loading="loading">
       <el-tabs v-model="activeTab">
         
-        <el-tab-pane label="遊戏参数 (Game)" name="Game">
+        <el-tab-pane label="遊戏参数" name="Game">
           <el-form v-if="formGroups.Game" ref="gameFormRef" :model="formGroups.Game" label-width="200px" class="settings-form">
             <el-form-item
-              label="派奖倍数 (PAYOUT_MULTIPLIER)"
+              label="派奖倍数"
               prop="PAYOUT_MULTIPLIER.value"
               :rules="[{ required: true, message: '派奖倍数不能为空' }, { validator: validateInteger, trigger: 'blur' }]"
             >
               <el-input v-model="formGroups.Game.PAYOUT_MULTIPLIER.value" style="width: 200px;" placeholder="请输入正整数">
                 <template #append>倍</template>
               </el-input>
-              <div class-="form-tip">{{ formGroups.Game.PAYOUT_MULTIPLIER.description }}</div>
+              <div class="form-tip">{{ formGroups.Game.PAYOUT_MULTIPLIER.description }}</div>
             </el-form-item>
             
             <el-form-item>
@@ -26,11 +26,11 @@
           <el-empty v-else description="無遊戏参数"></el-empty>
         </el-tab-pane>
 
-        <el-tab-pane label="金流参数 (Finance)" name="Finance">
+        <el-tab-pane label="金流参数" name="Finance">
            <el-form v-if="formGroups.Finance" ref="financeFormRef" :model="formGroups.Finance" label-width="200px" class="settings-form">
             
             <el-form-item
-              label="自动出款门槛 (AUTO_WITHDRAW_THRESHOLD)"
+              label="自动出款门槛"
               prop="AUTO_WITHDRAW_THRESHOLD.value"
               :rules="[{ required: true, message: '门槛不能为空' }, { validator: validateNumeric, trigger: 'blur' }]"
             >
@@ -41,7 +41,7 @@
             </el-form-item>
 
              <el-form-item
-              label="开放 TRC20 充值 (ALLOW_TRC20)"
+              label="开放 TRC20 充值"
               prop="ALLOW_TRC20.value"
               :rules="[{ required: true, message: '必须选择' }]"
             >
@@ -50,7 +50,7 @@
             </el-form-item>
 
              <el-form-item
-              label="开放 BSC 充值 (ALLOW_BSC)"
+              label="开放 BSC 充值"
               prop="ALLOW_BSC.value"
               :rules="[{ required: true, message: '必须选择' }]"
             >
@@ -63,6 +63,13 @@
             </el-form-item>
           </el-form>
            <el-empty v-else description="無金流参数"></el-empty>
+        </el-tab-pane>
+
+        <el-tab-pane label="风控参数" name="RiskControl">
+           <el-form v-if="formGroups.RiskControl" ref="riskControlFormRef" :model="formGroups.RiskControl" label-width="200px" class="settings-form">
+              <el-empty description="無风控参数"></el-empty>
+           </el-form>
+           <el-empty v-else description="無风控参数"></el-empty>
         </el-tab-pane>
         
         <el-tab-pane label="其他参数" name="General">
@@ -93,6 +100,7 @@ export default {
                // (预设结构，防止渲染错误)
                Game: null,
                Finance: null,
+               RiskControl: null,
                General: null
            },
            
@@ -139,6 +147,7 @@ export default {
                 if (!this.formGroups[this.activeTab]) {
                     // 如果 'Game' 没内容，切换到 'Finance'
                     if (this.formGroups.Finance) this.activeTab = 'Finance';
+                    else if (this.formGroups.RiskControl) this.activeTab = 'RiskControl';
                     else if (this.formGroups.General) this.activeTab = 'General';
                 }
 

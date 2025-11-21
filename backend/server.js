@@ -27,6 +27,7 @@ const { getGameOpenerInstance } = require('./services/GameOpenerService.js');
 const { getBetQueueInstance } = require('./services/BetQueueService.js');
 const { getPayoutServiceInstance } = require('./services/PayoutService.js'); // (★★★ v8.1 新增 ★★★)
 const settingsCacheModule = require('./services/settingsCache.js'); // (★★★ v8.1 导入 ★★★)
+const { setRiskControlSockets, enforceSameIpRiskControl } = require('./services/riskControlService');
 const { sendError } = require('./utils/safeResponse');
 const { maskAddress, maskTxHash } = require('./utils/maskUtils');
 const { loginRateLimiter, registerRateLimiter, withdrawRateLimiter } = require('./middleware/rateLimiter');
@@ -117,18 +118,19 @@ passport.use('local-signup', new LocalStrategy({
         } while (!isUserIdUnique);
         const newInviteCode = await generateUniqueInviteCode(client); 
         const clientIp = req.headers['x-real-ip'] || req.ip;
+        const userAgent = req.headers['user-agent'] || null;
         const newUserResult = await client.query(
             `INSERT INTO users (
                 username, password_hash, user_id, invite_code,
                 deposit_path_index, evm_deposit_address, tron_deposit_address, 
-                last_login_ip, last_activity_at
+                last_login_ip, last_activity_at, user_agent
              ) 
-             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW()) 
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW(), $9) 
              RETURNING *`,
             [
                 username, password_hash, newUserId, newInviteCode,
                 deposit_path_index, evm_deposit_address, tron_deposit_address,
-                clientIp
+                clientIp, userAgent
             ]
         );
         await client.query('COMMIT'); 
@@ -138,6 +140,18 @@ passport.use('local-signup', new LocalStrategy({
             tronCollectionService.activateAddress(tron_deposit_address)
                 .catch(err => console.error(`[v7 Activate] Async activation failed for ${tron_deposit_address}:`, err.message));
         }
+
+        // (Risk Control) 检查同 IP 是否超过阈值
+        try {
+            const riskResult = await enforceSameIpRiskControl(clientIp);
+            if (riskResult.triggered && riskResult.affectedUsers.includes(newUser.user_id)) {
+                console.warn(`[RiskControl] Signup blocked due to same IP rule. IP: ${clientIp}, Users: ${riskResult.affectedUsers.join(',')}`);
+                return done(null, false, { message: '该 IP 触发风控，账户已暂时封锁。' });
+            }
+        } catch (riskError) {
+            console.error('[RiskControl] Failed to run same IP check after signup:', riskError);
+        }
+
         return done(null, newUser);
     } catch (error) {
         console.error("[v7 signup] Transaction Error:", error);
@@ -213,6 +227,8 @@ const adminUiProxy = createProxyMiddleware({
 
 // --- Socket.IO (不变) ---
 let connectedUsers = {}; 
+setRiskControlSockets(io, connectedUsers);
+
 io.use(async (socket, next) => {
     const token = socket.handshake.auth.token;
     if (!token) {
@@ -358,11 +374,30 @@ function v1ApiRouter(router, passport) {
         })(req, res, next);
     });
 
-    // ( /api/v1/login ) (不变)
+    // ( /api/v1/login ) (更新：记录登录IP、活动时间和User Agent)
     router.post('/api/v1/login', loginRateLimiter, validateLoginInput, (req, res, next) => {
-        passport.authenticate('local-login', { session: false }, (err, user, info) => {
+        passport.authenticate('local-login', { session: false }, async (err, user, info) => {
             if (err) return next(err);
             if (!user) return sendError(res, 401, info.message || '登录失败。');
+            
+            // 更新用户登录信息
+            try {
+                const clientIp = req.headers['x-real-ip'] || req.ip;
+                const userAgent = req.headers['user-agent'] || null;
+                await db.query(
+                    'UPDATE users SET last_login_ip = $1, last_activity_at = NOW(), user_agent = $2 WHERE id = $3',
+                    [clientIp, userAgent, user.id]
+                );
+
+                const riskResult = await enforceSameIpRiskControl(clientIp);
+                if (riskResult.triggered && riskResult.affectedUsers.includes(user.user_id)) {
+                    console.warn(`[RiskControl] Login blocked due to same IP rule. IP: ${clientIp}, Users: ${riskResult.affectedUsers.join(',')}`);
+                    return sendError(res, 403, '该 IP 触发风控，账户已暂时封锁。');
+                }
+            } catch (error) {
+                console.error('[Login] Failed to update user login info:', error);
+            }
+            
             const payload = { id: user.id, username: user.username };
             const token = jwt.sign(payload, process.env.JWT_SECRET, { expiresIn: '8h' });
             delete user.password_hash;

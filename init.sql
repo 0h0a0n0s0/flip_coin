@@ -62,6 +62,7 @@ CREATE TABLE users (
     referrer_code VARCHAR(8) NULL,
     last_login_ip VARCHAR(50) NULL,
     last_activity_at TIMESTAMP WITH TIME ZONE NULL,
+    user_agent TEXT NULL,
     status VARCHAR(20) NOT NULL DEFAULT 'active', 
     withdrawal_password_hash VARCHAR(100) NULL,
     has_withdrawal_password BOOLEAN NOT NULL DEFAULT false,
@@ -260,6 +261,9 @@ VALUES ('ALLOW_BSC', 'true', '是否開放 BSC 充值 (true/false)', 'Finance');
 INSERT INTO system_settings (key, value, description, category) 
 VALUES ('AUTO_WITHDRAW_THRESHOLD', '10', '自動出款門檻 (小於等於此金額將嘗試自動出款)', 'Finance');
 
+INSERT INTO system_settings (key, value, description, category)
+VALUES ('MAX_SAME_IP_USERS', '5', '同IP允許的最大用戶數，超過則觸發風控封鎖', 'Risk');
+
 -- 4. 插入本地 IP 到白名單
 INSERT INTO admin_ip_whitelist (ip_range, description) VALUES ('127.0.0.1/32', 'Localhost Access');
 INSERT INTO admin_ip_whitelist (ip_range, description) VALUES ('::1/128', 'Localhost IPv6 Access');
@@ -347,6 +351,19 @@ CREATE TABLE admin_audit_logs (
 );
 CREATE INDEX idx_admin_audit_logs_action ON admin_audit_logs(action);
 CREATE INDEX idx_admin_audit_logs_created_at ON admin_audit_logs(created_at);
+
+-- ----------------------------
+-- 建立 risk_logs (同 IP 風控觸發紀錄)
+-- ----------------------------
+CREATE TABLE risk_logs (
+    id SERIAL PRIMARY KEY,
+    ip_address VARCHAR(100) NOT NULL,
+    affected_user_ids JSONB NOT NULL,
+    action_taken VARCHAR(100) NOT NULL,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX idx_risk_logs_ip_address ON risk_logs(ip_address);
+CREATE INDEX idx_risk_logs_created_at ON risk_logs(created_at);
 
 -- ----------------------------
 -- 插入初始平台錢包數據

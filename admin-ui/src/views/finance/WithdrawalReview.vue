@@ -21,6 +21,7 @@
             <el-option label="出款完成" value="completed" />
           </el-select>
         </el-form-item>
+        
         <el-form-item label="发起时间">
           <el-date-picker
             v-model="searchParams.dateRange"
@@ -28,13 +29,11 @@
             range-separator="至"
             start-placeholder="开始时间"
             end-placeholder="结束时间"
-            format="YYYY-MM-DD HH:mm:ss"
-            value-format="YYYY-MM-DDTHH:mm:ssZ"
-            :default-time="['00:00:00', '23:59:59']"
             unlink-panels
             clearable
           />
         </el-form-item>
+        
         <el-form-item>
           <el-button type="primary" @click="handleSearch">查询</el-button>
         </el-form-item>
@@ -119,33 +118,13 @@
 import { ElMessage, ElMessageBox } from 'element-plus';
 import { InfoFilled } from '@element-plus/icons-vue';
 
-const pad = (num) => String(num).padStart(2, '0');
-const formatForPicker = (date) => {
-  const year = date.getFullYear();
-  const month = pad(date.getMonth() + 1);
-  const day = pad(date.getDate());
-  const hours = pad(date.getHours());
-  const minutes = pad(date.getMinutes());
-  const seconds = pad(date.getSeconds());
-  const offset = -date.getTimezoneOffset();
-  const sign = offset >= 0 ? '+' : '-';
-  const absOffset = Math.abs(offset);
-  const offsetHours = pad(Math.floor(absOffset / 60));
-  const offsetMinutes = pad(absOffset % 60);
-  return `${year}-${month}-${day}T${hours}:${minutes}:${seconds}${sign}${offsetHours}:${offsetMinutes}`;
-};
-const toISOString = (value) => {
-  if (!value) return undefined;
-  const parsed = new Date(value);
-  return Number.isNaN(parsed.getTime()) ? undefined : parsed.toISOString();
-};
-
+// ★★★ 关键修改：让此函数直接返回 Date 对象，而不是字符串 ★★★
 const createTodayRange = () => {
   const start = new Date();
   start.setHours(0, 0, 0, 0);
   const end = new Date();
   end.setHours(23, 59, 59, 999);
-  return [formatForPicker(start), formatForPicker(end)];
+  return [start, end];
 };
 
 export default {
@@ -163,12 +142,13 @@ export default {
         status: '',
         address: '',
         tx_hash: '',
-        dateRange: null
+        // 初始化为 Date 数组
+        dateRange: createTodayRange()
       },
     };
   },
   created() {
-    this.setDefaultDateRange();
+    // 移除 setDefaultDateRange 调用，因为 data 中已经初始化了
     this.handleSearch();
   },
   methods: {
@@ -184,26 +164,31 @@ export default {
           tx_hash: this.searchParams.tx_hash || undefined,
           user_id: this.searchParams.user_id || undefined,
         };
+
+        // ★★★ 关键修改：在发请求前，手动将 Date 对象转为 ISO 字符串 ★★★
+        // 这样 Element Plus 组件只处理 Date 对象（不会报错），而后端收到的是它想要的字符串
         if (this.searchParams.dateRange && this.searchParams.dateRange.length === 2) {
           const [start, end] = this.searchParams.dateRange;
-          const startIso = toISOString(start);
-          const endIso = toISOString(end);
-          if (startIso) { params.start_time = startIso; }
-          if (endIso) { params.end_time = endIso; }
+          // 确保是有效的 Date 对象
+          if (start instanceof Date && !isNaN(start)) {
+            params.start_time = start.toISOString();
+          }
+          if (end instanceof Date && !isNaN(end)) {
+            params.end_time = end.toISOString();
+          }
         }
+
         const response = await this.$api.getWithdrawals(params);
         this.tableData = response.list;
         this.totalItems = response.total;
       } catch (error) {
         console.error('Failed to fetch withdrawals:', error);
+        ElMessage.error('获取数据失败');
       } finally {
         this.loading = false;
       }
     },
     
-    setDefaultDateRange() {
-      this.searchParams.dateRange = createTodayRange();
-    },
     handleSearch() { this.pagination.page = 1; this.fetchData(); },
     handleSizeChange(newLimit) { this.pagination.limit = newLimit; this.pagination.page = 1; this.fetchData(); },
     handlePageChange(newPage) { this.pagination.page = newPage; this.fetchData(); },
@@ -245,7 +230,6 @@ export default {
                 inputPlaceholder: '请输入完整的交易哈希'
             }
         ).then(async ({ value: txHash }) => {
-            // (第二步：输入 Gas Fee)
             ElMessageBox.prompt(
                 '请输入 Gas 成本 (USDT)',
                 'Gas 成本',
@@ -269,12 +253,8 @@ export default {
                     console.error('Failed to complete withdrawal:', error);
                     ElMessage.error(error.response?.data?.error || '标记完成失败');
                 }
-            }).catch(() => {
-                // (用户取消，不执行任何操作)
-            });
-        }).catch(() => {
-            // (用户取消，不执行任何操作)
-        });
+            }).catch(() => {});
+        }).catch(() => {});
     },
 
     // --- (格式化辅助函数) ---
@@ -301,7 +281,7 @@ export default {
     getTxLink(chain, hash) {
         if (chain === 'TRC20') return `https://nile.tronscan.org/#/transaction/${hash}`;
         if (chain === 'BSC') return `https://testnet.bscscan.com/tx/${hash}`;
-        if (chain === 'ETH') return `https://sepolia.etherscan.io/tx/${hash}`; // Sepolia 測試网
+        if (chain === 'ETH') return `https://sepolia.etherscan.io/tx/${hash}`;
         if (chain === 'POLYGON') return `https://mumbai.polygonscan.com/tx/${hash}`;
         if (chain === 'SOL') return `https://solscan.io/tx/${hash}?cluster=testnet`;
         return '#';
@@ -320,7 +300,8 @@ export default {
 
 .search-form :deep(.el-input) { width: 180px; }
 .search-form :deep(.el-select) { width: 180px; }
-.search-form :deep(.el-date-editor) { width: 320px; }
+/* 稍微放宽日期选择器的宽度 */
+.search-form :deep(.el-date-editor) { width: 360px; }
 .title-with-tip { display: flex; align-items: center; gap: 8px; }
 .info-tag {
   display: inline-flex;

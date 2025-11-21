@@ -1,6 +1,6 @@
 <template>
   <div>
-    <h2>仪表板 (Dashboard)</h2>
+    <h2>仪表板</h2>
     <p>欢迎回来！</p>
     
     <el-card shadow="never" v-loading="loading">

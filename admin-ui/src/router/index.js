@@ -17,6 +17,7 @@ import WalletMonitoring from '../views/WalletMonitoring.vue'
 import WithdrawalReview from '../views/finance/WithdrawalReview.vue'
 import DepositHistory from '../views/finance/DepositHistory.vue'
 import GameParameters from '../views/settings/GameParameters.vue'
+import SameIpMonitor from '../views/risk/SameIpMonitor.vue'
 import BlockedRegions from '../views/settings/BlockedRegions.vue'
 import UserLevels from '../views/settings/UserLevels.vue'
 import AccountManagement from '../views/admin/AccountManagement.vue'
@@ -45,6 +46,7 @@ const routes = [
       { path: '/settings/game-parameters', name: 'GameParameters', component: GameParameters, meta: { requiresAuth: true, permission: 'settings_game:read' } },
       { path: '/settings/blocked-regions', name: 'BlockedRegions', component: BlockedRegions, meta: { requiresAuth: true, permission: 'settings_regions:read' } },
       { path: '/settings/user-levels', name: 'UserLevels', component: UserLevels, meta: { requiresAuth: true, permission: 'settings_levels:read' } },
+      { path: '/risk/same-ip', name: 'SameIpMonitor', component: SameIpMonitor, meta: { requiresAuth: true, permission: 'users:update_status' } },
       { path: '/admin/accounts', name: 'AccountManagement', component: AccountManagement, meta: { requiresAuth: true, permission: 'admin_accounts:read' } },
       { path: '/admin/permissions', name: 'Permissions', component: Permissions, meta: { requiresAuth: true, permission: 'admin_permissions:read' } },
       { path: '/admin/ip-whitelist', name: 'IpWhitelist', component: IpWhitelist, meta: { requiresAuth: true, permission: 'admin_ip_whitelist:read' } },

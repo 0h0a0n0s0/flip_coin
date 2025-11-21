@@ -21,9 +21,6 @@
             range-separator="至"
             start-placeholder="开始时间"
             end-placeholder="结束时间"
-            format="YYYY-MM-DD HH:mm:ss"
-            value-format="YYYY-MM-DDTHH:mm:ssZ"
-            :default-time="['00:00:00', '23:59:59']"
             unlink-panels
             clearable
           />
@@ -83,32 +80,12 @@
 </template>
 
 <script>
-const pad = (num) => String(num).padStart(2, '0');
-const formatForPicker = (date) => {
-  const year = date.getFullYear();
-  const month = pad(date.getMonth() + 1);
-  const day = pad(date.getDate());
-  const hours = pad(date.getHours());
-  const minutes = pad(date.getMinutes());
-  const seconds = pad(date.getSeconds());
-  const offset = -date.getTimezoneOffset();
-  const sign = offset >= 0 ? '+' : '-';
-  const absOffset = Math.abs(offset);
-  const offsetHours = pad(Math.floor(absOffset / 60));
-  const offsetMinutes = pad(absOffset % 60);
-  return `${year}-${month}-${day}T${hours}:${minutes}:${seconds}${sign}${offsetHours}:${offsetMinutes}`;
-};
-const toISOString = (value) => {
-  if (!value) return undefined;
-  const parsed = new Date(value);
-  return Number.isNaN(parsed.getTime()) ? undefined : parsed.toISOString();
-};
 const createTodayRange = () => {
   const start = new Date();
   start.setHours(0, 0, 0, 0);
   const end = new Date();
   end.setHours(23, 59, 59, 999);
-  return [formatForPicker(start), formatForPicker(end)];
+  return [start, end];
 };
 
 export default {
@@ -124,12 +101,11 @@ export default {
         user_id: '',
         status: '',
         tx_hash: '',
-        dateRange: null,
+        dateRange: createTodayRange(),
       },
     };
   },
   created() {
-    this.setDefaultDateRange();
     this.handleSearch();
   },
   methods: {
@@ -147,10 +123,12 @@ export default {
 
         if (this.searchParams.dateRange && this.searchParams.dateRange.length === 2) {
           const [start, end] = this.searchParams.dateRange;
-          const startIso = toISOString(start);
-          const endIso = toISOString(end);
-          if (startIso) { params.start_time = startIso; }
-          if (endIso) { params.end_time = endIso; }
+          if (start instanceof Date && !isNaN(start)) {
+            params.start_time = start.toISOString();
+          }
+          if (end instanceof Date && !isNaN(end)) {
+            params.end_time = end.toISOString();
+          }
         }
         // (★★★ v8.1 调用新 API ★★★)
         const response = await this.$api.getDeposits(params);
@@ -163,9 +141,6 @@ export default {
       }
     },
     
-    setDefaultDateRange() {
-      this.searchParams.dateRange = createTodayRange();
-    },
     handleSearch() { this.pagination.page = 1; this.fetchData(); },
     handleSizeChange(newLimit) { this.pagination.limit = newLimit; this.pagination.page = 1; this.fetchData(); },
     handlePageChange(newPage) { this.pagination.page = newPage; this.fetchData(); },

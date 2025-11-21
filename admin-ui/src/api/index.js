@@ -227,6 +227,34 @@ export function getAuditLogs(params) {
     });
 }
 
+export function getSameIpSummary() {
+    return request({
+        url: '/api/admin/risk/same-ip',
+        method: 'get'
+    });
+}
+
+export function getUsersByIp(ip) {
+    return request({
+        url: `/api/admin/risk/same-ip/${encodeURIComponent(ip)}/users`,
+        method: 'get'
+    });
+}
+
+export function banUsersByIp(ip) {
+    return request({
+        url: `/api/admin/risk/same-ip/${encodeURIComponent(ip)}/ban`,
+        method: 'post'
+    });
+}
+
+export function unbanUsersByIp(ip) {
+    return request({
+        url: `/api/admin/risk/same-ip/${encodeURIComponent(ip)}/unban`,
+        method: 'post'
+    });
+}
+
 // (★★★ Y-C: 新增 RBAC 相关 API ★★★)
 /**
  * @description 获取所有权限组 (Roles)

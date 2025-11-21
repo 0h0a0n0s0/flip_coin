@@ -1,6 +1,6 @@
 <template>
   <div class="ip-whitelist-container">
-    <h2>後台 IP 白名单</h2>
+    <h2>後台ip白名单</h2>
     <p class="page-description">
       <el-alert type="warning" show-icon :closable="false">
         <strong>警告：</strong> 此功能启用後，只有列表中的 IP 才能访问後台。

@@ -11,6 +11,7 @@ const checkPermission = require('../middleware/checkPermissionMiddleware');
 const superAdminOnly = checkPermission(['super_admin']);
 const settingsCacheModule = require('../services/settingsCache');
 const { recordAuditLog } = require('../services/auditLogService');
+const riskControlService = require('../services/riskControlService');
 const { maskAddress, maskTxHash } = require('../utils/maskUtils');
 
 // (★★★ v8.1 新增：用于存储 io 和 connectedUsers ★★★)
@@ -195,7 +196,7 @@ router.get('/users', authMiddleware, checkPermission('users', 'read'), async (re
                 id, user_id, username, balance,
                 current_streak, max_streak, created_at,
                 nickname, level, invite_code, referrer_code, status,
-                last_login_ip, last_activity_at
+                last_login_ip, last_activity_at, user_agent
             FROM users 
             ${whereSql}
             ORDER BY created_at DESC
@@ -290,6 +291,21 @@ router.put('/users/:id', authMiddleware, async (req, res, next) => {
         const result = await db.query(updateSql, params);
         if (result.rows.length === 0) { return res.status(404).json({ error: 'User not found.' }); }
         console.log(`[Admin Users] User ID ${result.rows[0].id} updated by ${req.user.username}`);
+        const updateFields = [];
+        if (nickname !== undefined) updateFields.push(`昵称: ${nickname}`);
+        if (level !== undefined) updateFields.push(`等级: ${level}`);
+        if (referrer_code !== undefined) updateFields.push(`推荐人: ${referrer_code || '清除'}`);
+        if (balance !== undefined) updateFields.push(`余额: ${balance}`);
+        await recordAuditLog({
+            adminId: req.user.id,
+            adminUsername: req.user.username,
+            action: 'update_user',
+            resource: 'users',
+            resourceId: id.toString(),
+            description: `更新用戶資料 (用戶ID: ${id})：${updateFields.join(', ')}`,
+            ipAddress: req.ip,
+            userAgent: req.headers['user-agent']
+        });
         res.status(200).json(result.rows[0]);
 
     } catch (error) {
@@ -342,13 +358,23 @@ router.patch('/users/:id/status', authMiddleware, checkPermission('users', 'upda
 
     try {
         const result = await db.query(
-            'UPDATE users SET status = $1 WHERE id = $2 RETURNING id, status',
+            'UPDATE users SET status = $1 WHERE id = $2 RETURNING id, status, username',
             [status, id]
         );
 
         if (result.rows.length === 0) {
             return res.status(404).json({ error: 'User not found.' });
         }
+        await recordAuditLog({
+            adminId: req.user.id,
+            adminUsername: req.user.username,
+            action: 'update_user_status',
+            resource: 'users',
+            resourceId: id.toString(),
+            description: `更新用戶狀態 (用戶ID: ${id}, 用戶名: ${result.rows[0].username || 'N/A'})：${status}`,
+            ipAddress: req.ip,
+            userAgent: req.headers['user-agent']
+        });
 
         console.log(`[Admin Users] User ID ${result.rows[0].id} status updated to ${result.rows[0].status} by ${req.user.username}`);
         res.status(200).json(result.rows[0]);
@@ -1026,6 +1052,16 @@ router.post('/accounts', authMiddleware, checkPermission('admin_accounts', 'cud'
             [username, password_hash, role_id, status]
         );
         console.log(`[Admin Accounts] Account ${username} created by ${req.user.username}`);
+        await recordAuditLog({
+            adminId: req.user.id,
+            adminUsername: req.user.username,
+            action: 'create_admin_account',
+            resource: 'admin_users',
+            resourceId: result.rows[0].id.toString(),
+            description: `新增後台帳號：${username} (角色ID: ${role_id}, 狀態: ${status})`,
+            ipAddress: req.ip,
+            userAgent: req.headers['user-agent']
+        });
         res.status(201).json(result.rows[0]);
     } catch (error) { if (error.code === '23505') { return res.status(409).json({ error: 'Username already exists.' }); } console.error('[Admin Accounts] Error creating account:', error); res.status(500).json({ error: 'Internal server error' }); }
 });
@@ -1053,6 +1089,16 @@ router.put('/accounts/:id', authMiddleware, checkPermission('admin_accounts', 'c
         }
         if (result.rows.length === 0) { return res.status(404).json({ error: 'Account not found.' }); }
         console.log(`[Admin Accounts] Account ID ${id} updated by ${req.user.username}`);
+        await recordAuditLog({
+            adminId: req.user.id,
+            adminUsername: req.user.username,
+            action: 'update_admin_account',
+            resource: 'admin_users',
+            resourceId: id.toString(),
+            description: `更新後台帳號：${username} (角色ID: ${role_id}, 狀態: ${status}${password ? ', 已更新密碼' : ''})`,
+            ipAddress: req.ip,
+            userAgent: req.headers['user-agent']
+        });
         res.status(200).json(result.rows[0]);
     } catch (error) { if (error.code === '23505') { return res.status(409).json({ error: 'Username already exists.' }); } console.error(`[Admin Accounts] Error updating account ${id}:`, error); res.status(500).json({ error: 'Internal server error' }); }
 });
@@ -1076,11 +1122,21 @@ router.delete('/accounts/:id', authMiddleware, checkPermission('admin_accounts',
     }
 
     try {
-        const result = await db.query('DELETE FROM admin_users WHERE id = $1 RETURNING id', [id]);
+        const result = await db.query('DELETE FROM admin_users WHERE id = $1 RETURNING id, username', [id]);
         if (result.rows.length === 0) {
             return res.status(404).json({ error: 'Account not found.' });
         }
         console.log(`[Admin Accounts] Account ID ${id} deleted by ${req.user.username}`);
+        await recordAuditLog({
+            adminId: req.user.id,
+            adminUsername: req.user.username,
+            action: 'delete_admin_account',
+            resource: 'admin_users',
+            resourceId: id.toString(),
+            description: `刪除後台帳號：${result.rows[0].username || id}`,
+            ipAddress: req.ip,
+            userAgent: req.headers['user-agent']
+        });
         res.status(204).send(); // No Content
     } catch (error) {
         console.error(`[Admin Accounts] Error deleting account ${id}:`, error);
@@ -1108,6 +1164,16 @@ router.post('/ip-whitelist', authMiddleware, checkPermission('admin_ip_whitelist
             'INSERT INTO admin_ip_whitelist (ip_range, description) VALUES ($1, $2) RETURNING id, ip_range::text, description, created_at', 
             [ip_range, description || null]
         );
+        await recordAuditLog({
+            adminId: req.user.id,
+            adminUsername: req.user.username,
+            action: 'add_ip_whitelist',
+            resource: 'admin_ip_whitelist',
+            resourceId: result.rows[0].id.toString(),
+            description: `新增IP白名單：${ip_range}${description ? ` (${description})` : ''}`,
+            ipAddress: req.ip,
+            userAgent: req.headers['user-agent']
+        });
         res.status(201).json(result.rows[0]);
     } catch (error) { 
         if (error.code === '23505') { return res.status(409).json({ error: 'IP range already exists.' }); }
@@ -1231,6 +1297,16 @@ router.post('/roles', authMiddleware, checkPermission('admin_permissions', 'upda
         }
         
         await client.query('COMMIT');
+        await recordAuditLog({
+            adminId: req.user.id,
+            adminUsername: req.user.username,
+            action: 'create_role',
+            resource: 'admin_roles',
+            resourceId: newRole.id.toString(),
+            description: `新增權限組：${name}${description ? ` (${description})` : ''}，包含 ${permission_ids.length} 個權限`,
+            ipAddress: req.ip,
+            userAgent: req.headers['user-agent']
+        });
         res.status(201).json(newRole);
     } catch (error) {
         await client.query('ROLLBACK');
@@ -1283,6 +1359,16 @@ router.put('/roles/:id', authMiddleware, checkPermission('admin_permissions', 'u
         }
         
         await client.query('COMMIT');
+        await recordAuditLog({
+            adminId: req.user.id,
+            adminUsername: req.user.username,
+            action: 'update_role',
+            resource: 'admin_roles',
+            resourceId: id.toString(),
+            description: `更新權限組：${name}${description ? ` (${description})` : ''}，包含 ${permission_ids.length} 個權限`,
+            ipAddress: req.ip,
+            userAgent: req.headers['user-agent']
+        });
         res.status(200).json(roleResult.rows[0]);
     } catch (error) {
         await client.query('ROLLBACK');
@@ -1308,10 +1394,20 @@ router.delete('/roles/:id', authMiddleware, checkPermission('admin_permissions',
     // (注：刪除 role 会透过 ON DELETE CASCADE 自动刪除 role_permissions, 
     // 并透过 ON DELETE SET NULL 将 admin_users.role_id 设为 null)
     try {
-        const result = await db.query('DELETE FROM admin_roles WHERE id = $1 RETURNING id', [id]);
+        const result = await db.query('DELETE FROM admin_roles WHERE id = $1 RETURNING id, name', [id]);
         if (result.rows.length === 0) {
             return res.status(404).json({ error: 'Role not found.' });
         }
+        await recordAuditLog({
+            adminId: req.user.id,
+            adminUsername: req.user.username,
+            action: 'delete_role',
+            resource: 'admin_roles',
+            resourceId: id.toString(),
+            description: `刪除權限組：${result.rows[0].name || id}`,
+            ipAddress: req.ip,
+            userAgent: req.headers['user-agent']
+        });
         res.status(204).send();
     } catch (error) {
         console.error(`[Admin RBAC] Error deleting role ${id}:`, error);
@@ -1569,7 +1665,19 @@ router.post('/withdrawals/:id/reject', authMiddleware, checkPermission('withdraw
 
         await client.query('COMMIT');
         
-        // 5. 通知用户 (如果在线)
+        // 5. 记录稽核日志
+        await recordAuditLog({
+            adminId: req.user.id,
+            adminUsername: req.user.username,
+            action: 'reject_withdrawal',
+            resource: 'withdrawals',
+            resourceId: id.toString(),
+            description: `拒絕提款 (提款單ID: ${id}, 用戶ID: ${withdrawal.user_id}, 金額: ${withdrawal.amount} USDT, 理由: ${reason})`,
+            ipAddress: req.ip,
+            userAgent: req.headers['user-agent']
+        });
+        
+        // 6. 通知用户 (如果在线)
         const updatedUser = userResult.rows[0];
         delete updatedUser.password_hash;
         if (connectedUsers && io) {
@@ -1614,6 +1722,17 @@ router.post('/withdrawals/:id/approve', authMiddleware, checkPermission('withdra
              "UPDATE platform_transactions SET status = 'processing' WHERE user_id = $1 AND type = 'withdraw_request' AND amount = $2 AND status = 'pending'",
             [result.rows[0].user_id, -Math.abs(result.rows[0].amount)]
         );
+
+        await recordAuditLog({
+            adminId: req.user.id,
+            adminUsername: req.user.username,
+            action: 'approve_withdrawal',
+            resource: 'withdrawals',
+            resourceId: id.toString(),
+            description: `批准提款 (提款單ID: ${id}, 用戶ID: ${result.rows[0].user_id}, 金額: ${result.rows[0].amount} USDT)`,
+            ipAddress: req.ip,
+            userAgent: req.headers['user-agent']
+        });
 
         res.status(200).json({ message: '提款已批准，狀态变更为 [处理中]，请手动出款' });
 
@@ -1682,6 +1801,17 @@ router.post('/withdrawals/:id/complete', authMiddleware, checkPermission('withdr
         );
 
         await client.query('COMMIT');
+
+        await recordAuditLog({
+            adminId: req.user.id,
+            adminUsername: req.user.username,
+            action: 'complete_withdrawal',
+            resource: 'withdrawals',
+            resourceId: id.toString(),
+            description: `完成提款 (提款單ID: ${id}, 用戶ID: ${withdrawal.user_id}, 金額: ${withdrawal.amount} USDT, TX Hash: ${tx_hash.trim()}, Gas Fee: ${gasFeeValue} USDT)`,
+            ipAddress: req.ip,
+            userAgent: req.headers['user-agent']
+        });
 
         res.status(200).json({ message: '提款已标记为完成' });
 
@@ -1886,19 +2016,24 @@ router.get('/audit-logs', authMiddleware, checkPermission('admin_permissions', '
                 whereClauses.push(`aal.created_at >= $${paramIndex++}`);
                 params.push(endDate);
                 whereClauses.push(`aal.created_at <= $${paramIndex++}`);
-            } catch (e) {}
+            } catch (e) {
+                console.error('[Admin Audit] Error parsing dateRange:', e);
+            }
         }
 
-        const whereSql = whereClauses.length ? `WHERE ${whereClauses.join(' AND ')}` : '';
+        const whereSql = whereClauses.length > 0 ? `WHERE ${whereClauses.join(' AND ')}` : '';
 
-        const countResult = await db.query(
-            `SELECT COUNT(*) FROM admin_audit_logs aal ${whereSql}`,
-            params
-        );
+        const countSql = `SELECT COUNT(*) as count FROM admin_audit_logs aal ${whereSql}`;
+        const countResult = await db.query(countSql, params);
         const total = parseInt(countResult.rows[0].count, 10);
+        
         if (total === 0) {
             return res.status(200).json({ total: 0, list: [] });
         }
+
+        const offset = (parseInt(page, 10) - 1) * parseInt(limit, 10);
+        params.push(parseInt(limit, 10));
+        params.push(offset);
 
         const dataSql = `
             SELECT aal.*, au.username AS admin_account
@@ -1908,9 +2043,7 @@ router.get('/audit-logs', authMiddleware, checkPermission('admin_permissions', '
             ORDER BY aal.created_at DESC
             LIMIT $${paramIndex++} OFFSET $${paramIndex++}
         `;
-        const offset = (page - 1) * limit;
-        params.push(limit);
-        params.push(offset);
+        
         const dataResult = await db.query(dataSql, params);
 
         res.status(200).json({
@@ -1919,6 +2052,51 @@ router.get('/audit-logs', authMiddleware, checkPermission('admin_permissions', '
         });
     } catch (error) {
         console.error('[Admin Audit] Error fetching logs:', error);
+        console.error('[Admin Audit] Error stack:', error.stack);
+        res.status(500).json({ error: 'Internal server error', details: error.message });
+    }
+});
+
+// ★★★ 同IP风控监控 ★★★
+router.get('/risk/same-ip', authMiddleware, checkPermission('users', 'update_status'), async (req, res) => {
+    try {
+        const summary = await riskControlService.getSameIpSummary();
+        res.status(200).json(summary);
+    } catch (error) {
+        console.error('[RiskControl] Failed to fetch same-ip summary:', error);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+router.get('/risk/same-ip/:ip/users', authMiddleware, checkPermission('users', 'update_status'), async (req, res) => {
+    try {
+        const ipAddress = decodeURIComponent(req.params.ip);
+        const users = await riskControlService.getUsersByIp(ipAddress);
+        res.status(200).json({ ip: ipAddress, list: users });
+    } catch (error) {
+        console.error('[RiskControl] Failed to fetch users by IP:', error);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+router.post('/risk/same-ip/:ip/ban', authMiddleware, checkPermission('users', 'update_status'), async (req, res) => {
+    try {
+        const ipAddress = decodeURIComponent(req.params.ip);
+        const result = await riskControlService.updateUsersStatusByIp(ipAddress, 'banned');
+        res.status(200).json({ ip: ipAddress, affectedUserIds: result.affectedUserIds || [] });
+    } catch (error) {
+        console.error('[RiskControl] Failed to ban users by IP:', error);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+router.post('/risk/same-ip/:ip/unban', authMiddleware, checkPermission('users', 'update_status'), async (req, res) => {
+    try {
+        const ipAddress = decodeURIComponent(req.params.ip);
+        const result = await riskControlService.updateUsersStatusByIp(ipAddress, 'active');
+        res.status(200).json({ ip: ipAddress, affectedUserIds: result.affectedUserIds || [] });
+    } catch (error) {
+        console.error('[RiskControl] Failed to unban users by IP:', error);
         res.status(500).json({ error: 'Internal server error' });
     }
 });

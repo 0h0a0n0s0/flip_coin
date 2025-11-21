@@ -1,6 +1,6 @@
 <template>
   <div class="report-management-container">
-    <h2>营運管理 (盈虧报表)</h2>
+    <h2>盈虧报表</h2>
 
     <el-card shadow="never" class="search-card">
       <el-form :inline="true" :model="searchParams" @submit.native.prevent="handleSearch" class="search-form">
@@ -21,10 +21,7 @@
             range-separator="至"
             start-placeholder="开始时间"
             end-placeholder="结束时间"
-            format="YYYY-MM-DD HH:mm:ss"
-            value-format="YYYY-MM-DDTHH:mm:ssZ"
             :clearable="false"
-            :default-time="['00:00:00', '23:59:59']"
             unlink-panels
           />
         </el-form-item>
@@ -107,28 +104,21 @@
 import { ElMessage } from 'element-plus';
 import { InfoFilled } from '@element-plus/icons-vue';
 
-const pad = (num) => String(num).padStart(2, '0');
-const formatForPicker = (date) => {
-  const year = date.getFullYear();
-  const month = pad(date.getMonth() + 1);
-  const day = pad(date.getDate());
-  const hours = pad(date.getHours());
-  const minutes = pad(date.getMinutes());
-  const seconds = pad(date.getSeconds());
-  const offset = -date.getTimezoneOffset();
-  const sign = offset >= 0 ? '+' : '-';
-  const absOffset = Math.abs(offset);
-  const offsetHours = pad(Math.floor(absOffset / 60));
-  const offsetMinutes = pad(absOffset % 60);
-  return `${year}-${month}-${day}T${hours}:${minutes}:${seconds}${sign}${offsetHours}:${offsetMinutes}`;
-};
-
 const createTodayRange = () => {
   const start = new Date();
   start.setHours(0, 0, 0, 0);
   const end = new Date();
   end.setHours(23, 59, 59, 999);
-  return [formatForPicker(start), formatForPicker(end)];
+  return [start, end];
+};
+
+const toIsoRange = (range) => {
+  if (!Array.isArray(range) || range.length !== 2) return null;
+  const [start, end] = range;
+  const startIso = start instanceof Date && !isNaN(start) ? start.toISOString() : null;
+  const endIso = end instanceof Date && !isNaN(end) ? end.toISOString() : null;
+  if (!startIso || !endIso) return null;
+  return [startIso, endIso];
 };
 
 export default {
@@ -140,20 +130,16 @@ export default {
     return {
       loading: false,
       searchParams: {
-        dateRange: null,
+        dateRange: createTodayRange(),
         userQuery: 'system', 
       },
       reportData: null, 
     };
   },
   created() {
-    this.setDefaultDateRange();
     this.handleSearch();
   },
   methods: {
-    setDefaultDateRange() {
-      this.searchParams.dateRange = createTodayRange();
-    },
     async handleSearch() {
       if (!this.searchParams.dateRange) {
         ElMessage.error('请选择时间范围');
@@ -167,8 +153,14 @@ export default {
       this.reportData = null; 
 
       try {
+        const isoRange = toIsoRange(this.searchParams.dateRange);
+        if (!isoRange) {
+          ElMessage.error('时间范围选择无效，请重新选择');
+          this.loading = false;
+          return;
+        }
         const params = {
-          dateRange: JSON.stringify(this.searchParams.dateRange),
+          dateRange: JSON.stringify(isoRange),
           userQuery: this.searchParams.userQuery.trim(),
         };
 

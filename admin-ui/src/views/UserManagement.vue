@@ -1,6 +1,6 @@
 <template>
   <div class="user-management-container">
-    <h2>用户管理</h2>
+    <h2>用户列表</h2>
 
     <el-card shadow="never" class="search-card">
       <el-form :inline="true" :model="searchParams" @submit.native.prevent="handleSearch" class="search-form">
@@ -88,6 +88,12 @@
         <el-table-column prop="last_login_ip" label="最新登入IP" width="150" />
         <el-table-column prop="last_activity_at" label="最新活动时间" width="180">
            <template #default="scope">{{ formatDateTime(scope.row.last_activity_at) }}</template>
+        </el-table-column>
+        <el-table-column prop="user_agent" label="User Agent" min-width="250">
+          <template #default="scope">
+            <span v-if="scope.row.user_agent" :title="scope.row.user_agent">{{ scope.row.user_agent }}</span>
+            <span v-else class="text-muted">-</span>
+          </template>
         </el-table-column>
         
         <el-table-column prop="max_streak" label="最高連胜" width="100" />
@@ -379,5 +385,9 @@ export default {
 /* (日期范围选择器需要更寬) */
 .search-form :deep(.el-date-picker) {
   width: 240px;
+}
+.text-muted {
+  color: #909399;
+  font-style: italic;
 }
 </style>

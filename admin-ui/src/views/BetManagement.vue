@@ -1,6 +1,6 @@
 <template>
   <div class="bet-management-container">
-    <h2>注单管理</h2>
+    <h2>注单列表</h2>
 
     <el-card shadow="never" class="search-card">
       <el-form :inline="true" :model="searchParams" @submit.native.prevent="handleSearch" class="search-form">
@@ -29,9 +29,6 @@
             range-separator="至"
             start-placeholder="开始时间"
             end-placeholder="结束时间"
-            format="YYYY-MM-DD HH:mm:ss"
-            value-format="YYYY-MM-DDTHH:mm:ssZ"
-            :default-time="['00:00:00', '23:59:59']"
             unlink-panels
           />
         </el-form-item>
@@ -104,28 +101,21 @@
 
 <script>
 // ( ... <script> 标签内的逻辑保持不变 ... )
-const pad = (num) => String(num).padStart(2, '0');
-const formatForPicker = (date) => {
-  const year = date.getFullYear();
-  const month = pad(date.getMonth() + 1);
-  const day = pad(date.getDate());
-  const hours = pad(date.getHours());
-  const minutes = pad(date.getMinutes());
-  const seconds = pad(date.getSeconds());
-  const offset = -date.getTimezoneOffset();
-  const sign = offset >= 0 ? '+' : '-';
-  const absOffset = Math.abs(offset);
-  const offsetHours = pad(Math.floor(absOffset / 60));
-  const offsetMinutes = pad(absOffset % 60);
-  return `${year}-${month}-${day}T${hours}:${minutes}:${seconds}${sign}${offsetHours}:${offsetMinutes}`;
-};
-
 const createTodayRange = () => {
   const start = new Date();
   start.setHours(0, 0, 0, 0);
   const end = new Date();
   end.setHours(23, 59, 59, 999);
-  return [formatForPicker(start), formatForPicker(end)];
+  return [start, end];
+};
+
+const toIsoRange = (range) => {
+  if (!Array.isArray(range) || range.length !== 2) return null;
+  const [start, end] = range;
+  const startIso = start instanceof Date && !isNaN(start) ? start.toISOString() : null;
+  const endIso = end instanceof Date && !isNaN(end) ? end.toISOString() : null;
+  if (!startIso || !endIso) return null;
+  return [startIso, endIso];
 };
 
 export default {
@@ -143,12 +133,11 @@ export default {
         betId: '',
         userId: '',
         status: '',
-        dateRange: null,
+        dateRange: createTodayRange(),
       },
     };
   },
   created() {
-    this.setDefaultDateRange();
     this.handleSearch();
   },
   methods: {
@@ -156,12 +145,13 @@ export default {
       if (this.loading) return;
       this.loading = true;
       try {
+        const isoRange = toIsoRange(this.searchParams.dateRange);
         const params = {
           ...this.pagination,
           betId: this.searchParams.betId || undefined,
           userId: this.searchParams.userId || undefined, 
           status: this.searchParams.status || undefined,
-          dateRange: this.searchParams.dateRange ? JSON.stringify(this.searchParams.dateRange) : undefined,
+          dateRange: isoRange ? JSON.stringify(isoRange) : undefined,
         };
         const response = await this.$api.getBets(params);
         this.tableData = response.list;
@@ -173,9 +163,6 @@ export default {
       }
     },
     
-    setDefaultDateRange() {
-      this.searchParams.dateRange = createTodayRange();
-    },
     handleSearch() { this.pagination.page = 1; this.fetchBets(); },
     handleSizeChange(newLimit) { this.pagination.limit = newLimit; this.pagination.page = 1; this.fetchBets(); },
     handlePageChange(newPage) { this.pagination.page = newPage; this.fetchBets(); },

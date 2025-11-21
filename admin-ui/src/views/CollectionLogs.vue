@@ -41,9 +41,7 @@
             range-separator="至"
             start-placeholder="开始时间"
             end-placeholder="结束时间"
-            value-format="YYYY-MM-DDTHH:mm:ssZ"
             clearable
-            :default-time="['00:00:00', '23:59:59']"
             unlink-panels
           />
         </el-form-item>
@@ -126,28 +124,21 @@
 <script>
 import { ElMessage } from 'element-plus';
 
-const pad = (num) => String(num).padStart(2, '0');
-const formatForPicker = (date) => {
-  const year = date.getFullYear();
-  const month = pad(date.getMonth() + 1);
-  const day = pad(date.getDate());
-  const hours = pad(date.getHours());
-  const minutes = pad(date.getMinutes());
-  const seconds = pad(date.getSeconds());
-  const offset = -date.getTimezoneOffset();
-  const sign = offset >= 0 ? '+' : '-';
-  const absOffset = Math.abs(offset);
-  const offsetHours = pad(Math.floor(absOffset / 60));
-  const offsetMinutes = pad(absOffset % 60);
-  return `${year}-${month}-${day}T${hours}:${minutes}:${seconds}${sign}${offsetHours}:${offsetMinutes}`;
-};
-
 const createTodayRange = () => {
   const start = new Date();
   start.setHours(0, 0, 0, 0);
   const end = new Date();
   end.setHours(23, 59, 59, 999);
-  return [formatForPicker(start), formatForPicker(end)];
+  return [start, end];
+};
+
+const toIsoRange = (range) => {
+  if (!Array.isArray(range) || range.length !== 2) return null;
+  const [start, end] = range;
+  const startIso = start instanceof Date && !isNaN(start) ? start.toISOString() : null;
+  const endIso = end instanceof Date && !isNaN(end) ? end.toISOString() : null;
+  if (!startIso || !endIso) return null;
+  return [startIso, endIso];
 };
 
 export default {
@@ -165,29 +156,26 @@ export default {
         user_deposit_address: '',
         collection_wallet_address: '',
         status: '',
-        dateRange: null
+        dateRange: createTodayRange()
       }
     };
   },
   created() {
-    this.setDefaultDateRange();
     this.handleSearch();
   },
   methods: {
-    setDefaultDateRange() {
-      this.searchParams.dateRange = createTodayRange();
-    },
     async fetchLogs() {
       if (this.loading) return;
       this.loading = true;
       try {
+        const isoRange = toIsoRange(this.searchParams.dateRange);
         const params = {
           ...this.pagination,
           userId: this.searchParams.userId || undefined,
           user_deposit_address: this.searchParams.user_deposit_address || undefined,
           collection_wallet_address: this.searchParams.collection_wallet_address || undefined,
           status: this.searchParams.status || undefined,
-          dateRange: this.searchParams.dateRange ? JSON.stringify(this.searchParams.dateRange) : undefined
+          dateRange: isoRange ? JSON.stringify(isoRange) : undefined
         };
         const response = await this.$api.getCollectionLogs(params);
         this.tableData = response.list;

@@ -1,6 +1,6 @@
 <template>
   <div class="wallet-monitoring-container">
-    <h2>平台钱包管理</h2> <p class="page-description">管理平台用于 充值、提現、开奖、归集 的热钱包地址。</p>
+    <h2>钱包监控</h2> <p class="page-description">管理平台用于 充值、提現、开奖、归集 的热钱包地址。</p>
 
     <el-card shadow="never" class="action-card">
        <el-button type="primary" @click="handleAdd">新增钱包</el-button>
