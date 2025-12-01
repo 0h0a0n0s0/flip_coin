@@ -13,6 +13,7 @@ const settingsCacheModule = require('../services/settingsCache');
 const { recordAuditLog } = require('../services/auditLogService');
 const riskControlService = require('../services/riskControlService');
 const { maskAddress, maskTxHash } = require('../utils/maskUtils');
+const { getClientIp } = require('../utils/ipUtils');
 
 // (★★★ v8.1 新增：用于存储 io 和 connectedUsers ★★★)
 let io = null;
@@ -303,7 +304,7 @@ router.put('/users/:id', authMiddleware, async (req, res, next) => {
             resource: 'users',
             resourceId: id.toString(),
             description: `更新用戶資料 (用戶ID: ${id})：${updateFields.join(', ')}`,
-            ipAddress: req.ip,
+            ipAddress: getClientIp(req),
             userAgent: req.headers['user-agent']
         });
         res.status(200).json(result.rows[0]);
@@ -372,7 +373,7 @@ router.patch('/users/:id/status', authMiddleware, checkPermission('users', 'upda
             resource: 'users',
             resourceId: id.toString(),
             description: `更新用戶狀態 (用戶ID: ${id}, 用戶名: ${result.rows[0].username || 'N/A'})：${status}`,
-            ipAddress: req.ip,
+            ipAddress: getClientIp(req),
             userAgent: req.headers['user-agent']
         });
 
@@ -482,7 +483,7 @@ router.get('/bets', authMiddleware, checkPermission('bets', 'read'), async (req,
             SELECT 
                 b.id, b.user_id,
                 b.game_type, b.choice, b.amount, b.status, 
-                b.bet_time, b.settle_time, 
+                b.bet_ip, b.bet_time, b.settle_time, 
                 b.tx_hash,
                 b.payout_multiplier
             ${fromSql}
@@ -683,7 +684,7 @@ router.post('/wallets', authMiddleware, checkPermission('wallets', 'cud'), async
             resource: 'platform_wallets',
             resourceId: result.rows[0].id?.toString(),
             description: `新增钱包：${result.rows[0].name} (${result.rows[0].address})`,
-            ipAddress: req.ip,
+            ipAddress: getClientIp(req),
             userAgent: req.headers['user-agent']
         });
 
@@ -726,7 +727,7 @@ router.put('/wallets/:id', authMiddleware, checkPermission('wallets', 'cud'), as
             resource: 'platform_wallets',
             resourceId: id.toString(),
             description: `更新钱包：${result.rows[0].name} (${result.rows[0].address})`,
-            ipAddress: req.ip,
+            ipAddress: getClientIp(req),
             userAgent: req.headers['user-agent']
         });
 
@@ -753,7 +754,7 @@ router.delete('/wallets/:id', authMiddleware, checkPermission('wallets', 'cud'),
             resource: 'platform_wallets',
             resourceId: id.toString(),
             description: `刪除钱包：${result.rows[0].name || ''} (${result.rows[0].address || ''})`,
-            ipAddress: req.ip,
+            ipAddress: getClientIp(req),
             userAgent: req.headers['user-agent']
         });
 
@@ -829,7 +830,7 @@ router.put('/settings/:key', authMiddleware, checkPermission('settings_game', 'u
             resource: 'system_settings',
             resourceId: key,
             description: `更新系统设定 ${key} -> ${validatedValue}`,
-            ipAddress: req.ip,
+            ipAddress: getClientIp(req),
             userAgent: req.headers['user-agent']
         });
 
@@ -1059,7 +1060,7 @@ router.post('/accounts', authMiddleware, checkPermission('admin_accounts', 'cud'
             resource: 'admin_users',
             resourceId: result.rows[0].id.toString(),
             description: `新增後台帳號：${username} (角色ID: ${role_id}, 狀態: ${status})`,
-            ipAddress: req.ip,
+            ipAddress: getClientIp(req),
             userAgent: req.headers['user-agent']
         });
         res.status(201).json(result.rows[0]);
@@ -1096,7 +1097,7 @@ router.put('/accounts/:id', authMiddleware, checkPermission('admin_accounts', 'c
             resource: 'admin_users',
             resourceId: id.toString(),
             description: `更新後台帳號：${username} (角色ID: ${role_id}, 狀態: ${status}${password ? ', 已更新密碼' : ''})`,
-            ipAddress: req.ip,
+            ipAddress: getClientIp(req),
             userAgent: req.headers['user-agent']
         });
         res.status(200).json(result.rows[0]);
@@ -1134,7 +1135,7 @@ router.delete('/accounts/:id', authMiddleware, checkPermission('admin_accounts',
             resource: 'admin_users',
             resourceId: id.toString(),
             description: `刪除後台帳號：${result.rows[0].username || id}`,
-            ipAddress: req.ip,
+            ipAddress: getClientIp(req),
             userAgent: req.headers['user-agent']
         });
         res.status(204).send(); // No Content
@@ -1171,7 +1172,7 @@ router.post('/ip-whitelist', authMiddleware, checkPermission('admin_ip_whitelist
             resource: 'admin_ip_whitelist',
             resourceId: result.rows[0].id.toString(),
             description: `新增IP白名單：${ip_range}${description ? ` (${description})` : ''}`,
-            ipAddress: req.ip,
+            ipAddress: getClientIp(req),
             userAgent: req.headers['user-agent']
         });
         res.status(201).json(result.rows[0]);
@@ -1197,7 +1198,7 @@ router.delete('/ip-whitelist/:id', authMiddleware, checkPermission('admin_ip_whi
             resource: 'admin_ip_whitelist',
             resourceId: id.toString(),
             description: `刪除IP白名單：${id}`,
-            ipAddress: req.ip,
+            ipAddress: getClientIp(req),
             userAgent: req.headers['user-agent']
         });
         res.status(204).send();
@@ -1304,7 +1305,7 @@ router.post('/roles', authMiddleware, checkPermission('admin_permissions', 'upda
             resource: 'admin_roles',
             resourceId: newRole.id.toString(),
             description: `新增權限組：${name}${description ? ` (${description})` : ''}，包含 ${permission_ids.length} 個權限`,
-            ipAddress: req.ip,
+            ipAddress: getClientIp(req),
             userAgent: req.headers['user-agent']
         });
         res.status(201).json(newRole);
@@ -1366,7 +1367,7 @@ router.put('/roles/:id', authMiddleware, checkPermission('admin_permissions', 'u
             resource: 'admin_roles',
             resourceId: id.toString(),
             description: `更新權限組：${name}${description ? ` (${description})` : ''}，包含 ${permission_ids.length} 個權限`,
-            ipAddress: req.ip,
+            ipAddress: getClientIp(req),
             userAgent: req.headers['user-agent']
         });
         res.status(200).json(roleResult.rows[0]);
@@ -1405,7 +1406,7 @@ router.delete('/roles/:id', authMiddleware, checkPermission('admin_permissions',
             resource: 'admin_roles',
             resourceId: id.toString(),
             description: `刪除權限組：${result.rows[0].name || id}`,
-            ipAddress: req.ip,
+            ipAddress: getClientIp(req),
             userAgent: req.headers['user-agent']
         });
         res.status(204).send();
@@ -1673,7 +1674,7 @@ router.post('/withdrawals/:id/reject', authMiddleware, checkPermission('withdraw
             resource: 'withdrawals',
             resourceId: id.toString(),
             description: `拒絕提款 (提款單ID: ${id}, 用戶ID: ${withdrawal.user_id}, 金額: ${withdrawal.amount} USDT, 理由: ${reason})`,
-            ipAddress: req.ip,
+            ipAddress: getClientIp(req),
             userAgent: req.headers['user-agent']
         });
         
@@ -1730,7 +1731,7 @@ router.post('/withdrawals/:id/approve', authMiddleware, checkPermission('withdra
             resource: 'withdrawals',
             resourceId: id.toString(),
             description: `批准提款 (提款單ID: ${id}, 用戶ID: ${result.rows[0].user_id}, 金額: ${result.rows[0].amount} USDT)`,
-            ipAddress: req.ip,
+            ipAddress: getClientIp(req),
             userAgent: req.headers['user-agent']
         });
 
@@ -1809,7 +1810,7 @@ router.post('/withdrawals/:id/complete', authMiddleware, checkPermission('withdr
             resource: 'withdrawals',
             resourceId: id.toString(),
             description: `完成提款 (提款單ID: ${id}, 用戶ID: ${withdrawal.user_id}, 金額: ${withdrawal.amount} USDT, TX Hash: ${tx_hash.trim()}, Gas Fee: ${gasFeeValue} USDT)`,
-            ipAddress: req.ip,
+            ipAddress: getClientIp(req),
             userAgent: req.headers['user-agent']
         });
 
@@ -2097,6 +2098,398 @@ router.post('/risk/same-ip/:ip/unban', authMiddleware, checkPermission('users', 
         res.status(200).json({ ip: ipAddress, affectedUserIds: result.affectedUserIds || [] });
     } catch (error) {
         console.error('[RiskControl] Failed to unban users by IP:', error);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+// ★★★ 登录查询 API (v9.2 新增) ★★★
+/**
+ * @description 获取登录查询列表
+ * @route GET /api/admin/login-query
+ */
+router.get('/login-query', authMiddleware, checkPermission('users', 'read'), async (req, res) => {
+    try {
+        const { userId, loginIp, registrationIp, betIp, dateRange, page = 1, limit = 20 } = req.query;
+        
+        const whereClauses = [];
+        const params = [];
+        let paramIndex = 1;
+
+        if (userId) {
+            params.push(`%${userId}%`);
+            whereClauses.push(`u.user_id::text ILIKE $${paramIndex++}`);
+        }
+
+        if (loginIp) {
+            params.push(loginIp);
+            whereClauses.push(`EXISTS (SELECT 1 FROM user_login_logs WHERE user_id = u.user_id AND login_ip = $${paramIndex++})`);
+        }
+
+        if (registrationIp) {
+            params.push(registrationIp);
+            whereClauses.push(`u.registration_ip = $${paramIndex++}`);
+        }
+
+        if (betIp) {
+            params.push(betIp);
+            whereClauses.push(`EXISTS (SELECT 1 FROM bets WHERE user_id = u.user_id AND bet_ip = $${paramIndex++})`);
+        }
+
+        if (dateRange) {
+            try {
+                const [startDate, endDate] = JSON.parse(dateRange);
+                params.push(startDate);
+                whereClauses.push(`u.created_at >= $${paramIndex++}`);
+                params.push(endDate);
+                whereClauses.push(`u.created_at <= $${paramIndex++}`);
+            } catch (e) {
+                console.error('[Login Query] Error parsing dateRange:', e);
+            }
+        }
+
+        const whereSql = whereClauses.length > 0 ? `WHERE ${whereClauses.join(' AND ')}` : '';
+
+        // 统计总数
+        const countSql = `SELECT COUNT(*) as count FROM users u ${whereSql}`;
+        const countResult = await db.query(countSql, params);
+        const total = parseInt(countResult.rows[0].count, 10);
+        
+        if (total === 0) {
+            return res.status(200).json({ total: 0, list: [] });
+        }
+
+        const offset = (parseInt(page, 10) - 1) * parseInt(limit, 10);
+        params.push(parseInt(limit, 10));
+        params.push(offset);
+
+        // 查询用户列表，包含统计信息
+        const dataSql = `
+            SELECT 
+                u.user_id,
+                u.username,
+                u.first_login_country,
+                u.registration_ip,
+                u.first_login_ip,
+                u.device_id,
+                u.created_at,
+                -- 统计同登录IP数量
+                -- 優先從登入日誌中查詢，如果沒有登入日誌，則使用首次登入IP或註冊IP來查詢
+                (
+                    SELECT COUNT(DISTINCT u2.user_id) 
+                    FROM user_login_logs ull
+                    JOIN users u2 ON ull.user_id = u2.user_id
+                    WHERE ull.login_ip IN (SELECT DISTINCT login_ip FROM user_login_logs WHERE user_id = u.user_id)
+                    AND u2.user_id != u.user_id
+                ) + 
+                -- 如果沒有登入日誌，使用首次登入IP或註冊IP來計算
+                CASE 
+                    WHEN EXISTS (SELECT 1 FROM user_login_logs WHERE user_id = u.user_id) THEN 0
+                    ELSE (
+                        SELECT COUNT(DISTINCT u2.user_id)
+                        FROM users u2
+                        WHERE u2.user_id != u.user_id
+                          AND (
+                              (u.first_login_ip IS NOT NULL AND (
+                                  u2.first_login_ip = u.first_login_ip
+                                  OR EXISTS (SELECT 1 FROM user_login_logs WHERE user_id = u2.user_id AND login_ip = u.first_login_ip)
+                              ))
+                              OR (u.first_login_ip IS NULL AND u.registration_ip IS NOT NULL AND (
+                                  u2.registration_ip = u.registration_ip
+                                  OR u2.first_login_ip = u.registration_ip
+                                  OR EXISTS (SELECT 1 FROM user_login_logs WHERE user_id = u2.user_id AND login_ip = u.registration_ip)
+                              ))
+                          )
+                    )
+                END as same_login_ip_count,
+                -- 统计同注册IP数量
+                (SELECT COUNT(*) FROM users u2 WHERE u2.registration_ip = u.registration_ip AND u2.registration_ip IS NOT NULL AND u2.user_id != u.user_id) as same_registration_ip_count,
+                -- 统计同投注IP数量
+                (SELECT COUNT(DISTINCT u2.user_id)
+                 FROM bets b
+                 JOIN users u2 ON b.user_id = u2.user_id
+                 WHERE b.bet_ip IN (SELECT DISTINCT bet_ip FROM bets WHERE user_id = u.user_id AND bet_ip IS NOT NULL)
+                 AND u2.user_id != u.user_id) as same_bet_ip_count,
+                -- 统计同注册密码数量（使用密碼指紋來比較，因為 bcrypt hash 每次都不同）
+                (SELECT COUNT(*) 
+                 FROM users u2 
+                 WHERE u2.password_fingerprint = u.password_fingerprint
+                 AND u2.user_id != u.user_id
+                 AND u.password_fingerprint IS NOT NULL) as same_registration_password_count,
+                -- 统计同提现密码数量（使用資金密碼指紋來比較）
+                (SELECT COUNT(*) 
+                 FROM users u2 
+                 WHERE u2.withdrawal_password_fingerprint = u.withdrawal_password_fingerprint
+                 AND u2.user_id != u.user_id
+                 AND u.withdrawal_password_fingerprint IS NOT NULL) as same_withdrawal_password_count,
+                -- 统计同设备ID数量
+                (SELECT COUNT(*) FROM users u2 WHERE u2.device_id = u.device_id 
+                 AND u.device_id IS NOT NULL AND u2.device_id IS NOT NULL AND u2.user_id != u.user_id) as same_device_id_count
+            FROM users u
+            ${whereSql}
+            ORDER BY u.created_at DESC
+            LIMIT $${paramIndex++} OFFSET $${paramIndex++}
+        `;
+        
+        const dataResult = await db.query(dataSql, params);
+
+        res.status(200).json({
+            total,
+            list: dataResult.rows
+        });
+    } catch (error) {
+        console.error('[Login Query] Error fetching login query data:', error);
+        console.error('[Login Query] Error stack:', error.stack);
+        res.status(500).json({ error: 'Internal server error', details: error.message });
+    }
+});
+
+/**
+ * @description 获取同登录IP的用户列表
+ * @route GET /api/admin/login-query/same-login-ip/:userId
+ */
+router.get('/login-query/same-login-ip/:userId', authMiddleware, checkPermission('users', 'read'), async (req, res) => {
+    try {
+        const { userId } = req.params;
+        
+        // 获取该用户的所有登录IP
+        const userIps = await db.query(
+            `SELECT DISTINCT login_ip FROM user_login_logs WHERE user_id = $1`,
+            [userId]
+        );
+        
+        if (userIps.rows.length === 0) {
+            return res.status(200).json({ list: [] });
+        }
+        
+        const ips = userIps.rows.map(r => r.login_ip);
+        
+        // 查询使用相同IP的其他用户
+        const result = await db.query(
+            `SELECT DISTINCT 
+                u.user_id,
+                ull.login_ip,
+                u.created_at as registration_time,
+                MAX(ull.login_at) as last_login_time
+            FROM user_login_logs ull
+            JOIN users u ON ull.user_id = u.user_id
+            WHERE ull.login_ip = ANY($1) AND u.user_id != $2
+            GROUP BY u.user_id, ull.login_ip, u.created_at
+            ORDER BY last_login_time DESC`,
+            [ips, userId]
+        );
+        
+        res.status(200).json({ list: result.rows });
+    } catch (error) {
+        console.error('[Login Query] Error fetching same login IP:', error);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+/**
+ * @description 获取同注册IP的用户列表
+ * @route GET /api/admin/login-query/same-registration-ip/:userId
+ */
+router.get('/login-query/same-registration-ip/:userId', authMiddleware, checkPermission('users', 'read'), async (req, res) => {
+    try {
+        const { userId } = req.params;
+        
+        // 获取用户的注册IP
+        const userResult = await db.query(
+            `SELECT registration_ip FROM users WHERE user_id = $1`,
+            [userId]
+        );
+        
+        if (userResult.rows.length === 0 || !userResult.rows[0].registration_ip) {
+            return res.status(200).json({ list: [] });
+        }
+        
+        const registrationIp = userResult.rows[0].registration_ip;
+        
+        // 查询使用相同注册IP的其他用户
+        const result = await db.query(
+            `SELECT 
+                u.user_id,
+                u.registration_ip,
+                u.created_at as registration_time,
+                (SELECT MAX(login_at) FROM user_login_logs WHERE user_id = u.user_id) as last_login_time
+            FROM users u
+            WHERE u.registration_ip = $1 AND u.user_id != $2
+            ORDER BY registration_time DESC`,
+            [registrationIp, userId]
+        );
+        
+        res.status(200).json({ list: result.rows });
+    } catch (error) {
+        console.error('[Login Query] Error fetching same registration IP:', error);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+/**
+ * @description 获取同投注IP的用户列表
+ * @route GET /api/admin/login-query/same-bet-ip/:userId
+ */
+router.get('/login-query/same-bet-ip/:userId', authMiddleware, checkPermission('users', 'read'), async (req, res) => {
+    try {
+        const { userId } = req.params;
+        
+        // 获取该用户的所有投注IP
+        const userBetIps = await db.query(
+            `SELECT DISTINCT bet_ip FROM bets WHERE user_id = $1 AND bet_ip IS NOT NULL`,
+            [userId]
+        );
+        
+        if (userBetIps.rows.length === 0) {
+            return res.status(200).json({ list: [] });
+        }
+        
+        const ips = userBetIps.rows.map(r => r.bet_ip);
+        
+        // 查询使用相同投注IP的其他用户
+        const result = await db.query(
+            `SELECT DISTINCT 
+                u.user_id,
+                b.bet_ip,
+                u.created_at as registration_time,
+                (SELECT MAX(login_at) FROM user_login_logs WHERE user_id = u.user_id) as last_login_time
+            FROM bets b
+            JOIN users u ON b.user_id = u.user_id
+            WHERE b.bet_ip = ANY($1) AND u.user_id != $2
+            ORDER BY last_login_time DESC`,
+            [ips, userId]
+        );
+        
+        res.status(200).json({ list: result.rows });
+    } catch (error) {
+        console.error('[Login Query] Error fetching same bet IP:', error);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+/**
+ * @description 获取同注册密码的用户列表
+ * @route GET /api/admin/login-query/same-registration-password/:userId
+ */
+router.get('/login-query/same-registration-password/:userId', authMiddleware, checkPermission('users', 'read'), async (req, res) => {
+    try {
+        const { userId } = req.params;
+        
+        // 获取用户的密碼指紋（用於比較相同密碼）
+        const userResult = await db.query(
+            `SELECT password_fingerprint FROM users WHERE user_id = $1`,
+            [userId]
+        );
+        
+        if (userResult.rows.length === 0 || !userResult.rows[0].password_fingerprint) {
+            return res.status(200).json({ list: [] });
+        }
+        
+        const passwordFingerprint = userResult.rows[0].password_fingerprint;
+        
+        // 查询使用相同註冊密碼的其他用户（使用密碼指紋來比較）
+        const result = await db.query(
+            `SELECT 
+                u.user_id,
+                CASE 
+                    WHEN LENGTH(u.password_fingerprint) >= 8 
+                    THEN SUBSTRING(u.password_fingerprint, 1, 4) || '****' || SUBSTRING(u.password_fingerprint, LENGTH(u.password_fingerprint) - 3)
+                    ELSE '****'
+                END as masked_password,
+                u.created_at as registration_time,
+                (SELECT MAX(login_at) FROM user_login_logs WHERE user_id = u.user_id) as last_login_time
+            FROM users u
+            WHERE u.password_fingerprint = $1 AND u.user_id != $2
+            ORDER BY registration_time DESC`,
+            [passwordFingerprint, userId]
+        );
+        
+        res.status(200).json({ list: result.rows });
+    } catch (error) {
+        console.error('[Login Query] Error fetching same registration password:', error);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+/**
+ * @description 获取同提现密码的用户列表
+ * @route GET /api/admin/login-query/same-withdrawal-password/:userId
+ */
+router.get('/login-query/same-withdrawal-password/:userId', authMiddleware, checkPermission('users', 'read'), async (req, res) => {
+    try {
+        const { userId } = req.params;
+        
+        // 获取用户的資金密碼指紋（用於比較相同密碼）
+        const userResult = await db.query(
+            `SELECT withdrawal_password_fingerprint FROM users WHERE user_id = $1`,
+            [userId]
+        );
+        
+        if (userResult.rows.length === 0 || !userResult.rows[0].withdrawal_password_fingerprint) {
+            return res.status(200).json({ list: [] });
+        }
+        
+        const withdrawalPasswordFingerprint = userResult.rows[0].withdrawal_password_fingerprint;
+        
+        // 查询使用相同資金密碼的其他用户（使用密碼指紋來比較）
+        const result = await db.query(
+            `SELECT 
+                u.user_id,
+                CASE 
+                    WHEN LENGTH(u.withdrawal_password_fingerprint) >= 8 
+                    THEN SUBSTRING(u.withdrawal_password_fingerprint, 1, 4) || '****' || SUBSTRING(u.withdrawal_password_fingerprint, LENGTH(u.withdrawal_password_fingerprint) - 3)
+                    ELSE '****'
+                END as masked_password,
+                u.created_at as registration_time,
+                (SELECT MAX(login_at) FROM user_login_logs WHERE user_id = u.user_id) as last_login_time
+            FROM users u
+            WHERE u.withdrawal_password_fingerprint = $1 AND u.user_id != $2
+            ORDER BY registration_time DESC`,
+            [withdrawalPasswordFingerprint, userId]
+        );
+        
+        res.status(200).json({ list: result.rows });
+    } catch (error) {
+        console.error('[Login Query] Error fetching same withdrawal password:', error);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+/**
+ * @description 获取同设备ID的用户列表
+ * @route GET /api/admin/login-query/same-device-id/:userId
+ */
+router.get('/login-query/same-device-id/:userId', authMiddleware, checkPermission('users', 'read'), async (req, res) => {
+    try {
+        const { userId } = req.params;
+        
+        // 获取用户的设备ID
+        const userResult = await db.query(
+            `SELECT device_id FROM users WHERE user_id = $1`,
+            [userId]
+        );
+        
+        if (userResult.rows.length === 0 || !userResult.rows[0].device_id) {
+            return res.status(200).json({ list: [] });
+        }
+        
+        const deviceId = userResult.rows[0].device_id;
+        
+        // 查询使用相同设备ID的其他用户
+        const result = await db.query(
+            `SELECT 
+                u.user_id,
+                u.device_id,
+                u.created_at as registration_time,
+                (SELECT MAX(login_at) FROM user_login_logs WHERE user_id = u.user_id) as last_login_time
+            FROM users u
+            WHERE u.device_id = $1 AND u.user_id != $2
+            ORDER BY registration_time DESC`,
+            [deviceId, userId]
+        );
+        
+        res.status(200).json({ list: result.rows });
+    } catch (error) {
+        console.error('[Login Query] Error fetching same device ID:', error);
         res.status(500).json({ error: 'Internal server error' });
     }
 });

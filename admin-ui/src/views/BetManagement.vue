@@ -67,6 +67,13 @@
           </template>
         </el-table-column>
         
+        <el-table-column prop="bet_ip" label="投注IP" width="150">
+          <template #default="scope">
+            <span v-if="scope.row.bet_ip">{{ scope.row.bet_ip }}</span>
+            <span v-else class="text-muted">-</span>
+          </template>
+        </el-table-column>
+        
         <el-table-column prop="bet_time" label="下注时间 (系统)" width="180">
            <template #default="scope">{{ formatDateTime(scope.row.bet_time) }}</template>
         </el-table-column>
@@ -235,6 +242,10 @@ export default {
 }
 .tx-link:hover {
   text-decoration: underline;
+}
+.text-muted {
+  color: #909399;
+  font-style: italic;
 }
 
 /* (★★★ 修改 2: 新增 CSS 规則 ★★★) */

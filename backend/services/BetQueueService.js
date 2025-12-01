@@ -26,13 +26,16 @@ class BetQueueService {
 
     /**
      * (由 API 路由调用) 将下注请求加入隊列
+     * @param {object} user - 用户对象
+     * @param {string} choice - 投注选择
+     * @param {number} amount - 投注金额
+     * @param {string} betIp - (可选) 投注IP地址
      * @returns {Promise<object>} 结算後的 Bet 物件
      */
-    addBetToQueue(user, choice, amount) {
-        // ... (此函数保持不变) ...
+    addBetToQueue(user, choice, amount, betIp = null) {
         console.log(`[v7 Queue] Received bet from ${user.user_id} ($${amount} on ${choice}). Queue size: ${this.queue.length}`);
         return new Promise((resolve, reject) => {
-            this.queue.push({ user, choice, amount, resolve, reject });
+            this.queue.push({ user, choice, amount, betIp, resolve, reject });
             this._processQueue();
         });
     }
@@ -66,7 +69,7 @@ class BetQueueService {
     /**
      * (内部) 处理单個下注的完整生命週期
      */
-    async _handleBetLifecycle({ user, choice, amount }) {
+    async _handleBetLifecycle({ user, choice, amount, betIp }) {
         const userId = user.user_id;
         let betId = null;
         let client;
@@ -97,12 +100,12 @@ class BetQueueService {
                 [amount, user.id]
             );
             
-            // 1c. 寫入 Pending 注单
+            // 1c. 寫入 Pending 注单 (★★★ v9.2 新增：记录投注IP ★★★)
             const betResult = await client.query(
-                `INSERT INTO bets (user_id, choice, amount, status, bet_time) 
-                 VALUES ($1, $2, $3, 'pending', NOW()) 
+                `INSERT INTO bets (user_id, choice, amount, status, bet_ip, bet_time) 
+                 VALUES ($1, $2, $3, 'pending', $4, NOW()) 
                  RETURNING *`,
-                [userId, choice, amount]
+                [userId, choice, amount, item.betIp || null]
             );
             betId = betResult.rows[0].id;
             

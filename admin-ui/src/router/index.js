@@ -25,6 +25,7 @@ import Permissions from '../views/admin/Permissions.vue'
 import IpWhitelist from '../views/admin/IpWhitelist.vue'
 import AuditLogs from '../views/admin/AuditLogs.vue'
 import CollectionLogs from '../views/CollectionLogs.vue'
+import LoginQuery from '../views/LoginQuery.vue'
 
 const routes = [
   { path: '/login', name: 'Login', component: Login },
@@ -37,6 +38,7 @@ const routes = [
       { path: 'dashboard', name: 'Dashboard', component: Dashboard, meta: { requiresAuth: true, permission: 'dashboard:read' } },
       { path: 'users', name: 'UserManagement', component: UserManagement, meta: { requiresAuth: true, permission: 'users:read' } },
       { path: 'users/deposit-addresses', name: 'UserDepositAddresses', component: UserDepositAddresses, meta: { requiresAuth: true, permission: 'users_addresses:read' } },
+      { path: 'users/login-query', name: 'LoginQuery', component: LoginQuery, meta: { requiresAuth: true, permission: 'users:read' } },
       { path: 'bets', name: 'BetManagement', component: BetManagement, meta: { requiresAuth: true, permission: 'bets:read' } },
       { path: 'reports', name: 'ReportManagement', component: ReportManagement, meta: { requiresAuth: true, permission: 'reports:read' } },
       { path: 'collection-logs', name: 'CollectionLogs', component: CollectionLogs, meta: { requiresAuth: true, permission: 'reports:read' } },

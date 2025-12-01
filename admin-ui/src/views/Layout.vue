@@ -26,6 +26,7 @@
             <template #title><el-icon><User /></el-icon><span>用户管理</span></template>
             <el-menu-item index="/users" v-if="$permissions.has('users', 'read')">用户列表</el-menu-item>
             <el-menu-item index="/users/deposit-addresses" v-if="$permissions.has('users_addresses', 'read')">用户充值地址</el-menu-item>
+            <el-menu-item index="/users/login-query" v-if="$permissions.has('users', 'read')">登录查询</el-menu-item>
             <el-menu-item index="/risk/same-ip" v-if="$permissions.has('users', 'update_status')">同 IP 风控监控</el-menu-item>
           </el-sub-menu>
           

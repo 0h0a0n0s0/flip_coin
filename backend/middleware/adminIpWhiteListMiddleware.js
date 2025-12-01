@@ -9,13 +9,11 @@ const forbiddenPagePath = path.join(__dirname, '../v1_frontend/403.html'); //
  */
 const adminIpWhitelistMiddleware = async (req, res, next) => {
     
-    // (★★★ 关键修改：简化 IP 获取逻辑 ★★★)
-    // 在 Nginx 中，我们设置了: proxy_set_header X-Real-IP $remote_addr;
-    // $remote_addr 是 Nginx *直接* 看到的 IP。
-    // 当你访问 localhost 时，這個 IP *不是* 你的公网 IP，
-    // 而是 Docker 网路的网关 IP (例如 172.17.0.1) 或 127.0.0.1。
-    // 我们只信任這個 Nginx 直接看到的 IP。
-    const clientIp = req.headers['x-real-ip'] || req.ip;
+    // (★★★ 关键修改：使用统一的 IP 获取函数 ★★★)
+    // 优先使用 X-Forwarded-For 的第一个 IP（真实客户端 IP）
+    // 然后使用 X-Real-IP，最后使用 req.ip
+    const { getClientIp } = require('../utils/ipUtils');
+    const clientIp = getClientIp(req);
 
     // (★★★ 关键修改：修改日志 ★★★)
     console.log(`[Admin Whitelist] Checking IP: ${clientIp} (Headers: X-Forwarded-For: ${req.headers['x-forwarded-for']}, X-Real-IP: ${req.headers['x-real-ip']}, req.ip: ${req.ip})`);

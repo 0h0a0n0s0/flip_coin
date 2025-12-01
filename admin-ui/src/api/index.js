@@ -385,3 +385,18 @@ export function getCollectionLogs(params) {
         params: params,
     });
 }
+
+// --- Login Query (v9.2 新增) ---
+export function getLoginQuery(params) {
+    return request({
+        url: '/api/admin/login-query',
+        method: 'get',
+        params: params,
+    });
+}
+export function getLoginQueryDetail(endpoint) {
+    return request({
+        url: `/api/admin${endpoint}`,
+        method: 'get',
+    });
+}

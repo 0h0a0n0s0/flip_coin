@@ -60,17 +60,35 @@ CREATE TABLE users (
     level INT NOT NULL DEFAULT 1,
     invite_code VARCHAR(8) UNIQUE NULL,
     referrer_code VARCHAR(8) NULL,
+    registration_ip VARCHAR(50) NULL,
+    first_login_ip VARCHAR(50) NULL,
+    first_login_country VARCHAR(100) NULL,
+    first_login_at TIMESTAMP WITH TIME ZONE NULL,
+    device_id VARCHAR(255) NULL,
     last_login_ip VARCHAR(50) NULL,
     last_activity_at TIMESTAMP WITH TIME ZONE NULL,
     user_agent TEXT NULL,
     status VARCHAR(20) NOT NULL DEFAULT 'active', 
     withdrawal_password_hash VARCHAR(100) NULL,
     has_withdrawal_password BOOLEAN NOT NULL DEFAULT false,
+    -- (★★★ 原始密碼欄位：記錄註冊時的密碼和首次設置資金密碼時的密碼 ★★★)
+    original_password_hash VARCHAR(100) NULL,
+    original_withdrawal_password_hash VARCHAR(100) NULL,
+    -- (★★★ 密碼指紋欄位：用於比較相同密碼（SHA256）★★★)
+    password_fingerprint VARCHAR(64) NULL,
+    withdrawal_password_fingerprint VARCHAR(64) NULL,
     last_level_up_time TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 CREATE INDEX idx_users_evm_deposit_address ON users(evm_deposit_address);
 CREATE INDEX idx_users_tron_deposit_address ON users(tron_deposit_address);
+CREATE INDEX idx_users_registration_ip ON users(registration_ip);
+CREATE INDEX idx_users_first_login_ip ON users(first_login_ip);
+CREATE INDEX idx_users_device_id ON users(device_id);
+CREATE INDEX idx_users_original_password_hash ON users(original_password_hash);
+CREATE INDEX idx_users_original_withdrawal_password_hash ON users(original_withdrawal_password_hash);
+CREATE INDEX idx_users_password_fingerprint ON users(password_fingerprint);
+CREATE INDEX idx_users_withdrawal_password_fingerprint ON users(withdrawal_password_fingerprint);
 
 -- ----------------------------
 -- 建立 bets
@@ -82,12 +100,14 @@ CREATE TABLE bets (
     choice VARCHAR(4) NOT NULL,
     amount NUMERIC NOT NULL, 
     status VARCHAR(15) NOT NULL DEFAULT 'pending',
+    bet_ip VARCHAR(50) NULL,
     bet_time TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     settle_time TIMESTAMP WITH TIME ZONE,
     tx_hash VARCHAR(66) UNIQUE, 
     payout_multiplier INT NOT NULL DEFAULT 2,
     FOREIGN KEY (user_id) REFERENCES users(user_id) ON DELETE CASCADE
 );
+CREATE INDEX idx_bets_bet_ip ON bets(bet_ip);
 
 -- ----------------------------
 -- 建立 platform_transactions
@@ -261,8 +281,8 @@ VALUES ('ALLOW_BSC', 'true', '是否開放 BSC 充值 (true/false)', 'Finance');
 INSERT INTO system_settings (key, value, description, category) 
 VALUES ('AUTO_WITHDRAW_THRESHOLD', '10', '自動出款門檻 (小於等於此金額將嘗試自動出款)', 'Finance');
 
-INSERT INTO system_settings (key, value, description, category)
-VALUES ('MAX_SAME_IP_USERS', '5', '同IP允許的最大用戶數，超過則觸發風控封鎖', 'Risk');
+INSERT INTO system_settings (key, value, description, category) 
+VALUES ('MAX_SAME_IP_USERS', '5', '同IP允許的最大用戶數，超過則觸發風控封鎖', 'RiskControl');
 
 -- 4. 插入本地 IP 到白名單
 INSERT INTO admin_ip_whitelist (ip_range, description) VALUES ('127.0.0.1/32', 'Localhost Access');
@@ -380,3 +400,20 @@ INSERT INTO platform_wallets (name, chain_type, address, is_gas_reserve, is_coll
 -- ----------------------------
 INSERT INTO collection_settings (collection_wallet_address, scan_interval_days, days_without_deposit, is_active) VALUES
 ('TQxXoL3uCx3BKTBffQLA1rExjv6a3fzaDh', 1, 7, true);
+
+-- ----------------------------
+-- 建立 user_login_logs (用戶登錄日誌表)
+-- ----------------------------
+CREATE TABLE user_login_logs (
+    id SERIAL PRIMARY KEY,
+    user_id VARCHAR(8) NOT NULL REFERENCES users(user_id) ON DELETE CASCADE,
+    login_ip VARCHAR(50) NOT NULL,
+    login_country VARCHAR(100) NULL,
+    device_id VARCHAR(255) NULL,
+    user_agent TEXT NULL,
+    login_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX idx_user_login_logs_user_id ON user_login_logs(user_id);
+CREATE INDEX idx_user_login_logs_login_ip ON user_login_logs(login_ip);
+CREATE INDEX idx_user_login_logs_login_at ON user_login_logs(login_at);
+CREATE INDEX idx_user_login_logs_device_id ON user_login_logs(device_id);

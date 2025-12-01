@@ -68,10 +68,14 @@ services:
     build: ./nginx # 指向我們剛才建立的 nginx 資料夾
     container_name: flipcoin-proxy
     ports:
-      - "8080:80" # (★★★ 關鍵 ★★★) 瀏覽器訪問 8080
+      - "${NGINX_PORT:-8080}:80" # 使用環境變數，預設 8080
     depends_on:
       - api        # 確保 Nginx 在 api 之後啟動
       - admin-ui   # 確保 Nginx 在 admin-ui 之後啟動
+    env_file:
+      - .env       # 讀取環境變數
+    environment:
+      - NGINX_SERVER_NAME=${NGINX_SERVER_NAME:-localhost} # 域名，預設 localhost
     restart: unless-stopped
 
 volumes:

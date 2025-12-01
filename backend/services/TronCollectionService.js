@@ -96,6 +96,32 @@ class TronCollectionService {
     }
 
     /**
+     * @description 检查地址是否已激活
+     * @returns {Promise<boolean>} true表示已激活，false表示未激活
+     */
+    async _isAddressActivated(address) {
+        try {
+            const account = await this.tronWeb.trx.getAccount(address);
+            // 在TRON网络中，已激活的地址会有 create_time 属性
+            // create_time 表示账户首次创建（激活）的时间戳
+            if (account && account.create_time) {
+                return true;
+            }
+            // 如果没有 create_time，说明地址未激活
+            return false;
+        } catch (error) {
+            // 如果获取账户信息失败，通常表示地址未激活
+            // TRON网络对于未激活地址，getAccount可能会返回错误或空的account对象
+            if (error.message && (error.message.includes('account') || error.message.includes('not found'))) {
+                return false;
+            }
+            // 其他错误，记录日志但假设未激活
+            console.warn(`[Collection] Error checking activation status for ${address}:`, error.message);
+            return false;
+        }
+    }
+
+    /**
      * @description 启用用户地址（转 1 TRX）
      */
     async activateAddress(toAddress) {
@@ -540,6 +566,23 @@ class TronCollectionService {
                 skippedCount++;
                 lastProcessedUserId = user.user_id;
                 continue;
+            }
+            
+            // (★★★ v9.1 新增：检查地址是否已激活，未激活才激活 ★★★)
+            const isActivated = await this._isAddressActivated(user.tron_deposit_address);
+            if (!isActivated) {
+                console.log(`[Collection] Address ${user.tron_deposit_address} is not activated. Activating...`);
+                const activationResult = await this.activateAddress(user.tron_deposit_address);
+                if (!activationResult) {
+                    console.warn(`[Collection] Failed to activate address for user ${user.user_id}. Skipping.`);
+                    skippedCount++;
+                    lastProcessedUserId = user.user_id;
+                    continue;
+                }
+                // 等待激活交易确认
+                await new Promise(resolve => setTimeout(resolve, 5000));
+            } else {
+                console.log(`[Collection] Address ${user.tron_deposit_address} is already activated. Proceeding with collection.`);
             }
             
             // 检查能量是否足够（预估）

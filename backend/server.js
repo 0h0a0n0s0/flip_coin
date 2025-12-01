@@ -15,6 +15,7 @@ const { customAlphabet } = require('nanoid');
 const passport = require('passport');
 const LocalStrategy = require('passport-local').Strategy;
 const bcrypt = require('bcryptjs');
+const crypto = require('crypto');
 const jwt = require('jsonwebtoken');
 const { Strategy: JwtStrategy, ExtractJwt } = require('passport-jwt');
 const axios = require('axios');
@@ -105,6 +106,8 @@ passport.use('local-signup', new LocalStrategy({
         }
         const salt = await bcrypt.genSalt(10);
         const password_hash = await bcrypt.hash(password, salt);
+        // 生成密碼指紋（SHA256）用於比較相同密碼
+        const password_fingerprint = crypto.createHash('sha256').update(password).digest('hex');
         const { 
             deposit_path_index, 
             evm_deposit_address, 
@@ -117,29 +120,32 @@ passport.use('local-signup', new LocalStrategy({
             if (existingId.rows.length === 0) isUserIdUnique = true;
         } while (!isUserIdUnique);
         const newInviteCode = await generateUniqueInviteCode(client); 
-        const clientIp = req.headers['x-real-ip'] || req.ip;
+        const { getClientIp } = require('./utils/ipUtils');
+        const clientIp = getClientIp(req);
         const userAgent = req.headers['user-agent'] || null;
+        
+        // (★★★ v9.2 新增：提取设备ID和注册IP相关信息 ★★★)
+        const { extractDeviceId } = require('./utils/ipUtils');
+        const deviceId = extractDeviceId(req);
+        
         const newUserResult = await client.query(
             `INSERT INTO users (
-                username, password_hash, user_id, invite_code,
+                username, password_hash, original_password_hash, password_fingerprint, user_id, invite_code,
                 deposit_path_index, evm_deposit_address, tron_deposit_address, 
-                last_login_ip, last_activity_at, user_agent
+                registration_ip, device_id, last_activity_at, user_agent
              ) 
-             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW(), $9) 
+             VALUES ($1, $2, $2, $3, $4, $5, $6, $7, $8, $9, $10, NOW(), $11) 
              RETURNING *`,
             [
-                username, password_hash, newUserId, newInviteCode,
+                username, password_hash, password_fingerprint, newUserId, newInviteCode,
                 deposit_path_index, evm_deposit_address, tron_deposit_address,
-                clientIp, userAgent
+                clientIp, deviceId, userAgent
             ]
         );
         await client.query('COMMIT'); 
         const newUser = newUserResult.rows[0];
         console.log(`[v7 Auth] New user registered: ${username} (User ID: ${newUserId}, Path: ${deposit_path_index})`);
-        if (tron_deposit_address && tronCollectionService) {
-            tronCollectionService.activateAddress(tron_deposit_address)
-                .catch(err => console.error(`[v7 Activate] Async activation failed for ${tron_deposit_address}:`, err.message));
-        }
+        // (★★★ v9.1 修改：注册时不激活地址，只在归集时按需激活 ★★★)
 
         // (Risk Control) 检查同 IP 是否超过阈值
         try {
@@ -380,13 +386,49 @@ function v1ApiRouter(router, passport) {
             if (err) return next(err);
             if (!user) return sendError(res, 401, info.message || '登录失败。');
             
-            // 更新用户登录信息
+            // (★★★ v9.2 更新：记录登录信息，包括首次登录和登录日志 ★★★)
             try {
-                const clientIp = req.headers['x-real-ip'] || req.ip;
+                const { getClientIp, extractDeviceId, getCountryFromIp } = require('./utils/ipUtils');
+                const clientIp = getClientIp(req);
+                // (★★★ 調試：記錄 IP 獲取詳情 ★★★)
+                console.log(`[Login] User ${user.user_id} login - Detected IP: ${clientIp}, Headers: X-Forwarded-For=${req.headers['x-forwarded-for']}, X-Real-IP=${req.headers['x-real-ip']}, req.ip=${req.ip}`);
                 const userAgent = req.headers['user-agent'] || null;
+                const deviceId = extractDeviceId(req);
+                const country = await getCountryFromIp(clientIp);
+                
+                // 检查是否是首次登录
+                const userInfo = await db.query(
+                    'SELECT first_login_ip, first_login_at FROM users WHERE id = $1',
+                    [user.id]
+                );
+                const isFirstLogin = !userInfo.rows[0].first_login_ip;
+                
+                if (isFirstLogin) {
+                    // 首次登录，记录首次登录信息
+                    await db.query(
+                        `UPDATE users 
+                         SET first_login_ip = $1, first_login_country = $2, first_login_at = NOW(),
+                             last_login_ip = $1, last_activity_at = NOW(), user_agent = $3,
+                             device_id = COALESCE(device_id, $4)
+                         WHERE id = $5`,
+                        [clientIp, country, userAgent, deviceId, user.id]
+                    );
+                } else {
+                    // 非首次登录，只更新最后登录信息
+                    await db.query(
+                        `UPDATE users 
+                         SET last_login_ip = $1, last_activity_at = NOW(), user_agent = $2,
+                             device_id = COALESCE(device_id, $3)
+                         WHERE id = $4`,
+                        [clientIp, userAgent, deviceId, user.id]
+                    );
+                }
+                
+                // 记录登录日志
                 await db.query(
-                    'UPDATE users SET last_login_ip = $1, last_activity_at = NOW(), user_agent = $2 WHERE id = $3',
-                    [clientIp, userAgent, user.id]
+                    `INSERT INTO user_login_logs (user_id, login_ip, login_country, device_id, user_agent) 
+                     VALUES ($1, $2, $3, $4, $5)`,
+                    [user.user_id, clientIp, country, deviceId, userAgent]
                 );
 
                 const riskResult = await enforceSameIpRiskControl(clientIp);
@@ -524,7 +566,10 @@ function v1ApiRouter(router, passport) {
              return sendError(res, 503, '投注服务暂未就绪，请稍后重试。');
         }
         try {
-            const settledBet = await betQueueService.addBetToQueue(user, choice, betAmount);
+            // (★★★ v9.2 新增：获取投注IP并传递 ★★★)
+            const { getClientIp } = require('./utils/ipUtils');
+            const betIp = getClientIp(req);
+            const settledBet = await betQueueService.addBetToQueue(user, choice, betAmount, betIp);
             res.status(200).json(settledBet);
         } catch (error) {
             console.error(`[v7 API] Bet failed for user ${user.user_id}:`, error.message);
@@ -571,9 +616,17 @@ function v1ApiRouter(router, passport) {
             }
             const salt = await bcrypt.genSalt(10);
             const withdrawal_hash = await bcrypt.hash(new_password, salt);
+            // 生成資金密碼指紋（SHA256）用於比較相同密碼
+            const withdrawal_password_fingerprint = crypto.createHash('sha256').update(new_password).digest('hex');
+            // 首次設置資金密碼時，同時保存到 original_withdrawal_password_hash 和指紋
             await db.query(
-                'UPDATE users SET withdrawal_password_hash = $1, has_withdrawal_password = true WHERE id = $2',
-                [withdrawal_hash, user.id]
+                `UPDATE users 
+                 SET withdrawal_password_hash = $1, 
+                     original_withdrawal_password_hash = COALESCE(original_withdrawal_password_hash, $1),
+                     withdrawal_password_fingerprint = COALESCE(withdrawal_password_fingerprint, $2),
+                     has_withdrawal_password = true 
+                 WHERE id = $3`,
+                [withdrawal_hash, withdrawal_password_fingerprint, user.id]
             );
             res.status(200).json({ message: '提款密码设置成功' });
         } catch (error) {

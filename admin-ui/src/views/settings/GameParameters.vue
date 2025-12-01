@@ -67,8 +67,27 @@
 
         <el-tab-pane label="风控参数" name="RiskControl">
            <el-form v-if="formGroups.RiskControl" ref="riskControlFormRef" :model="formGroups.RiskControl" label-width="200px" class="settings-form">
-              <el-empty description="無风控参数"></el-empty>
-           </el-form>
+            <el-form-item
+              label="同IP最大用户数"
+              prop="MAX_SAME_IP_USERS.value"
+              :rules="[{ required: true, message: '同IP最大用户数不能为空' }, { validator: validateInteger, trigger: 'blur' }]"
+            >
+              <el-input-number 
+                v-model="formGroups.RiskControl.MAX_SAME_IP_USERS.value" 
+                :min="1" 
+                :max="100"
+                :step="1"
+                step-strictly
+                style="width: 200px;" 
+                placeholder="请输入正整数"
+              />
+              <div class="form-tip">{{ formGroups.RiskControl.MAX_SAME_IP_USERS.description }}</div>
+            </el-form-item>
+            
+            <el-form-item>
+              <el-button type="primary" @click="handleSubmit('RiskControl')" :loading="submitLoading">储存风控参数</el-button>
+            </el-form-item>
+          </el-form>
            <el-empty v-else description="無风控参数"></el-empty>
         </el-tab-pane>
         

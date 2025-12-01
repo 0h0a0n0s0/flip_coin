@@ -7,7 +7,8 @@ const path = require('path');
 const forbiddenPagePath = path.join(__dirname, '../v1_frontend/403.html');
 
 const ipBlockerMiddleware = async (req, res, next) => {
-    const clientIp = req.ip;
+    const { getClientIp } = require('../utils/ipUtils');
+    const clientIp = getClientIp(req);
 
     if (!clientIp) {
         console.warn('[IP Blocker] Cannot determine client IP. Allowing request.');
