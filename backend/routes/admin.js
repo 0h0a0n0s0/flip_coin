@@ -120,13 +120,94 @@ router.get('/stats', authMiddleware, checkPermission('dashboard', 'read'), async
         const pendingWithdrawalsResult = await db.query("SELECT COUNT(*) FROM platform_transactions WHERE type = 'withdraw' AND status = 'pending'");
         const pendingPayouts = pendingWithdrawalsResult.rows[0].count;
 
+        // (★★★ 新增：即时线上人数 ★★★)
+        const onlineUsers = connectedUsers ? Object.keys(connectedUsers).length : 0;
+
+        // (★★★ 新增：当日/当周/当月/上月投注量和盈亏统计 ★★★)
+        const now = new Date();
+        const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+        const weekStart = new Date(todayStart);
+        weekStart.setDate(weekStart.getDate() - weekStart.getDay()); // 本周一
+        const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+        const lastMonthStart = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+        const lastMonthEnd = new Date(now.getFullYear(), now.getMonth(), 0, 23, 59, 59, 999);
+
+        // 当日统计
+        const todayStats = await db.query(`
+            SELECT 
+                COUNT(*) as bet_count,
+                COALESCE(SUM(amount), 0) as total_bet_amount,
+                COALESCE(SUM(CASE WHEN status = 'won' THEN amount * payout_multiplier ELSE 0 END), 0) as total_payout,
+                COALESCE(SUM(amount), 0) - COALESCE(SUM(CASE WHEN status = 'won' THEN amount * payout_multiplier ELSE 0 END), 0) as profit_loss
+            FROM bets 
+            WHERE bet_time >= $1
+        `, [todayStart]);
+
+        // 当周统计
+        const weekStats = await db.query(`
+            SELECT 
+                COUNT(*) as bet_count,
+                COALESCE(SUM(amount), 0) as total_bet_amount,
+                COALESCE(SUM(CASE WHEN status = 'won' THEN amount * payout_multiplier ELSE 0 END), 0) as total_payout,
+                COALESCE(SUM(amount), 0) - COALESCE(SUM(CASE WHEN status = 'won' THEN amount * payout_multiplier ELSE 0 END), 0) as profit_loss
+            FROM bets 
+            WHERE bet_time >= $1
+        `, [weekStart]);
+
+        // 当月统计
+        const monthStats = await db.query(`
+            SELECT 
+                COUNT(*) as bet_count,
+                COALESCE(SUM(amount), 0) as total_bet_amount,
+                COALESCE(SUM(CASE WHEN status = 'won' THEN amount * payout_multiplier ELSE 0 END), 0) as total_payout,
+                COALESCE(SUM(amount), 0) - COALESCE(SUM(CASE WHEN status = 'won' THEN amount * payout_multiplier ELSE 0 END), 0) as profit_loss
+            FROM bets 
+            WHERE bet_time >= $1
+        `, [monthStart]);
+
+        // 上月统计
+        const lastMonthStats = await db.query(`
+            SELECT 
+                COUNT(*) as bet_count,
+                COALESCE(SUM(amount), 0) as total_bet_amount,
+                COALESCE(SUM(CASE WHEN status = 'won' THEN amount * payout_multiplier ELSE 0 END), 0) as total_payout,
+                COALESCE(SUM(amount), 0) - COALESCE(SUM(CASE WHEN status = 'won' THEN amount * payout_multiplier ELSE 0 END), 0) as profit_loss
+            FROM bets 
+            WHERE bet_time >= $1 AND bet_time <= $2
+        `, [lastMonthStart, lastMonthEnd]);
+
         res.status(200).json({
             totalUsers: parseInt(totalUsers),
             totalBets: parseInt(totalBets),
-            pendingPayouts: parseInt(pendingPayouts) // (改为 待处理提現)
+            pendingPayouts: parseInt(pendingPayouts),
+            onlineUsers: onlineUsers, // (★★★ 新增：即时线上人数 ★★★)
+            today: {
+                betCount: parseInt(todayStats.rows[0].bet_count),
+                totalBetAmount: parseFloat(todayStats.rows[0].total_bet_amount),
+                totalPayout: parseFloat(todayStats.rows[0].total_payout),
+                profitLoss: parseFloat(todayStats.rows[0].profit_loss)
+            },
+            week: {
+                betCount: parseInt(weekStats.rows[0].bet_count),
+                totalBetAmount: parseFloat(weekStats.rows[0].total_bet_amount),
+                totalPayout: parseFloat(weekStats.rows[0].total_payout),
+                profitLoss: parseFloat(weekStats.rows[0].profit_loss)
+            },
+            month: {
+                betCount: parseInt(monthStats.rows[0].bet_count),
+                totalBetAmount: parseFloat(monthStats.rows[0].total_bet_amount),
+                totalPayout: parseFloat(monthStats.rows[0].total_payout),
+                profitLoss: parseFloat(monthStats.rows[0].profit_loss)
+            },
+            lastMonth: {
+                betCount: parseInt(lastMonthStats.rows[0].bet_count),
+                totalBetAmount: parseFloat(lastMonthStats.rows[0].total_bet_amount),
+                totalPayout: parseFloat(lastMonthStats.rows[0].total_payout),
+                profitLoss: parseFloat(lastMonthStats.rows[0].profit_loss)
+            }
         });
     } catch (error) {
-        console.error('[Admin Stats] Error fetching stats (v6):', error);
+        console.error('[Admin Stats] Error fetching stats:', error);
         res.status(500).json({ error: 'Internal server error' });
     }
 });
@@ -1879,6 +1960,127 @@ router.post('/collection/settings', authMiddleware, checkPermission('wallets', '
         res.status(200).json(result.rows[0]);
     } catch (error) {
         console.error('[Admin Collection] Error updating settings:', error);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+// ★★★ 钱包监控 - 获取各类钱包余额 ★★★
+/**
+ * @description 获取钱包监控数据（各类钱包余额）
+ * @route GET /api/admin/wallet-monitoring
+ */
+router.get('/wallet-monitoring', authMiddleware, checkPermission('wallets', 'read'), async (req, res) => {
+    try {
+        const TronWeb = require('tronweb');
+        
+        const NILE_NODE_HOST = process.env.NILE_NODE_HOST;
+        const USDT_CONTRACT_ADDRESS = process.env.USDT_CONTRACT_ADDRESS || 'TXYZopYRdj2D9XRtbG411XZZ3kM5VkAeBf';
+        const USDT_DECIMALS = 6;
+        
+        const tronWeb = new TronWeb({
+            fullHost: NILE_NODE_HOST,
+            solidityHost: NILE_NODE_HOST,
+            privateKey: '01'
+        });
+        tronWeb.setFullNode(NILE_NODE_HOST);
+        tronWeb.setSolidityNode(NILE_NODE_HOST);
+        
+        const usdtContractHex = tronWeb.address.toHex(USDT_CONTRACT_ADDRESS);
+        
+        // 获取所有 TRC20 平台钱包
+        const walletsResult = await db.query(
+            "SELECT * FROM platform_wallets WHERE chain_type = 'TRC20' AND is_active = true"
+        );
+        
+        const walletMonitoring = {
+            payout: [],      // 自动出款类型
+            collection: [],  // 归集类型
+            gasReserve: []   // Gas储备类型
+        };
+        
+        // 获取余额的辅助函数
+        const getTrxBalance = async (address) => {
+            try {
+                const balance = await tronWeb.trx.getBalance(address);
+                return parseFloat(tronWeb.fromSun(balance));
+            } catch (error) {
+                console.error(`[Wallet Monitoring] Error getting TRX balance for ${address}:`, error.message);
+                return 0;
+            }
+        };
+        
+        const getUsdtBalance = async (address) => {
+            try {
+                const addressHex = tronWeb.address.toHex(address);
+                const transaction = await tronWeb.transactionBuilder.triggerConstantContract(
+                    usdtContractHex,
+                    'balanceOf(address)',
+                    {},
+                    [{ type: 'address', value: addressHex }],
+                    addressHex
+                );
+                
+                if (!transaction || !transaction.constant_result || !transaction.constant_result[0]) {
+                    return 0;
+                }
+                
+                const balance = '0x' + transaction.constant_result[0];
+                const balanceBigInt = BigInt(balance);
+                return parseFloat(balanceBigInt.toString()) / Math.pow(10, USDT_DECIMALS);
+            } catch (error) {
+                console.error(`[Wallet Monitoring] Error getting USDT balance for ${address}:`, error.message);
+                return 0;
+            }
+        };
+        
+        const getEnergy = async (address) => {
+            try {
+                const account = await tronWeb.trx.getAccount(address);
+                return account.energy || 0;
+            } catch (error) {
+                console.error(`[Wallet Monitoring] Error getting energy for ${address}:`, error.message);
+                return 0;
+            }
+        };
+        
+        // 处理每个钱包
+        for (const wallet of walletsResult.rows) {
+            const walletInfo = {
+                id: wallet.id,
+                name: wallet.name,
+                address: wallet.address,
+                trxBalance: 0,
+                usdtBalance: 0,
+                energy: 0
+            };
+            
+            try {
+                walletInfo.trxBalance = await getTrxBalance(wallet.address);
+                walletInfo.usdtBalance = await getUsdtBalance(wallet.address);
+                
+                // 只有归集类型需要获取能量
+                if (wallet.is_collection) {
+                    walletInfo.energy = await getEnergy(wallet.address);
+                }
+            } catch (error) {
+                console.error(`[Wallet Monitoring] Error processing wallet ${wallet.address}:`, error.message);
+            }
+            
+            // 分类钱包
+            if (wallet.is_payout) {
+                walletMonitoring.payout.push(walletInfo);
+            }
+            if (wallet.is_collection) {
+                walletMonitoring.collection.push(walletInfo);
+            }
+            if (wallet.is_gas_reserve) {
+                walletMonitoring.gasReserve.push(walletInfo);
+            }
+        }
+        
+        res.status(200).json(walletMonitoring);
+    } catch (error) {
+        console.error('[Admin Wallet Monitoring] Error:', error);
         res.status(500).json({ error: 'Internal server error' });
     }
 });

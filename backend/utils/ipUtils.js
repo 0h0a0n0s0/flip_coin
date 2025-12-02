@@ -4,70 +4,182 @@
 const axios = require('axios');
 
 /**
+ * 检查IP是否为内部/私有IP
+ * @param {string} ip - IP地址
+ * @returns {boolean} 是否为内部IP
+ */
+function isInternalIp(ip) {
+    if (!ip || ip === '') return true;
+    
+    // IPv4 私有地址范围
+    if (ip.startsWith('192.168.') || 
+        ip.startsWith('10.') || 
+        ip.startsWith('172.16.') || 
+        ip.startsWith('172.17.') || 
+        ip.startsWith('172.18.') || 
+        ip.startsWith('172.19.') || 
+        ip.startsWith('172.20.') || 
+        ip.startsWith('172.21.') || 
+        ip.startsWith('172.22.') || 
+        ip.startsWith('172.23.') || 
+        ip.startsWith('172.24.') || 
+        ip.startsWith('172.25.') || 
+        ip.startsWith('172.26.') || 
+        ip.startsWith('172.27.') || 
+        ip.startsWith('172.28.') || 
+        ip.startsWith('172.29.') || 
+        ip.startsWith('172.30.') || 
+        ip.startsWith('172.31.') ||
+        ip === '127.0.0.1' || 
+        ip === '::1' ||
+        ip === 'localhost') {
+        return true;
+    }
+    
+    return false;
+}
+
+/**
  * 从请求中获取真实客户端IP地址
- * 优先级：X-Forwarded-For (第一个IP) > X-Real-IP > req.ip
+ * 优先级：CF-Connecting-IP > True-Client-IP > X-Forwarded-For (第一个非内部IP) > X-Real-IP > req.ip
+ * 处理多层代理情况：X-Forwarded-For 格式为 client, proxy1, proxy2
  * @param {object} req - Express请求对象
  * @returns {string} 客户端IP地址
  */
 function getClientIp(req) {
-    // 1. 优先使用 X-Forwarded-For（可能包含多个IP，取第一个）
+    // 检查所有可能的HTTP头（按优先级）
+    const possibleHeaders = [
+        'cf-connecting-ip',      // Cloudflare
+        'true-client-ip',        // Cloudflare Enterprise / Akamai
+        'x-forwarded-for',        // 标准代理头
+        'x-real-ip',            // Nginx
+        'x-client-ip',           // 一些代理使用
+        'x-forwarded',           // 一些代理使用
+        'forwarded-for',         // 一些代理使用
+        'forwarded'              // RFC 7239
+    ];
+    
     const forwardedFor = req.headers['x-forwarded-for'];
-    if (forwardedFor) {
-        // X-Forwarded-For 格式：client, proxy1, proxy2
-        // 取第一个IP（真实客户端IP）
-        const firstIp = forwardedFor.split(',')[0].trim();
-        // 过滤掉 Docker 内部 IP 和本地 IP
-        if (firstIp && firstIp !== '' && 
-            !firstIp.startsWith('192.168.65.') && 
-            !firstIp.startsWith('172.17.') && 
-            !firstIp.startsWith('172.18.') &&
-            firstIp !== '127.0.0.1' && 
-            firstIp !== '::1') {
-            return firstIp;
+    const realIp = req.headers['x-real-ip'];
+    const reqIp = req.ip || req.connection?.remoteAddress;
+    
+    // 调试日志（显示所有相关头）
+    const debugLog = process.env.DEBUG_IP === 'true';
+    if (debugLog) {
+        console.log(`[IP Utils Debug] All headers:`, 
+            possibleHeaders.map(h => `${h}: ${req.headers[h] || 'N/A'}`).join(', '));
+    }
+    
+    // 1. 优先检查 Cloudflare 和其他CDN的头
+    for (const headerName of ['cf-connecting-ip', 'true-client-ip']) {
+        const headerValue = req.headers[headerName];
+        if (headerValue && !isInternalIp(headerValue)) {
+            if (debugLog) {
+                console.log(`[IP Utils Debug] Selected IP from ${headerName}: ${headerValue}`);
+            }
+            return headerValue.trim();
         }
     }
     
-    // 2. 使用 X-Real-IP（Nginx 设置），但过滤掉 Docker 内部 IP
-    const realIp = req.headers['x-real-ip'];
-    if (realIp && realIp !== '' && 
-        !realIp.startsWith('192.168.65.') && 
-        !realIp.startsWith('172.17.') && 
-        !realIp.startsWith('172.18.') &&
-        realIp !== '127.0.0.1' && 
-        realIp !== '::1') {
-        return realIp;
-    }
-    
-    // 3. 如果 X-Forwarded-For 存在但都是内部 IP，尝试取最后一个（可能是真实 IP）
+    // 2. 处理 X-Forwarded-For（可能包含多个IP，格式：client, proxy1, proxy2）
     if (forwardedFor) {
         const ips = forwardedFor.split(',').map(ip => ip.trim()).filter(ip => ip);
-        // 从后往前找，跳过 Docker 内部 IP
-        for (let i = ips.length - 1; i >= 0; i--) {
-            const ip = ips[i];
-            if (ip && 
-                !ip.startsWith('192.168.65.') && 
-                !ip.startsWith('172.17.') && 
-                !ip.startsWith('172.18.') &&
-                ip !== '127.0.0.1' && 
-                ip !== '::1') {
+        
+        // 从前往后找第一个非内部IP（最左边的通常是真实客户端IP）
+        for (const ip of ips) {
+            if (!isInternalIp(ip)) {
+                if (debugLog) {
+                    console.log(`[IP Utils Debug] Selected IP from X-Forwarded-For: ${ip}`);
+                }
                 return ip;
             }
         }
+        
+        // 如果都是内部IP，尝试从后往前找（可能是多层代理的情况）
+        for (let i = ips.length - 1; i >= 0; i--) {
+            const ip = ips[i];
+            if (!isInternalIp(ip)) {
+                if (debugLog) {
+                    console.log(`[IP Utils Debug] Selected IP from X-Forwarded-For (reverse): ${ip}`);
+                }
+                return ip;
+            }
+        }
+        
+        // 如果都是内部IP，至少返回第一个（用于调试）
+        if (ips.length > 0) {
+            if (debugLog) {
+                console.log(`[IP Utils Debug] All IPs in X-Forwarded-For are internal, returning first: ${ips[0]}`);
+            }
+            return ips[0];
+        }
     }
     
-    // 4. 最后使用 req.ip（Express 的 trust proxy 设置后）
-    const reqIp = req.ip || req.connection?.remoteAddress;
-    if (reqIp && 
-        !reqIp.startsWith('192.168.65.') && 
-        !reqIp.startsWith('172.17.') && 
-        !reqIp.startsWith('172.18.') &&
-        reqIp !== '127.0.0.1' && 
-        reqIp !== '::1') {
+    // 3. 使用 X-Real-IP（Nginx 设置），但过滤掉内部 IP
+    if (realIp && !isInternalIp(realIp)) {
+        if (debugLog) {
+            console.log(`[IP Utils Debug] Selected IP from X-Real-IP: ${realIp}`);
+        }
+        return realIp;
+    }
+    
+    // 4. 检查其他可能的头
+    for (const headerName of ['x-client-ip', 'x-forwarded', 'forwarded-for']) {
+        const headerValue = req.headers[headerName];
+        if (headerValue && !isInternalIp(headerValue)) {
+            if (debugLog) {
+                console.log(`[IP Utils Debug] Selected IP from ${headerName}: ${headerValue}`);
+            }
+            return headerValue.trim();
+        }
+    }
+    
+    // 5. 最后使用 req.ip（Express 的 trust proxy 设置后）
+    if (reqIp && !isInternalIp(reqIp)) {
+        if (debugLog) {
+            console.log(`[IP Utils Debug] Selected IP from req.ip: ${reqIp}`);
+        }
         return reqIp;
     }
     
-    // 5. 如果都是内部 IP，返回第一个可用的（用于调试）
-    return forwardedFor ? forwardedFor.split(',')[0].trim() : (realIp || reqIp || 'unknown');
+    // 6. 如果都是内部IP，返回第一个可用的（用于调试）
+    const fallback = forwardedFor ? forwardedFor.split(',')[0].trim() : (realIp || reqIp || 'unknown');
+    if (debugLog) {
+        console.log(`[IP Utils Debug] Fallback IP: ${fallback}`);
+    }
+    return fallback;
+}
+
+/**
+ * 从请求中获取所有可能的客户端IP地址（包括代理链中的所有IP）
+ * 用于白名单检查，如果任何一个IP在白名单内，就允许访问
+ * @param {object} req - Express请求对象
+ * @returns {string[]} 所有可能的客户端IP地址数组
+ */
+function getAllClientIps(req) {
+    const ips = [];
+    const forwardedFor = req.headers['x-forwarded-for'];
+    const realIp = req.headers['x-real-ip'];
+    const reqIp = req.ip || req.connection?.remoteAddress;
+    
+    // 1. 从 X-Forwarded-For 中提取所有IP
+    if (forwardedFor) {
+        const forwardedIps = forwardedFor.split(',').map(ip => ip.trim()).filter(ip => ip);
+        ips.push(...forwardedIps);
+    }
+    
+    // 2. 添加 X-Real-IP（如果存在且不在列表中）
+    if (realIp && !ips.includes(realIp)) {
+        ips.push(realIp);
+    }
+    
+    // 3. 添加 req.ip（如果存在且不在列表中）
+    if (reqIp && !ips.includes(reqIp)) {
+        ips.push(reqIp);
+    }
+    
+    // 过滤掉内部IP，只返回公网IP
+    return ips.filter(ip => !isInternalIp(ip));
 }
 
 /**
@@ -132,7 +244,7 @@ function extractDeviceId(req) {
 
 module.exports = {
     getClientIp,
+    getAllClientIps,
     getCountryFromIp,
     extractDeviceId
 };
-

@@ -35,7 +35,7 @@ class KmsService {
         this.tronWeb.setSolidityNode(NILE_NODE_HOST);
         this.tronWeb.setEventServer(NILE_NODE_HOST);
         
-        this.PLATFORM_RESERVED_INDEX_UNTIL = 100;
+        this.PLATFORM_RESERVED_INDEX_UNTIL = 1000; // (★★★ 修改：平台保留索引到1000，用戶從1001開始 ★★★)
 
         console.log("✅ [v7] KmsService initialized successfully.");
     }
@@ -71,13 +71,15 @@ class KmsService {
     }
 
     async getNewDepositWallets(client) { 
-        // ... (保持不变) ...
+        // (★★★ 修改：確保新用戶從索引1001開始 ★★★)
         const result = await client.query(
             'SELECT MAX(deposit_path_index) FROM users'
         );
         const maxIndexInDb = result.rows[0].max || 0; 
+        // 確保新索引至少從 1001 開始（PLATFORM_RESERVED_INDEX_UNTIL + 1）
+        const minStartIndex = this.PLATFORM_RESERVED_INDEX_UNTIL + 1; // 1001
         const maxIndex = Math.max(maxIndexInDb, this.PLATFORM_RESERVED_INDEX_UNTIL);
-        const newIndex = maxIndex + 1;
+        const newIndex = Math.max(maxIndex + 1, minStartIndex); // 確保至少是 1001
         const evmWallet = this._deriveEvmWallet(newIndex);
         const tronWallet = this._deriveTronWallet(newIndex);
         console.log(`[KMS] Generated new wallet set for index ${newIndex}: EVM (${evmWallet.address}), TRON (${tronWallet.address})`);

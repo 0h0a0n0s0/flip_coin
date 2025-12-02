@@ -27,6 +27,14 @@ export function getDashboardStats() {
     });
 }
 
+// (★★★ 新增：获取钱包监控数据 ★★★)
+export function getWalletMonitoring() {
+    return request({
+        url: '/api/admin/wallet-monitoring',
+        method: 'get',
+    });
+}
+
 // --- User Management ---
 export function getUsers(params) {
     return request({

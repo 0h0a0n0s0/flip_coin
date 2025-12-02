@@ -9,13 +9,40 @@ const service = axios.create({
     timeout: 10000, 
 });
 
+// (新增) 用於緩存 IP，避免每次請求都查詢
+let cachedRealIp = null;
+
+// (新增) 獲取真實 IP 的異步函數
+async function getClientIp() {
+    if (cachedRealIp) return cachedRealIp;
+    try {
+        // 使用 ipify 獲取真實公網 IP
+        const response = await fetch('https://api.ipify.org?format=json');
+        if (response.ok) {
+            const data = await response.json();
+            cachedRealIp = data.ip;
+            return cachedRealIp;
+        }
+    } catch (e) {
+        console.warn('[Frontend] Failed to fetch real IP:', e);
+    }
+    return null;
+}
+
 // 请求拦截器 (Request Interceptor)
 service.interceptors.request.use(
-    (config) => {
+    async (config) => { // (注意：這裡加上 async)
         const token = localStorage.getItem('admin_token');
         if (token) {
             config.headers['Authorization'] = `Bearer ${token}`;
         }
+        
+        // (新增) 注入真實 IP 到 Header
+        const realIp = await getClientIp();
+        if (realIp) {
+            config.headers['X-Client-Real-IP'] = realIp;
+        }
+        
         return config;
     },
     (error) => {
