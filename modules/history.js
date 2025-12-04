@@ -1,11 +1,11 @@
-// 档案: modules/history.js (片段修改)
+// 历史记录渲染模块
 
 import { getHistory } from './api.js';
 
-export async function renderHistory(token) { // (★★★ 修改：传入 token ★★★)
-    if (!token) { // (★★★ 修改：检查 token ★★★)
+export async function renderHistory(token) {
+    if (!token) {
         console.log('No token provided, skipping history render.');
-        document.getElementById('historyList').innerHTML = '<li>登入後以查看历史记录</li>'; // (★★★ 修改：提示 ★★★)
+        document.getElementById('historyList').innerHTML = '<li>登入後以查看历史记录</li>';
         return;
     }
 
@@ -29,17 +29,13 @@ export async function renderHistory(token) { // (★★★ 修改：传入 token
             const choiceText = item.choice === 'head' ? '正面' : '反面';
             let statusText = '';
             
-            // (★★★ v6 修改：移除 prize_pending，因为 v6 余额是即时扣款/派发 ★★★)
             switch(item.status) {
                 case 'won': statusText = '✅ 已中奖'; break;
                 case 'lost': statusText = '❌ 未中奖'; break;
-                // case 'prize_pending': statusText = '💰 奖金待发'; break; // (v6 移除)
                 case 'pending': statusText = '⌛️ 待开奖'; break;
                 case 'failed': statusText = '⚠️ 处理失败'; break;
                 default: statusText = '⌛️ 处理中';
             }
-            
-            // (★★★ v6 修改：tx_hash 是平台开奖 hash，不再是派奖 hash ★★★)
             const txLink = item.tx_hash ? `<a href="https://sepolia.etherscan.io/tx/${item.tx_hash}" target="_blank">${item.tx_hash.substring(0, 10)}...</a>` : 'N/A';
             
             li.innerHTML = `[${betTime}] 选择: ${choiceText} | 金额: ${item.amount} | 状态: ${statusText} | 开奖TX: ${txLink}`;

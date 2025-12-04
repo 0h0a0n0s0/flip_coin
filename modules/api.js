@@ -1,9 +1,9 @@
-// 档案: modules/api.js (★★★ v6.1 中心化 Auth 版 ★★★)
+// API 请求模块
+// 统一处理所有 HTTP 请求，禁止在代码中直接使用 fetch()
 
-// (★★★ API 路径改为 /api/v1/ ★★★)
 const API_BASE_URL = '/api/v1'; 
 
-// (★★★ 獲取緩存的真實IP ★★★)
+// 获取缓存的真实IP
 async function getClientIp() {
     // 檢查sessionStorage中是否有緩存的IP
     const cachedIp = sessionStorage.getItem('cached_real_ip');
@@ -49,7 +49,7 @@ async function getClientIp() {
 
 /**
  * 统一的错误处理和请求函数
- * (★★★ 加入 token 参数和自動IP header ★★★)
+ * 自动处理 token 认证和 IP header
  */
 async function request(endpoint, options = {}) {
     const url = `${API_BASE_URL}${endpoint}`;
@@ -68,7 +68,7 @@ async function request(endpoint, options = {}) {
         config.headers['Authorization'] = `Bearer ${options.token}`;
     }
     
-    // (★★★ 新增：自動添加真實IP header ★★★)
+    // 自动添加真实IP header
     if (realIp) {
         config.headers['X-Client-Real-IP'] = realIp;
     }
@@ -106,7 +106,7 @@ async function request(endpoint, options = {}) {
     } catch (error) {
         // 5. 统一处理所有错误 (网路错误 或 上面拋出的 HTTP 错误)
         
-        // (★★★ 关键：区分 4xx 和 5xx ★★★)
+        // 区分 4xx 和 5xx 错误
         if (error.status >= 400 && error.status < 500) {
             // 4xx 错误 (例如：400 帐号重复, 401 未登入, 403 被禁止)
             // 這是可预期的业务逻辑错误，使用 console.warn
@@ -117,13 +117,13 @@ async function request(endpoint, options = {}) {
             console.error(`[API Error] ${endpoint}:`, error.message);
         }
 
-        // (★★★ 关键：将带有 status 的错误拋出给 app.js ★★★)
+        // 将带有 status 的错误抛出给调用者
         throw error; 
     }
 }
 
 /**
- * (★★★ 传统注册 ★★★)
+ * 用户注册
  * @param {string} username 
  * @param {string} password 
  * @returns {Promise<object>} { user, token }
@@ -136,7 +136,7 @@ export function register(username, password) {
 }
 
 /**
- * (★★★ 传统登入 ★★★)
+ * 用户登录
  * @param {string} username 
  * @param {string} password 
  * @returns {Promise<object>} { user, token }
@@ -149,7 +149,7 @@ export function login(username, password) {
 }
 
 /**
- * (★★★ 获取用户资讯 ★★★)
+ * 获取用户信息
  * @param {string} token 
  * @returns {Promise<object>} user (包含 balance)
  */
@@ -162,19 +162,14 @@ export function getUserInfo(token) {
 
 
 /**
- * (★★★ 获取平台名称 - 公开API，不需要token ★★★)
+ * 获取平台名称 - 公开API，不需要token
  * @returns {Promise<object>} { platform_name: string }
  */
 export async function getPlatformName() {
     try {
-        const response = await fetch(`${API_BASE_URL}/platform-name`, {
-            method: 'GET',
-            headers: { 'Content-Type': 'application/json' }
+        return await request('/platform-name', {
+            method: 'GET'
         });
-        if (!response.ok) {
-            throw new Error('Failed to fetch platform name');
-        }
-        return await response.json();
     } catch (error) {
         console.error('Failed to fetch platform name:', error);
         return { platform_name: 'FlipCoin' }; // 默认值
@@ -182,7 +177,7 @@ export async function getPlatformName() {
 }
 
 /**
- * (★★★ 使用 token 验证 ★★★)
+ * 获取投注历史
  * @param {string} token 
  * @returns {Promise<Array>} 历史记录陣列
  */
@@ -194,7 +189,7 @@ export function getHistory(token) {
 }
 
 /**
- * (★★★ 公开 API，無需 token ★★★)
+ * 获取排行榜（公开 API，无需 token）
  * @returns {Promise<Array>} 排行榜陣列
  */
 export function getLeaderboard() {
@@ -202,8 +197,7 @@ export function getLeaderboard() {
 }
 
 /**
- * (★★★ 中心化下注 ★★★)
- * (v6.2 才会實作後端)
+ * 提交下注
  * @param {string} token 
  * @param {string} choice 'head' or 'tail'
  * @param {number} amount
@@ -218,13 +212,13 @@ export function placeBet(token, choice, amount) {
 }
 
 /**
- * (★★★ 更新用户昵称 ★★★)
+ * 更新用户昵称
  * @param {string} token
  * @param {string} nickname
  * @returns {Promise<object>} updated user
  */
 export function updateNickname(token, nickname) {
-    return request('/users/nickname', { // (API 路由 /api/v1/users/nickname)
+    return request('/users/nickname', {
         method: 'PATCH',
         token: token,
         body: JSON.stringify({ nickname }),
@@ -232,13 +226,13 @@ export function updateNickname(token, nickname) {
 }
 
 /**
- * (★★★ 绑定推薦码 ★★★)
+ * 绑定推荐码
  * @param {string} token
  * @param {string} referrerCode
  * @returns {Promise<object>} updated user
  */
 export function bindReferrer(token, referrerCode) {
-    return request('/users/bind-referrer', { // (API 路由 /api/v1/users/bind-referrer)
+    return request('/users/bind-referrer', {
         method: 'POST',
         token: token,
         body: JSON.stringify({ referrer_code: referrerCode }),
@@ -246,7 +240,7 @@ export function bindReferrer(token, referrerCode) {
 }
 
 /**
- * (★★★ 设置初始提款密码 ★★★)
+ * 设置提款密码
  * @param {string} token
  * @param {string} login_password 
  * @param {string} new_password
@@ -261,7 +255,7 @@ export function setWithdrawalPassword(token, login_password, new_password) {
 }
 
 /**
- * (★★★ 修改提款密码 ★★★)
+ * 修改提款密码
  * @param {string} token
  * @param {string} old_password 
  * @param {string} new_password
@@ -288,7 +282,7 @@ export function getWithdrawalHistory(token) {
 }
 
 /**
- * (★★★ 获取用户充值历史 ★★★)
+ * 获取用户充值历史
  * @param {string} token
  * @returns {Promise<Array>} 充值历史列表
  */
