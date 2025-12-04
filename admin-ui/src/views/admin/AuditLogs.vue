@@ -1,5 +1,5 @@
 <template>
-  <div class="audit-logs-container">
+  <div class="page-container audit-logs-container">
     <h2>操作稽核日志</h2>
     <p class="page-description">
       查看所有后台操作记录，包含管理员、动作、资源与时间。

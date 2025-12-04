@@ -1,5 +1,5 @@
 <template>
-  <div class="collection-logs-container">
+  <div class="page-container collection-logs-container">
     <h2>归集记录</h2>
     <p class="page-description">查询和管理用户充值地址的归集记录。</p>
 
@@ -282,7 +282,7 @@ export default {
 .tx-hash {
   font-family: monospace;
   font-size: 12px;
-  color: #409EFF;
+  color: #237804;
   cursor: pointer;
 }
 .tx-hash:hover {

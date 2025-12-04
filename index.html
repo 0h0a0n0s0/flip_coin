@@ -6,6 +6,59 @@
   <title>Flip Coin Game</title>
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/notyf@3/notyf.min.css">
   <link rel="stylesheet" href="style.css">
+  <script>
+    // (★★★ 在應用加載前獲取真實IP，確保所有API請求都能帶上IP header ★★★)
+    (function() {
+      // 檢查是否已有緩存的IP
+      var cachedIp = sessionStorage.getItem('cached_real_ip');
+      if (cachedIp) {
+        console.log('[Frontend] Using cached IP from sessionStorage:', cachedIp);
+        return;
+      }
+
+      // IP查詢服務列表（按順序嘗試）
+      var ipServices = [
+        { url: 'https://api.seeip.org/jsonip', key: 'ip' },
+        { url: 'https://api.ipify.org?format=json', key: 'ip' },
+        { url: 'https://api.my-ip.io/ip.json', key: 'ip' },
+        { url: 'https://ipapi.co/json/', key: 'ip' }
+      ];
+
+      console.log('[Frontend] Starting IP detection...');
+      
+      // 異步獲取IP（不阻塞頁面加載）
+      (async function() {
+        for (var i = 0; i < ipServices.length; i++) {
+          var service = ipServices[i];
+          try {
+            console.log('[Frontend] Trying IP service:', service.url);
+            var controller = new AbortController();
+            var timeoutId = setTimeout(function() { controller.abort(); }, 5000);
+            
+            var response = await fetch(service.url, {
+              signal: controller.signal,
+              mode: 'cors',
+              cache: 'no-cache'
+            });
+            clearTimeout(timeoutId);
+            
+            if (response.ok) {
+              var data = await response.json();
+              var ip = data[service.key];
+              if (ip && typeof ip === 'string') {
+                console.log('[Frontend] ✅ Detected IP:', ip);
+                sessionStorage.setItem('cached_real_ip', ip);
+                return;
+              }
+            }
+          } catch (e) {
+            console.warn('[Frontend] Service failed:', service.url, e.message);
+          }
+        }
+        console.error('[Frontend] ❌ All IP services failed!');
+      })();
+    })();
+  </script>
 </head>
 <body>
 
@@ -41,7 +94,7 @@
           </div>
           
           <label><input type="radio" name="flipChoice" value="head"> 正面</label>
-          <label><input type."radio" name="flipChoice" value="tail"> 反面</label><br>
+          <label><input type="radio" name="flipChoice" value="tail"> 反面</label><br>
           <input type="number" id="betAmount" placeholder="下注金额 (USDT)" step="0.01">
           <button id="confirmBetBtn">确认下注</button>
       </section>

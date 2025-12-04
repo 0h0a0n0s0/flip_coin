@@ -4,6 +4,7 @@ const TronWeb = require('tronweb');
 const db = require('../db');
 const util = require('util');
 const axios = require('axios'); // (★★★ v8.48 新增 ★★★)
+const { logBalanceChange, CHANGE_TYPES } = require('../utils/balanceChangeLogger');
 
 // (★★★ v8.49 修正：从 .env 读取 Listener 节点 ★★★)
 const NILE_LISTENER_HOST = process.env.NILE_LISTENER_HOST;
@@ -437,6 +438,21 @@ class TronListener {
                  VALUES ($1, 'deposit', 'TRC20', $2, $3, 'completed', NOW(), NOW())`,
                 [user.user_id, amount, txID]
             );
+
+            // 4c. 记录账变
+            try {
+                await logBalanceChange({
+                    user_id: user.user_id,
+                    change_type: CHANGE_TYPES.DEPOSIT,
+                    amount: amount,
+                    balance_after: newBalance,
+                    remark: `充值 ${amount} USDT, TX Hash: ${txID}`,
+                    client: client
+                });
+            } catch (error) {
+                console.error('[TronListener] Failed to log balance change:', error);
+                // 不阻止主流程，只记录错误
+            }
 
             await client.query('COMMIT');
             

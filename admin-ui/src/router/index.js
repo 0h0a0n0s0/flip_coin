@@ -16,6 +16,7 @@ import ReportManagement from '../views/ReportManagement.vue'
 import WalletMonitoring from '../views/WalletMonitoring.vue'
 import WithdrawalReview from '../views/finance/WithdrawalReview.vue'
 import DepositHistory from '../views/finance/DepositHistory.vue'
+import BalanceChanges from '../views/finance/BalanceChanges.vue'
 import GameParameters from '../views/settings/GameParameters.vue'
 import SameIpMonitor from '../views/risk/SameIpMonitor.vue'
 import BlockedRegions from '../views/settings/BlockedRegions.vue'
@@ -35,24 +36,25 @@ const routes = [
     redirect: '/dashboard', 
     children: [
       // (★★★ 2. 添加 meta.permission 用于路由守卫 ★★★)
-      { path: 'dashboard', name: 'Dashboard', component: Dashboard, meta: { requiresAuth: true, permission: 'dashboard:read' } },
-      { path: 'users', name: 'UserManagement', component: UserManagement, meta: { requiresAuth: true, permission: 'users:read' } },
-      { path: 'users/deposit-addresses', name: 'UserDepositAddresses', component: UserDepositAddresses, meta: { requiresAuth: true, permission: 'users_addresses:read' } },
-      { path: 'users/login-query', name: 'LoginQuery', component: LoginQuery, meta: { requiresAuth: true, permission: 'users:read' } },
-      { path: 'bets', name: 'BetManagement', component: BetManagement, meta: { requiresAuth: true, permission: 'bets:read' } },
-      { path: 'reports', name: 'ReportManagement', component: ReportManagement, meta: { requiresAuth: true, permission: 'reports:read' } },
-      { path: 'collection-logs', name: 'CollectionLogs', component: CollectionLogs, meta: { requiresAuth: true, permission: 'reports:read' } },
-      { path: 'wallet-monitoring', name: 'WalletMonitoring', component: WalletMonitoring, meta: { requiresAuth: true, permission: 'wallets:read' } },
-      { path: 'finance/withdrawals', name: 'WithdrawalReview', component: WithdrawalReview, meta: { requiresAuth: true, permission: 'withdrawals:read' } },
-      { path: 'finance/deposits', name: 'DepositHistory', component: DepositHistory, meta: { requiresAuth: true, permission: 'deposits:read' } },
-      { path: '/settings/game-parameters', name: 'GameParameters', component: GameParameters, meta: { requiresAuth: true, permission: 'settings_game:read' } },
-      { path: '/settings/blocked-regions', name: 'BlockedRegions', component: BlockedRegions, meta: { requiresAuth: true, permission: 'settings_regions:read' } },
-      { path: '/settings/user-levels', name: 'UserLevels', component: UserLevels, meta: { requiresAuth: true, permission: 'settings_levels:read' } },
-      { path: '/risk/same-ip', name: 'SameIpMonitor', component: SameIpMonitor, meta: { requiresAuth: true, permission: 'users:update_status' } },
-      { path: '/admin/accounts', name: 'AccountManagement', component: AccountManagement, meta: { requiresAuth: true, permission: 'admin_accounts:read' } },
-      { path: '/admin/permissions', name: 'Permissions', component: Permissions, meta: { requiresAuth: true, permission: 'admin_permissions:read' } },
-      { path: '/admin/ip-whitelist', name: 'IpWhitelist', component: IpWhitelist, meta: { requiresAuth: true, permission: 'admin_ip_whitelist:read' } },
-      { path: '/admin/audit-logs', name: 'AuditLogs', component: AuditLogs, meta: { requiresAuth: true, permission: 'admin_permissions:read' } },
+      { path: 'dashboard', name: 'Dashboard', component: Dashboard, meta: { requiresAuth: true, permission: 'dashboard:read', title: '儀表板' } },
+      { path: 'users', name: 'UserManagement', component: UserManagement, meta: { requiresAuth: true, permission: 'users:read', title: '用户列表' } },
+      { path: 'users/deposit-addresses', name: 'UserDepositAddresses', component: UserDepositAddresses, meta: { requiresAuth: true, permission: 'users_addresses:read', title: '用户充值地址' } },
+      { path: 'users/login-query', name: 'LoginQuery', component: LoginQuery, meta: { requiresAuth: true, permission: 'users:read', title: '登录查询' } },
+      { path: 'bets', name: 'BetManagement', component: BetManagement, meta: { requiresAuth: true, permission: 'bets:read', title: '注单列表' } },
+      { path: 'reports', name: 'ReportManagement', component: ReportManagement, meta: { requiresAuth: true, permission: 'reports:read', title: '盈虧报表' } },
+      { path: 'collection-logs', name: 'CollectionLogs', component: CollectionLogs, meta: { requiresAuth: true, permission: 'reports:read', title: '归集记录' } },
+      { path: 'wallet-monitoring', name: 'WalletMonitoring', component: WalletMonitoring, meta: { requiresAuth: true, permission: 'wallets:read', title: '钱包监控' } },
+      { path: 'finance/withdrawals', name: 'WithdrawalReview', component: WithdrawalReview, meta: { requiresAuth: true, permission: 'withdrawals:read', title: '提款審核' } },
+      { path: 'finance/deposits', name: 'DepositHistory', component: DepositHistory, meta: { requiresAuth: true, permission: 'deposits:read', title: '充值记录' } },
+      { path: 'finance/balance-changes', name: 'BalanceChanges', component: BalanceChanges, meta: { requiresAuth: true, permission: 'balance_changes:read', title: '账变记录' } },
+      { path: '/settings/game-parameters', name: 'GameParameters', component: GameParameters, meta: { requiresAuth: true, permission: 'settings_game:read', title: '系统参数' } },
+      { path: '/settings/blocked-regions', name: 'BlockedRegions', component: BlockedRegions, meta: { requiresAuth: true, permission: 'settings_regions:read', title: '阻挡地区设定' } },
+      { path: '/settings/user-levels', name: 'UserLevels', component: UserLevels, meta: { requiresAuth: true, permission: 'settings_levels:read', title: '用户等级设定' } },
+      { path: '/risk/same-ip', name: 'SameIpMonitor', component: SameIpMonitor, meta: { requiresAuth: true, permission: 'users:update_status', title: '同IP风控监控' } },
+      { path: '/admin/accounts', name: 'AccountManagement', component: AccountManagement, meta: { requiresAuth: true, permission: 'admin_accounts:read', title: '帐号管理' } },
+      { path: '/admin/permissions', name: 'Permissions', component: Permissions, meta: { requiresAuth: true, permission: 'admin_permissions:read', title: '权限组设定' } },
+      { path: '/admin/ip-whitelist', name: 'IpWhitelist', component: IpWhitelist, meta: { requiresAuth: true, permission: 'admin_ip_whitelist:read', title: '後台ip白名单' } },
+      { path: '/admin/audit-logs', name: 'AuditLogs', component: AuditLogs, meta: { requiresAuth: true, permission: 'admin_permissions:read', title: '操作稽核日志' } },
     ]
   }
 ]

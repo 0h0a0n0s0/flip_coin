@@ -1,6 +1,8 @@
 <template>
-  <div class="user-management-container">
-    <h2>用户列表</h2>
+  <div class="page-container">
+    <div class="page-header">
+      <h2 class="page-title">用户列表</h2>
+    </div>
 
     <el-card shadow="never" class="search-card">
       <el-form :inline="true" :model="searchParams" @submit.native.prevent="handleSearch" class="search-form">
@@ -89,9 +91,18 @@
         <el-table-column prop="last_activity_at" label="最新活动时间" width="180">
            <template #default="scope">{{ formatDateTime(scope.row.last_activity_at) }}</template>
         </el-table-column>
-        <el-table-column prop="user_agent" label="User Agent" min-width="250">
+        <el-table-column prop="user_agent" label="User Agent" min-width="150">
           <template #default="scope">
-            <span v-if="scope.row.user_agent" :title="scope.row.user_agent">{{ scope.row.user_agent }}</span>
+            <span v-if="scope.row.user_agent">
+              <el-button 
+                type="primary" 
+                link 
+                @click="handleViewUserAgent(scope.row.user_agent)"
+                class="device-type-link"
+              >
+                {{ getDeviceType(scope.row.user_agent) }}
+              </el-button>
+            </span>
             <span v-else class="text-muted">-</span>
           </template>
         </el-table-column>
@@ -189,6 +200,37 @@
             </el-table-column>
         </el-table>
     </el-dialog>
+
+    <el-dialog
+        v-model="userAgentDialogVisible"
+        title="User Agent 資訊"
+        width="800px"
+        :close-on-click-modal="false"
+    >
+        <div class="user-agent-content">
+            <div class="user-agent-info-item">
+                <div class="info-label">裝置類型：</div>
+                <div class="info-value">{{ currentUserAgentInfo.deviceType }}</div>
+            </div>
+            <div class="user-agent-info-item">
+                <div class="info-label">作業系統：</div>
+                <div class="info-value">{{ currentUserAgentInfo.os }}</div>
+            </div>
+            <div class="user-agent-info-item">
+                <div class="info-label">瀏覽器：</div>
+                <div class="info-value">{{ currentUserAgentInfo.browser }}</div>
+            </div>
+            <div class="user-agent-info-item full-width">
+                <div class="info-label">完整 User Agent：</div>
+                <div class="info-value full-text">
+                    <pre>{{ currentUserAgentInfo.full }}</pre>
+                </div>
+            </div>
+        </div>
+        <template #footer>
+            <el-button type="primary" @click="userAgentDialogVisible = false">關閉</el-button>
+        </template>
+    </el-dialog>
     
   </div>
 </template>
@@ -239,6 +281,13 @@ export default {
         loading: false,
         inviteCode: '',
         list: []
+      },
+      userAgentDialogVisible: false,
+      currentUserAgentInfo: {
+        deviceType: '-',
+        os: '-',
+        browser: '-',
+        full: ''
       }
     };
   },
@@ -360,34 +409,196 @@ export default {
         } finally {
             this.referralData.loading = false;
         }
+    },
+    
+    getDeviceType(userAgent) {
+      if (!userAgent) return '-';
+      
+      const ua = userAgent.toLowerCase();
+      
+      // 檢測裝置類型
+      if (ua.includes('windows')) return 'Windows';
+      if (ua.includes('mac os') || ua.includes('macos')) return 'Mac';
+      if (ua.includes('android')) return 'Android';
+      if (ua.includes('iphone') || ua.includes('ipad') || ua.includes('ipod')) return 'iOS';
+      if (ua.includes('linux')) return 'Linux';
+      if (ua.includes('ubuntu')) return 'Ubuntu';
+      if (ua.includes('fedora')) return 'Fedora';
+      if (ua.includes('debian')) return 'Debian';
+      
+      return '其他';
+    },
+    
+    parseUserAgent(userAgent) {
+      if (!userAgent) {
+        return {
+          deviceType: '-',
+          os: '-',
+          browser: '-',
+          full: ''
+        };
+      }
+      
+      const ua = userAgent.toLowerCase();
+      let deviceType = '-';
+      let os = '-';
+      let browser = '-';
+      
+      // 檢測裝置類型
+      if (ua.includes('windows')) {
+        deviceType = 'Windows';
+        if (ua.includes('windows nt 10.0')) os = 'Windows 10/11';
+        else if (ua.includes('windows nt 6.3')) os = 'Windows 8.1';
+        else if (ua.includes('windows nt 6.2')) os = 'Windows 8';
+        else if (ua.includes('windows nt 6.1')) os = 'Windows 7';
+        else os = 'Windows';
+      } else if (ua.includes('mac os') || ua.includes('macos')) {
+        deviceType = 'Mac';
+        if (ua.match(/mac os x (\d+)[._](\d+)/)) {
+          const match = ua.match(/mac os x (\d+)[._](\d+)/);
+          os = `macOS ${match[1]}.${match[2]}`;
+        } else {
+          os = 'macOS';
+        }
+      } else if (ua.includes('android')) {
+        deviceType = 'Android';
+        const match = ua.match(/android ([\d.]+)/);
+        os = match ? `Android ${match[1]}` : 'Android';
+      } else if (ua.includes('iphone')) {
+        deviceType = 'iOS';
+        const match = ua.match(/os ([\d_]+)/);
+        os = match ? `iOS ${match[1].replace(/_/g, '.')}` : 'iOS';
+      } else if (ua.includes('ipad')) {
+        deviceType = 'iOS';
+        const match = ua.match(/os ([\d_]+)/);
+        os = match ? `iPadOS ${match[1].replace(/_/g, '.')}` : 'iPadOS';
+      } else if (ua.includes('ipod')) {
+        deviceType = 'iOS';
+        os = 'iOS';
+      } else if (ua.includes('linux')) {
+        deviceType = 'Linux';
+        if (ua.includes('ubuntu')) os = 'Ubuntu';
+        else if (ua.includes('fedora')) os = 'Fedora';
+        else if (ua.includes('debian')) os = 'Debian';
+        else os = 'Linux';
+      } else {
+        deviceType = '其他';
+      }
+      
+      // 檢測瀏覽器
+      if (ua.includes('edg/')) browser = 'Microsoft Edge';
+      else if (ua.includes('chrome/') && !ua.includes('edg/')) browser = 'Chrome';
+      else if (ua.includes('safari/') && !ua.includes('chrome/')) browser = 'Safari';
+      else if (ua.includes('firefox/')) browser = 'Firefox';
+      else if (ua.includes('opera/') || ua.includes('opr/')) browser = 'Opera';
+      else if (ua.includes('msie') || ua.includes('trident/')) browser = 'Internet Explorer';
+      else browser = '其他';
+      
+      return {
+        deviceType,
+        os,
+        browser,
+        full: userAgent
+      };
+    },
+    
+    handleViewUserAgent(userAgent) {
+      this.currentUserAgentInfo = this.parseUserAgent(userAgent);
+      this.userAgentDialogVisible = true;
     }
   },
 };
 </script>
 
 <style scoped>
-.search-card { margin-bottom: 20px; }
-.table-card { margin-bottom: 20px; }
-.pagination-container { margin-top: 20px; display: flex; justify-content: flex-end; }
-.el-form-item { margin-bottom: 10px; }
-.form-tip { font-size: 12px; color: #909399; margin-top: 5px; line-height: 1.2; }
+/* 使用全局样式，这里只添加页面特定样式 */
+.form-tip {
+  font-size: 12px;
+  color: var(--text-tertiary);
+  margin-top: 5px;
+  line-height: 1.5;
+}
 
-/* (★★★ 关键修复 ★★★) */
+.text-muted {
+  color: var(--text-tertiary);
+  font-style: italic;
+}
+
+/* 搜索表单输入框宽度 */
 .search-form :deep(.el-input) {
   width: 180px;
 }
 
-/* (★★★ 关键修复：新增此规則以锁定 el-select 的寬度 ★★★) */
 .search-form :deep(.el-select) {
   width: 180px;
 }
 
-/* (日期范围选择器需要更寬) */
 .search-form :deep(.el-date-picker) {
   width: 240px;
 }
-.text-muted {
-  color: #909399;
-  font-style: italic;
+
+/* 分页容器 */
+.pagination-container {
+  margin-top: var(--spacing-md);
+  display: flex;
+  justify-content: flex-end;
+}
+
+/* User Agent 裝置類型連結樣式 */
+.device-type-link {
+  color: var(--color-primary) !important;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.device-type-link:hover {
+  color: var(--color-primary-medium) !important;
+  text-decoration: underline;
+}
+
+/* User Agent 資訊彈窗樣式 */
+.user-agent-content {
+  padding: var(--spacing-md);
+}
+
+.user-agent-info-item {
+  display: flex;
+  margin-bottom: var(--spacing-base);
+  align-items: flex-start;
+}
+
+.user-agent-info-item.full-width {
+  flex-direction: column;
+}
+
+.info-label {
+  font-weight: 600;
+  color: var(--text-primary);
+  min-width: 120px;
+  margin-right: var(--spacing-sm);
+}
+
+.info-value {
+  color: var(--text-secondary);
+  flex: 1;
+  word-break: break-word;
+}
+
+.info-value.full-text {
+  margin-top: var(--spacing-sm);
+  background-color: var(--bg-tertiary);
+  padding: var(--spacing-base);
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border-light);
+}
+
+.info-value.full-text pre {
+  margin: 0;
+  white-space: pre-wrap;
+  word-wrap: break-word;
+  font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', 'Consolas', 'source-code-pro', monospace;
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--text-primary);
 }
 </style>

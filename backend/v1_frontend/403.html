@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Access Denied</title>
+    <style>
+        body { background-color: #121212; color: #f5f5f7; font-family: sans-serif; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; }
+        .container { text-align: center; border: 1px solid #333; padding: 40px; border-radius: 12px; }
+        h1 { font-size: 48px; color: #f56c6c; margin: 0; }
+        p { font-size: 18px; margin-top: 10px; }
+        .loading { font-size: 14px; color: #999; margin-top: 20px; }
+    </style>
+    <script>
+        // 自動獲取真實IP並驗證
+        (function() {
+            var detectedIp = '{{CLIENT_IP}}';
+            var ipServices = [
+                { url: 'https://api.seeip.org/jsonip', key: 'ip' },
+                { url: 'https://api.ipify.org?format=json', key: 'ip' },
+                { url: 'https://api.my-ip.io/ip.json', key: 'ip' }
+            ];
+            
+            async function getRealIp() {
+                for (var i = 0; i < ipServices.length; i++) {
+                    try {
+                        var service = ipServices[i];
+                        var controller = new AbortController();
+                        var timeoutId = setTimeout(function() { controller.abort(); }, 3000);
+                        
+                        var response = await fetch(service.url, {
+                            signal: controller.signal,
+                            mode: 'cors'
+                        });
+                        clearTimeout(timeoutId);
+                        
+                        if (response.ok) {
+                            var data = await response.json();
+                            var ip = data[service.key];
+                            if (ip) return ip;
+                        }
+                    } catch (e) {
+                        // 繼續嘗試下一個服務
+                    }
+                }
+                return null;
+            }
+            
+            async function verifyIp(ip) {
+                if (!ip) return false;
+                
+                try {
+                    // 發送驗證請求（帶上真實IP header）
+                    var response = await fetch('/admin/login', {
+                        method: 'GET',
+                        headers: {
+                            'X-Client-Real-IP': ip
+                        },
+                        redirect: 'manual' // 不自動跟隨重定向
+                    });
+                    
+                    // 如果返回200或302，說明IP在白名單
+                    return response.status === 200 || response.status === 302;
+                } catch (e) {
+                    return false;
+                }
+            }
+            
+            // 自動驗證流程
+            (async function() {
+                var loadingMsg = document.getElementById('loading');
+                if (loadingMsg) {
+                    loadingMsg.textContent = '正在驗證您的IP地址...';
+                }
+                
+                var realIp = await getRealIp();
+                if (realIp && realIp !== detectedIp) {
+                    console.log('[403 Page] Detected real IP:', realIp, 'vs detected:', detectedIp);
+                    if (loadingMsg) {
+                        loadingMsg.textContent = '檢測到IP: ' + realIp + '，正在驗證...';
+                    }
+                    
+                    var isValid = await verifyIp(realIp);
+                    if (isValid) {
+                        if (loadingMsg) {
+                            loadingMsg.textContent = 'IP驗證成功，正在跳轉...';
+                        }
+                        // IP在白名單，重定向到登錄頁面
+                        setTimeout(function() {
+                            window.location.href = '/admin/login';
+                        }, 1000);
+                        return;
+                    }
+                }
+                
+                if (loadingMsg) {
+                    loadingMsg.textContent = 'IP驗證失敗，請聯繫管理員';
+                }
+            })();
+        })();
+    </script>
+</head>
+<body>
+    <div class="container">
+        <h1>403</h1>
+        <p>Access Denied from your region.</p>
+        <p>您所在的地区無法访问此服务。</p>
+        <p style="margin-top: 20px; font-size: 14px; color: #999;">IP : {{CLIENT_IP}}</p>
+        <p id="loading" class="loading">正在驗證您的IP地址...</p>
+    </div>
+</body>
+</html>
+

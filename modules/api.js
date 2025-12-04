@@ -3,12 +3,59 @@
 // (★★★ API 路径改为 /api/v1/ ★★★)
 const API_BASE_URL = '/api/v1'; 
 
+// (★★★ 獲取緩存的真實IP ★★★)
+async function getClientIp() {
+    // 檢查sessionStorage中是否有緩存的IP
+    const cachedIp = sessionStorage.getItem('cached_real_ip');
+    if (cachedIp) {
+        return cachedIp;
+    }
+    
+    // 如果沒有緩存，嘗試獲取
+    const ipServices = [
+        { url: 'https://api.seeip.org/jsonip', key: 'ip' },
+        { url: 'https://api.ipify.org?format=json', key: 'ip' },
+        { url: 'https://api.my-ip.io/ip.json', key: 'ip' },
+        { url: 'https://ipapi.co/json/', key: 'ip' }
+    ];
+    
+    for (const service of ipServices) {
+        try {
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), 3000);
+            
+            const response = await fetch(service.url, {
+                signal: controller.signal,
+                mode: 'cors',
+                cache: 'no-cache'
+            });
+            clearTimeout(timeoutId);
+            
+            if (response.ok) {
+                const data = await response.json();
+                const ip = data[service.key];
+                if (ip && typeof ip === 'string') {
+                    sessionStorage.setItem('cached_real_ip', ip);
+                    return ip;
+                }
+            }
+        } catch (e) {
+            // 繼續嘗試下一個服務
+        }
+    }
+    
+    return null;
+}
+
 /**
  * 统一的错误处理和请求函数
- * (★★★ 加入 token 参数 ★★★)
+ * (★★★ 加入 token 参数和自動IP header ★★★)
  */
 async function request(endpoint, options = {}) {
     const url = `${API_BASE_URL}${endpoint}`;
+    
+    // 獲取真實IP並添加到headers
+    const realIp = await getClientIp();
     
     const config = {
         headers: {
@@ -19,6 +66,11 @@ async function request(endpoint, options = {}) {
 
     if (options.token) {
         config.headers['Authorization'] = `Bearer ${options.token}`;
+    }
+    
+    // (★★★ 新增：自動添加真實IP header ★★★)
+    if (realIp) {
+        config.headers['X-Client-Real-IP'] = realIp;
     }
 
     try {
@@ -108,6 +160,26 @@ export function getUserInfo(token) {
     });
 }
 
+
+/**
+ * (★★★ 获取平台名称 - 公开API，不需要token ★★★)
+ * @returns {Promise<object>} { platform_name: string }
+ */
+export async function getPlatformName() {
+    try {
+        const response = await fetch(`${API_BASE_URL}/platform-name`, {
+            method: 'GET',
+            headers: { 'Content-Type': 'application/json' }
+        });
+        if (!response.ok) {
+            throw new Error('Failed to fetch platform name');
+        }
+        return await response.json();
+    } catch (error) {
+        console.error('Failed to fetch platform name:', error);
+        return { platform_name: 'FlipCoin' }; // 默认值
+    }
+}
 
 /**
  * (★★★ 使用 token 验证 ★★★)

@@ -296,9 +296,9 @@ to { transform: rotateY(360deg); }
       font-size: 24px; /* 缩小标题字体 */
   }
 
-  /* 让 Header 右侧按钮区块也堆叠 */
+  /* 让 Header 右侧按钮区块对齐到右边 */
   header div {
-      flex-wrap: wrap; /* 允许换行 */
+      justify-content: flex-end; /* 将按钮对齐到右边并排 */
       gap: 10px;
   }
 
@@ -349,7 +349,7 @@ to { transform: rotateY(360deg); }
 
   header div {
       width: 100%; /* 让按钮区块占满寬度 */
-      justify-content: space-between; /* 将按钮推向两侧 */
+      justify-content: flex-end; /* 将按钮对齐到右边并排 */
   }
   #userIdDisplay, #userWalletAddressDisplay {
      flex-grow: 1; /* 允许文字区块伸展 */
@@ -386,14 +386,23 @@ to { transform: rotateY(360deg); }
   /* 投注选项和按钮 */
   #gameSection label {
       font-size: 16px;
+      display: inline-block;
+      margin-right: 15px;
+      margin-bottom: 10px;
   }
+  
+  /* 移动端：下注金额和按钮垂直排列 */
   #gameSection input[type="number"] {
-      width: calc(100% - 110px); /* 让输入框適应寬度 */
+      width: 100%;
       font-size: 14px;
-      margin-right: 5px;
+      margin-right: 0;
+      margin-bottom: 10px;
+      box-sizing: border-box;
   }
   #gameSection button {
-      width: 90px; /* 固定按钮寬度 */
+      width: 100%;
+      padding: 12px;
+      font-size: 16px;
   }
 
   /* 排行榜 */

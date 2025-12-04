@@ -1,8 +1,12 @@
 <template>
   <div class="dashboard">
     <div class="dashboard-header">
-      <h2>儀表板</h2>
-      <el-button type="primary" :icon="Refresh" circle @click="refreshAll" :loading="loading || walletLoading"></el-button>
+      <div class="header-title-group">
+        <h2>儀表板</h2>
+        <el-button type="primary" circle @click="refreshAll" :loading="loading || walletLoading" size="small" class="refresh-btn">
+          <el-icon v-if="!loading && !walletLoading"><Refresh /></el-icon>
+        </el-button>
+      </div>
     </div>
 
     <!-- 核心數據統計卡片 -->
@@ -336,15 +340,45 @@ export default {
     updateChart() {
       if (!this.chartInstance || !this.stats) return;
 
-      const periodData = [
-        { name: '當日', data: this.stats.today },
-        { name: '當周', data: this.stats.week },
-        { name: '當月', data: this.stats.month },
-        { name: '上月', data: this.stats.lastMonth },
-      ];
+      // 獲取當前時期的數據
+      const currentData = this.stats[this.chartPeriod];
+      if (!currentData || !currentData.timeSeries) {
+        // 如果數據格式還是舊的，使用舊的顯示方式
+        const periodData = [
+          { name: '當日', data: this.stats.today },
+          { name: '當周', data: this.stats.week },
+          { name: '當月', data: this.stats.month },
+          { name: '上月', data: this.stats.lastMonth },
+        ];
+        const selectedData = periodData[['today', 'week', 'month', 'lastMonth'].indexOf(this.chartPeriod)];
+        // 舊格式的處理（向後兼容）
+        return;
+      }
 
-      const currentIndex = ['today', 'week', 'month', 'lastMonth'].indexOf(this.chartPeriod);
-      const selectedData = periodData[currentIndex];
+      // 獲取時間序列數據
+      const labels = currentData.timeSeries.labels || [];
+      const betAmountData = currentData.timeSeries.betAmount || [];
+      const payoutData = currentData.timeSeries.payout || [];
+      const profitLossData = currentData.timeSeries.profitLoss || [];
+
+      // 計算y軸範圍（讓y=0居中，上下分別為1,2或-1,-2）
+      const allValues = [...betAmountData, ...payoutData, ...profitLossData];
+      const maxValue = Math.max(...allValues, 0);
+      const minValue = Math.min(...allValues, 0);
+      
+      // 如果無值或值很小，設置默認範圍
+      let yAxisMax, yAxisMin;
+      if (maxValue === 0 && minValue === 0) {
+        // 無值時，y=0居中，上下分別1,2或-1,-2
+        yAxisMax = 2;
+        yAxisMin = -2;
+      } else {
+        // 有值時，計算合適的範圍，確保0居中
+        const absMax = Math.max(Math.abs(maxValue), Math.abs(minValue));
+        const padding = absMax * 0.1 || 1; // 10%的padding，至少1
+        yAxisMax = Math.max(absMax + padding, 2);
+        yAxisMin = -Math.max(absMax + padding, 2);
+      }
 
       const option = {
         tooltip: {
@@ -355,7 +389,7 @@ export default {
           formatter: (params) => {
             let result = `<div style="margin-bottom: 4px; font-weight: bold;">${params[0].axisValue}</div>`;
             params.forEach(param => {
-              const value = param.value >= 0 ? param.value : -param.value;
+              const value = Math.abs(param.value);
               const sign = param.value >= 0 ? '' : '-';
               result += `<div style="margin: 2px 0;">
                 <span style="display: inline-block; width: 10px; height: 10px; border-radius: 50%; background: ${param.color}; margin-right: 5px;"></span>
@@ -379,15 +413,32 @@ export default {
         xAxis: {
           type: 'category',
           boundaryGap: false,
-          data: periodData.map(item => item.name),
+          data: labels,
+          axisLine: {
+            showArrow: false,
+          },
+          axisLabel: {
+            rotate: labels.length > 20 ? 45 : 0, // 如果標籤太多，旋轉45度
+            interval: Math.floor(labels.length / 12), // 顯示部分標籤避免擁擠
+          },
         },
         yAxis: {
           type: 'value',
+          min: yAxisMin,
+          max: yAxisMax,
           axisLabel: {
             formatter: (value) => {
               if (value >= 1000000) return (value / 1000000).toFixed(1) + 'M';
               if (value >= 1000) return (value / 1000).toFixed(1) + 'K';
               return value.toFixed(0);
+            },
+          },
+          axisLine: {
+            showArrow: false,
+          },
+          splitLine: {
+            lineStyle: {
+              type: 'dashed',
             },
           },
         },
@@ -396,12 +447,12 @@ export default {
             name: '投注金額',
             type: 'line',
             smooth: true,
-            data: periodData.map(item => item.data.totalBetAmount),
-            itemStyle: { color: '#409EFF' },
+            data: betAmountData,
+            itemStyle: { color: '#237804' },
             areaStyle: {
               color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
-                { offset: 0, color: 'rgba(64, 158, 255, 0.3)' },
-                { offset: 1, color: 'rgba(64, 158, 255, 0.1)' },
+                { offset: 0, color: 'rgba(35, 120, 4, 0.3)' },
+                { offset: 1, color: 'rgba(35, 120, 4, 0.1)' },
               ]),
             },
           },
@@ -409,7 +460,7 @@ export default {
             name: '派獎金額',
             type: 'line',
             smooth: true,
-            data: periodData.map(item => item.data.totalPayout),
+            data: payoutData,
             itemStyle: { color: '#67C23A' },
             areaStyle: {
               color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
@@ -422,9 +473,10 @@ export default {
             name: '盈虧',
             type: 'line',
             smooth: true,
-            data: periodData.map(item => item.data.profitLoss),
-            itemStyle: { color: '#E6A23C' },
+            data: profitLossData,
+            itemStyle: { color: '#ff6b35' },
             markLine: {
+              symbol: 'none',
               data: [{ yAxis: 0, lineStyle: { color: '#909399', type: 'dashed' } }],
             },
           },
@@ -463,8 +515,8 @@ export default {
 
 <style scoped>
 .dashboard {
-  padding: 24px;
-  background: #f5f7fa;
+  padding: var(--spacing-lg);
+  background: var(--bg-primary);
   min-height: calc(100vh - 60px);
 }
 
@@ -472,23 +524,34 @@ export default {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 24px;
+  margin-bottom: var(--spacing-lg);
+}
+
+.header-title-group {
+  display: flex;
+  align-items: center;
+  gap: 12px;
 }
 
 .dashboard-header h2 {
   margin: 0;
   font-size: 24px;
   font-weight: 600;
-  color: #303133;
+  color: var(--text-primary);
+  letter-spacing: -0.5px;
+}
+
+.refresh-btn {
+  cursor: pointer;
 }
 
 .mb-20 {
-  margin-bottom: 20px;
+  margin-bottom: var(--spacing-md);
 }
 
 /* 核心數據統計卡片 */
 .stat-card {
-  border-radius: 12px;
+  border-radius: var(--radius-lg);
   border: none;
   transition: all 0.3s ease;
   overflow: hidden;
@@ -496,7 +559,7 @@ export default {
 
 .stat-card:hover {
   transform: translateY(-4px);
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12) !important;
+  box-shadow: var(--shadow-hover) !important;
 }
 
 .stat-card-content {
@@ -508,31 +571,31 @@ export default {
 .stat-icon {
   width: 64px;
   height: 64px;
-  border-radius: 12px;
+  border-radius: var(--radius-base);
   display: flex;
   align-items: center;
   justify-content: center;
-  margin-right: 16px;
+  margin-right: var(--spacing-base);
   flex-shrink: 0;
 }
 
 .stat-card-users .stat-icon {
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  background: linear-gradient(135deg, #237804 0%, #135200 100%);
   color: white;
 }
 
 .stat-card-bets .stat-icon {
-  background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+  background: linear-gradient(135deg, #ff6b35 0%, #ff8c42 100%);
   color: white;
 }
 
 .stat-card-online .stat-icon {
-  background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
+  background: linear-gradient(135deg, #237804 0%, #389e0d 100%);
   color: white;
 }
 
 .stat-card-pending .stat-icon {
-  background: linear-gradient(135deg, #fa709a 0%, #fee140 100%);
+  background: linear-gradient(135deg, #ff8c42 0%, #ffa500 100%);
   color: white;
 }
 
@@ -542,26 +605,26 @@ export default {
 
 .stat-label {
   font-size: 14px;
-  color: #909399;
-  margin-bottom: 8px;
+  color: var(--text-tertiary);
+  margin-bottom: var(--spacing-xs);
   font-weight: 500;
 }
 
 .stat-value {
   font-size: 28px;
   font-weight: 700;
-  color: #303133;
+  color: var(--text-primary);
   line-height: 1.2;
 }
 
 .stat-value.online {
-  color: #67c23a;
+  color: #237804;
 }
 
 /* 圖表卡片 */
 .chart-card,
 .stats-card {
-  border-radius: 12px;
+  border-radius: var(--radius-lg);
   border: none;
   height: 100%;
 }
@@ -575,7 +638,7 @@ export default {
 .card-title {
   font-size: 16px;
   font-weight: 600;
-  color: #303133;
+  color: var(--text-primary);
 }
 
 .chart-container {
@@ -588,8 +651,8 @@ export default {
 }
 
 .stat-detail-item {
-  padding: 16px 0;
-  border-bottom: 1px solid #ebeef5;
+  padding: var(--spacing-base) 0;
+  border-bottom: 1px solid var(--border-light);
   display: flex;
   justify-content: space-between;
   align-items: center;
@@ -600,30 +663,30 @@ export default {
 }
 
 .stat-detail-item.highlight {
-  background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
-  margin: 0 -20px;
-  padding: 20px;
-  border-radius: 8px;
+  background: linear-gradient(135deg, var(--bg-primary) 0%, #c3cfe2 100%);
+  margin: 0 calc(-1 * var(--spacing-lg));
+  padding: var(--spacing-lg);
+  border-radius: var(--radius-base);
   border: none;
 }
 
 .detail-label {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--spacing-xs);
   font-size: 14px;
-  color: #606266;
+  color: var(--text-secondary);
   font-weight: 500;
 }
 
 .detail-value {
   font-size: 18px;
   font-weight: 700;
-  color: #303133;
+  color: var(--text-primary);
 }
 
 .detail-value.profit {
-  color: #67c23a;
+  color: #237804;
 }
 
 .detail-value.loss {
@@ -632,33 +695,33 @@ export default {
 
 /* 錢包監控 */
 .wallet-card {
-  border-radius: 12px;
+  border-radius: var(--radius-lg);
   border: none;
 }
 
 .wallet-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
-  gap: 24px;
+  gap: var(--spacing-lg);
 }
 
 .wallet-group {
-  background: #fafafa;
-  border-radius: 8px;
-  padding: 16px;
-  border: 1px solid #ebeef5;
+  background: var(--bg-tertiary);
+  border-radius: var(--radius-base);
+  padding: var(--spacing-base);
+  border: 1px solid var(--border-light);
 }
 
 .wallet-group-header {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--spacing-xs);
   font-size: 16px;
   font-weight: 600;
-  color: #303133;
-  margin-bottom: 16px;
-  padding-bottom: 12px;
-  border-bottom: 2px solid #ebeef5;
+  color: var(--text-primary);
+  margin-bottom: var(--spacing-base);
+  padding-bottom: var(--spacing-sm);
+  border-bottom: 2px solid var(--border-light);
 }
 
 .wallet-list {
@@ -668,36 +731,36 @@ export default {
 }
 
 .wallet-item {
-  background: white;
-  border-radius: 8px;
-  padding: 16px;
-  border: 1px solid #ebeef5;
+  background: var(--bg-secondary);
+  border-radius: var(--radius-base);
+  padding: var(--spacing-base);
+  border: 1px solid var(--border-light);
   transition: all 0.2s ease;
 }
 
 .wallet-item:hover {
-  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.08);
-  border-color: #409eff;
+  box-shadow: var(--shadow-base);
+  border-color: #237804;
 }
 
 .wallet-name {
   font-size: 14px;
   font-weight: 600;
-  color: #303133;
-  margin-bottom: 8px;
+  color: var(--text-primary);
+  margin-bottom: var(--spacing-xs);
 }
 
 .wallet-address {
   font-size: 12px;
-  color: #909399;
+  color: var(--text-tertiary);
   font-family: 'Monaco', 'Menlo', monospace;
-  margin-bottom: 12px;
+  margin-bottom: var(--spacing-sm);
   word-break: break-all;
 }
 
 .wallet-balances {
   display: flex;
-  gap: 16px;
+  gap: var(--spacing-base);
   flex-wrap: wrap;
 }
 
@@ -709,14 +772,14 @@ export default {
 
 .balance-label {
   font-size: 12px;
-  color: #909399;
+  color: var(--text-tertiary);
   font-weight: 500;
 }
 
 .balance-value {
   font-size: 16px;
   font-weight: 700;
-  color: #303133;
+  color: var(--text-primary);
 }
 
 .empty-state {
@@ -728,7 +791,7 @@ export default {
 /* 響應式設計 */
 @media (max-width: 768px) {
   .dashboard {
-    padding: 16px;
+    padding: var(--spacing-base);
   }
 
   .wallet-grid {

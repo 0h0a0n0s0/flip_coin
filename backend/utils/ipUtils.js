@@ -41,12 +41,26 @@ function isInternalIp(ip) {
 
 /**
  * 从请求中获取真实客户端IP地址
- * 优先级：CF-Connecting-IP > True-Client-IP > X-Forwarded-For (第一个非内部IP) > X-Real-IP > req.ip
+ * 优先级：X-Client-Real-IP (前端报告) > CF-Connecting-IP > True-Client-IP > X-Forwarded-For (第一个非内部IP) > X-Real-IP > req.ip
  * 处理多层代理情况：X-Forwarded-For 格式为 client, proxy1, proxy2
  * @param {object} req - Express请求对象
  * @returns {string} 客户端IP地址
  */
 function getClientIp(req) {
+    // [新增] 0. 最優先：信任前端傳來的 "X-Client-Real-IP" (僅限解決代理問題用)
+    const clientReportedIp = req.headers['x-client-real-ip'];
+    if (clientReportedIp) {
+        // 簡單驗證 IP 格式，避免注入攻擊
+        const ipRegex = /^(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)$/;
+        if (ipRegex.test(clientReportedIp)) {
+            const debugLog = process.env.DEBUG_IP === 'true';
+            if (debugLog) {
+                console.log(`[IP Utils Debug] Selected IP from X-Client-Real-IP: ${clientReportedIp}`);
+            }
+            return clientReportedIp.trim();
+        }
+    }
+    
     // 检查所有可能的HTTP头（按优先级）
     const possibleHeaders = [
         'cf-connecting-ip',      // Cloudflare

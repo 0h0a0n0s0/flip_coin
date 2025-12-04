@@ -1,6 +1,11 @@
 <template>
-  <div class="wallet-monitoring-container">
-    <h2>钱包监控</h2> <p class="page-description">管理平台用于 充值、提現、开奖、归集 的热钱包地址。</p>
+  <div class="page-container">
+    <div class="page-header">
+      <div>
+        <h2 class="page-title">钱包监控</h2>
+        <p class="page-description">管理平台用于 充值、提現、开奖、归集 的热钱包地址。</p>
+      </div>
+    </div>
 
     <el-card shadow="never" class="action-card">
        <el-button type="primary" @click="handleAdd">新增钱包</el-button>
@@ -323,25 +328,31 @@ export default {
 </script>
 
 <style scoped>
-.page-description { color: #909399; font-size: 14px; margin-bottom: 20px; }
-.action-card { margin-bottom: 20px; }
-.search-card { margin-bottom: 20px; }
-.table-card { margin-bottom: 20px; }
-.pagination-container { margin-top: 20px; display: flex; justify-content: flex-end; }
-.el-form-item { margin-bottom: 10px; }
-.fn-tag {
-  margin-right: 5px;
+.action-card {
+  margin-bottom: var(--spacing-md);
 }
+
+.fn-tag {
+  margin-right: 6px;
+  margin-bottom: 4px;
+}
+
 .el-checkbox {
   margin-right: 15px;
 }
 
-/* (★★★ 修改 2: 新增 CSS 规則 ★★★) */
 .search-form :deep(.el-input) {
   width: 180px;
 }
+
 .search-form :deep(.el-select) {
   width: 180px;
+}
+
+.pagination-container {
+  margin-top: var(--spacing-md);
+  display: flex;
+  justify-content: flex-end;
 }
 
 .collection-settings-block {

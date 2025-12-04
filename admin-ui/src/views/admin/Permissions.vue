@@ -1,5 +1,5 @@
 <template>
-  <div class="permissions-container">
+  <div class="page-container permissions-container">
     <h2>权限组设定</h2>
     <p class="page-description">管理後台帐号的角色 (权限组) 及其权限。</p>
 

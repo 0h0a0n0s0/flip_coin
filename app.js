@@ -971,8 +971,36 @@ function initializeApp() {
         if (event.target == changeWithdrawalPwdModal) hideChangePwdModal(); // (★★★ 新增 ★★★)
     });
 
+    // 加载平台名称
+    loadPlatformName();
+    
     // 启动 App
     autoLogin();
+}
+
+// --- 加载平台名称 ---
+async function loadPlatformName() {
+    try {
+        const data = await api.getPlatformName();
+        const platformName = data.platform_name || 'FlipCoin';
+        
+        // 更新页签标题
+        document.title = platformName;
+        
+        // 更新header标题
+        const headerTitle = document.querySelector('header h1');
+        if (headerTitle) {
+            headerTitle.textContent = platformName;
+        }
+    } catch (error) {
+        console.error('Failed to load platform name:', error);
+        // 使用默认值
+        document.title = 'FlipCoin';
+        const headerTitle = document.querySelector('header h1');
+        if (headerTitle) {
+            headerTitle.textContent = 'FlipCoin';
+        }
+    }
 }
 
 // --- 程式入口 (不变) ---

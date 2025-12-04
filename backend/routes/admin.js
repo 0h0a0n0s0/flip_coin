@@ -14,6 +14,9 @@ const { recordAuditLog } = require('../services/auditLogService');
 const riskControlService = require('../services/riskControlService');
 const { maskAddress, maskTxHash } = require('../utils/maskUtils');
 const { getClientIp } = require('../utils/ipUtils');
+const { logBalanceChange, CHANGE_TYPES } = require('../utils/balanceChangeLogger');
+const speakeasy = require('speakeasy');
+const QRCode = require('qrcode');
 
 // (★★★ v8.1 新增：用于存储 io 和 connectedUsers ★★★)
 let io = null;
@@ -32,7 +35,7 @@ router.setIoAndConnectedUsers = (socketIO, users) => {
  * @route POST /api/admin/login
  */
 router.post('/login', async (req, res) => {
-    const { username, password } = req.body;
+    const { username, password, googleAuthCode } = req.body;
     if (!username || !password) {
         return res.status(400).json({ error: 'Username and password are required.' });
     }
@@ -54,6 +57,48 @@ router.post('/login', async (req, res) => {
         // (★★★ v2 新增：检查帐号狀态 ★★★)
         if (user.status !== 'active') {
             return res.status(403).json({ error: 'Account is disabled.' });
+        }
+
+        // (★★★ 新增：验证谷歌验证码 ★★★)
+        if (user.google_auth_secret) {
+            // 如果账号已绑定谷歌验证，必须提供验证码
+            if (!googleAuthCode) {
+                return res.status(400).json({ 
+                    error: 'Google Authenticator code is required.',
+                    requiresGoogleAuth: true 
+                });
+            }
+            
+            // 验证谷歌验证码
+            const verified = speakeasy.totp.verify({
+                secret: user.google_auth_secret,
+                encoding: 'base32',
+                token: googleAuthCode,
+                window: 2 // 允许前后2个时间窗口的误差
+            });
+            
+            if (!verified) {
+                return res.status(401).json({ 
+                    error: 'Invalid Google Authenticator code.',
+                    requiresGoogleAuth: true 
+                });
+            }
+        }
+        // 如果账号未绑定谷歌验证，googleAuthCode可以留空，不做验证
+
+        // (★★★ 新增：記錄登錄IP ★★★)
+        try {
+            const clientIp = getClientIp(req);
+            if (clientIp) {
+                await db.query(
+                    'UPDATE admin_users SET last_login_ip = $1, last_login_at = NOW() WHERE id = $2',
+                    [clientIp, user.id]
+                );
+                console.log(`[Admin Login] User ${user.username} (ID: ${user.id}) logged in from IP: ${clientIp}`);
+            }
+        } catch (ipError) {
+            console.error('[Admin Login] Failed to record login IP:', ipError.message);
+            // 不阻擋登錄，僅記錄錯誤
         }
 
         // 3. 签发 JWT (★★★ v2 新增：加入 role ★★★)
@@ -103,12 +148,386 @@ router.get('/my-permissions', authMiddleware, async (req, res) => {
 });
 
 /**
+ * @description 获取当前用户个人资料
+ * @route GET /api/admin/profile
+ * @access Private (需要 Token)
+ */
+router.get('/profile', authMiddleware, async (req, res) => {
+    try {
+        const userId = req.user.id;
+        const result = await db.query(
+            'SELECT id, username, nickname, google_auth_secret FROM admin_users WHERE id = $1',
+            [userId]
+        );
+        
+        if (result.rows.length === 0) {
+            return res.status(404).json({ error: 'User not found' });
+        }
+        
+        const user = result.rows[0];
+        res.status(200).json({
+            id: user.id,
+            username: user.username,
+            nickname: user.nickname || '',
+            hasGoogleAuth: !!user.google_auth_secret
+        });
+    } catch (error) {
+        console.error('[Profile] Error fetching profile:', error);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+/**
+ * @description 更新当前用户个人资料（昵称和密码）
+ * @route PUT /api/admin/profile
+ * @access Private (需要 Token)
+ */
+router.put('/profile', authMiddleware, async (req, res) => {
+    try {
+        const userId = req.user.id;
+        const { nickname, password } = req.body;
+        
+        // 构建更新字段
+        const updates = [];
+        const params = [];
+        let paramIndex = 1;
+        
+        // 更新昵称
+        if (nickname !== undefined) {
+            updates.push(`nickname = $${paramIndex++}`);
+            params.push(nickname || '');
+        }
+        
+        // 更新密码（如果提供了新密码）
+        if (password && password.trim() !== '') {
+            const passwordHash = await bcrypt.hash(password, 10);
+            updates.push(`password_hash = $${paramIndex++}`);
+            params.push(passwordHash);
+        }
+        
+        if (updates.length === 0) {
+            return res.status(400).json({ error: 'No fields to update' });
+        }
+        
+        // 添加WHERE条件的参数
+        params.push(userId);
+        
+        const query = `
+            UPDATE admin_users 
+            SET ${updates.join(', ')} 
+            WHERE id = $${paramIndex}
+            RETURNING id, username, nickname
+        `;
+        
+        const result = await db.query(query, params);
+        
+        if (result.rows.length === 0) {
+            return res.status(404).json({ error: 'User not found' });
+        }
+        
+        // 记录审计日志
+        try {
+            await recordAuditLog({
+                adminId: userId,
+                action: 'update',
+                resource: 'admin_profile',
+                resourceId: userId.toString(),
+                details: { fields: updates },
+                ipAddress: getClientIp(req)
+            });
+        } catch (auditError) {
+            console.warn('[Profile] Failed to record audit log:', auditError);
+        }
+        
+        res.status(200).json({
+            message: 'Profile updated successfully',
+            user: {
+                id: result.rows[0].id,
+                username: result.rows[0].username,
+                nickname: result.rows[0].nickname || ''
+            }
+        });
+    } catch (error) {
+        console.error('[Profile] Error updating profile:', error);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+/**
+ * @description 获取谷歌验证设置（生成二维码）
+ * @route GET /api/admin/google-auth/setup
+ * @access Private (需要 Token)
+ */
+router.get('/google-auth/setup', authMiddleware, async (req, res) => {
+    try {
+        const userId = req.user.id;
+        
+        // 检查是否已经绑定
+        const userResult = await db.query(
+            'SELECT google_auth_secret FROM admin_users WHERE id = $1',
+            [userId]
+        );
+        
+        if (userResult.rows.length === 0) {
+            return res.status(404).json({ error: 'User not found' });
+        }
+        
+        if (userResult.rows[0].google_auth_secret) {
+            return res.status(400).json({ error: 'Google Authenticator is already bound' });
+        }
+        
+        // 获取用户昵称，如果没有昵称则使用用户名
+        const userInfoResult = await db.query(
+            'SELECT nickname, username FROM admin_users WHERE id = $1',
+            [userId]
+        );
+        const displayName = userInfoResult.rows[0]?.nickname || userInfoResult.rows[0]?.username || req.user.username;
+        
+        // 获取平台名称
+        const platformNameResult = await db.query(
+            "SELECT value FROM system_settings WHERE key = 'PLATFORM_NAME' LIMIT 1"
+        );
+        const platformName = platformNameResult.rows[0]?.value || 'FlipCoin';
+        
+        // 生成新的密钥
+        const secret = speakeasy.generateSecret({
+            name: `${platformName} Admin (${displayName})`,
+            issuer: platformName
+        });
+        
+        // 生成二维码
+        const qrCodeUrl = await QRCode.toDataURL(secret.otpauth_url);
+        
+        // 临时存储密钥（在绑定验证前不保存到数据库）
+        // 这里我们返回secret.base32，前端在绑定时会发送回来
+        res.status(200).json({
+            secret: secret.base32,
+            qrCode: qrCodeUrl
+        });
+    } catch (error) {
+        console.error('[Google Auth] Error generating setup:', error);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+/**
+ * @description 绑定谷歌验证
+ * @route POST /api/admin/google-auth/bind
+ * @access Private (需要 Token)
+ */
+router.post('/google-auth/bind', authMiddleware, async (req, res) => {
+    try {
+        const userId = req.user.id;
+        const { secret, code } = req.body;
+        
+        if (!secret || !code) {
+            return res.status(400).json({ error: 'Secret and code are required' });
+        }
+        
+        // 验证验证码
+        const verified = speakeasy.totp.verify({
+            secret: secret,
+            encoding: 'base32',
+            token: code,
+            window: 2 // 允许前后2个时间窗口的误差
+        });
+        
+        if (!verified) {
+            return res.status(400).json({ error: 'Invalid verification code' });
+        }
+        
+        // 保存密钥到数据库
+        await db.query(
+            'UPDATE admin_users SET google_auth_secret = $1 WHERE id = $2',
+            [secret, userId]
+        );
+        
+        // 记录审计日志
+        try {
+            await recordAuditLog({
+                adminId: userId,
+                action: 'create',
+                resource: 'admin_google_auth',
+                resourceId: userId.toString(),
+                details: { action: 'bind' },
+                ipAddress: getClientIp(req)
+            });
+        } catch (auditError) {
+            console.warn('[Google Auth] Failed to record audit log:', auditError);
+        }
+        
+        res.status(200).json({ message: 'Google Authenticator bound successfully' });
+    } catch (error) {
+        console.error('[Google Auth] Error binding:', error);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+/**
+ * @description 管理员解绑其他账号的谷歌验证（需要操作者的谷歌验证码）
+ * @route POST /api/admin/accounts/:id/unbind-google-auth
+ * @access Private (需要 Token 和权限)
+ */
+router.post('/accounts/:id/unbind-google-auth', authMiddleware, checkPermission('admin_accounts', 'cud'), async (req, res) => {
+    try {
+        const targetUserId = parseInt(req.params.id);
+        const { googleAuthCode } = req.body;
+        const operatorId = req.user.id; // 操作者ID
+        
+        if (!googleAuthCode) {
+            return res.status(400).json({ error: 'Google Authenticator code is required.' });
+        }
+        
+        // 1. 获取操作者的谷歌验证密钥（验证操作者的身份）
+        const operatorResult = await db.query(
+            'SELECT google_auth_secret FROM admin_users WHERE id = $1',
+            [operatorId]
+        );
+        
+        if (operatorResult.rows.length === 0) {
+            return res.status(404).json({ error: 'Operator not found' });
+        }
+        
+        const operatorSecret = operatorResult.rows[0].google_auth_secret;
+        
+        // 必须验证操作者的谷歌验证码
+        if (!operatorSecret) {
+            return res.status(400).json({ error: 'You must have Google Authenticator bound to perform this operation.' });
+        }
+        
+        const verified = speakeasy.totp.verify({
+            secret: operatorSecret,
+            encoding: 'base32',
+            token: googleAuthCode,
+            window: 2
+        });
+        
+        if (!verified) {
+            return res.status(401).json({ error: 'Invalid Google Authenticator code.' });
+        }
+        
+        // 2. 检查目标账号是否存在且已绑定谷歌验证
+        const targetResult = await db.query(
+            'SELECT id, username, google_auth_secret FROM admin_users WHERE id = $1',
+            [targetUserId]
+        );
+        
+        if (targetResult.rows.length === 0) {
+            return res.status(404).json({ error: 'Target account not found' });
+        }
+        
+        const targetUser = targetResult.rows[0];
+        
+        if (!targetUser.google_auth_secret) {
+            return res.status(400).json({ error: 'Target account does not have Google Authenticator bound' });
+        }
+        
+        // 3. 解绑目标账号的谷歌验证
+        await db.query(
+            'UPDATE admin_users SET google_auth_secret = NULL WHERE id = $1',
+            [targetUserId]
+        );
+        
+        // 4. 记录审计日志
+        try {
+            await recordAuditLog({
+                adminId: operatorId,
+                action: 'delete',
+                resource: 'admin_google_auth',
+                resourceId: targetUserId.toString(),
+                details: { 
+                    action: 'unbind_by_admin',
+                    target_username: targetUser.username,
+                    operator_username: req.user.username
+                },
+                ipAddress: getClientIp(req)
+            });
+        } catch (auditError) {
+            console.warn('[Google Auth] Failed to record audit log:', auditError);
+        }
+        
+        res.status(200).json({ message: 'Google Authenticator unbound successfully' });
+    } catch (error) {
+        console.error('[Google Auth] Error unbinding by admin:', error);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+/**
+ * @description 解绑谷歌验证（用户自己解绑）
+ * @route POST /api/admin/google-auth/unbind
+ * @access Private (需要 Token)
+ */
+router.post('/google-auth/unbind', authMiddleware, async (req, res) => {
+    try {
+        const userId = req.user.id;
+        const { code } = req.body;
+        
+        if (!code) {
+            return res.status(400).json({ error: 'Verification code is required' });
+        }
+        
+        // 获取用户的密钥
+        const userResult = await db.query(
+            'SELECT google_auth_secret FROM admin_users WHERE id = $1',
+            [userId]
+        );
+        
+        if (userResult.rows.length === 0) {
+            return res.status(404).json({ error: 'User not found' });
+        }
+        
+        const secret = userResult.rows[0].google_auth_secret;
+        
+        if (!secret) {
+            return res.status(400).json({ error: 'Google Authenticator is not bound' });
+        }
+        
+        // 验证验证码
+        const verified = speakeasy.totp.verify({
+            secret: secret,
+            encoding: 'base32',
+            token: code,
+            window: 2
+        });
+        
+        if (!verified) {
+            return res.status(400).json({ error: 'Invalid verification code' });
+        }
+        
+        // 清除密钥
+        await db.query(
+            'UPDATE admin_users SET google_auth_secret = NULL WHERE id = $1',
+            [userId]
+        );
+        
+        // 记录审计日志
+        try {
+            await recordAuditLog({
+                adminId: userId,
+                action: 'delete',
+                resource: 'admin_google_auth',
+                resourceId: userId.toString(),
+                details: { action: 'unbind' },
+                ipAddress: getClientIp(req)
+            });
+        } catch (auditError) {
+            console.warn('[Google Auth] Failed to record audit log:', auditError);
+        }
+        
+        res.status(200).json({ message: 'Google Authenticator unbound successfully' });
+    } catch (error) {
+        console.error('[Google Auth] Error unbinding:', error);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+/**
  * @description 获取核心统计数据 (范例)
  * @route GET /api/admin/stats
  * @access Private (需要 Token)
  */
 router.get('/stats', authMiddleware, checkPermission('dashboard', 'read'), async (req, res) => {
-    console.log(`[Admin Stats] User ${req.user.username} is requesting stats...`);
     try {
         const userCountResult = await db.query('SELECT COUNT(*) FROM users');
         const totalUsers = userCountResult.rows[0].count;
@@ -123,7 +542,7 @@ router.get('/stats', authMiddleware, checkPermission('dashboard', 'read'), async
         // (★★★ 新增：即时线上人数 ★★★)
         const onlineUsers = connectedUsers ? Object.keys(connectedUsers).length : 0;
 
-        // (★★★ 新增：当日/当周/当月/上月投注量和盈亏统计 ★★★)
+        // (★★★ 新增：当日/当周/当月/上月投注量和盈亏统计 + 時間序列數據 ★★★)
         const now = new Date();
         const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
         const weekStart = new Date(todayStart);
@@ -132,79 +551,220 @@ router.get('/stats', authMiddleware, checkPermission('dashboard', 'read'), async
         const lastMonthStart = new Date(now.getFullYear(), now.getMonth() - 1, 1);
         const lastMonthEnd = new Date(now.getFullYear(), now.getMonth(), 0, 23, 59, 59, 999);
 
-        // 当日统计
-        const todayStats = await db.query(`
+        // 輔助函數：生成當日24小時的時間點數組
+        const generateTodayHours = () => {
+            const hours = [];
+            for (let i = 0; i < 24; i++) {
+                hours.push(`${i.toString().padStart(2, '0')}:00`);
+            }
+            return hours;
+        };
+
+        // 輔助函數：生成當週每2小時的時間點數組（從週一開始到現在）
+        const generateWeekHours = () => {
+            const hours = [];
+            const daysSinceMonday = now.getDay() === 0 ? 6 : now.getDay() - 1;
+            const currentHour = now.getHours();
+            for (let day = 0; day <= daysSinceMonday; day++) {
+                const maxHour = (day === daysSinceMonday) ? currentHour : 23;
+                for (let h = 0; h <= maxHour; h += 2) {
+                    const dayName = ['週一', '週二', '週三', '週四', '週五', '週六', '週日'][day];
+                    hours.push(`${dayName} ${h.toString().padStart(2, '0')}:00`);
+                }
+            }
+            return hours;
+        };
+
+        // 輔助函數：生成當月每日的日期數組
+        const generateMonthDays = (startDate, endDate) => {
+            const days = [];
+            const current = new Date(startDate);
+            while (current <= endDate) {
+                const month = current.getMonth() + 1;
+                const day = current.getDate();
+                days.push(`${month}/${day}`);
+                current.setDate(current.getDate() + 1);
+            }
+            return days;
+        };
+
+        // 當日統計 + 時間序列（按小時）
+        const todayHours = generateTodayHours();
+        const todayTimeSeries = await db.query(`
             SELECT 
+                EXTRACT(HOUR FROM bet_time)::int as hour,
                 COUNT(*) as bet_count,
                 COALESCE(SUM(amount), 0) as total_bet_amount,
                 COALESCE(SUM(CASE WHEN status = 'won' THEN amount * payout_multiplier ELSE 0 END), 0) as total_payout,
                 COALESCE(SUM(amount), 0) - COALESCE(SUM(CASE WHEN status = 'won' THEN amount * payout_multiplier ELSE 0 END), 0) as profit_loss
             FROM bets 
             WHERE bet_time >= $1
+            GROUP BY EXTRACT(HOUR FROM bet_time)
+            ORDER BY hour
         `, [todayStart]);
+        const todayStatsMap = {};
+        todayTimeSeries.rows.forEach(row => {
+            todayStatsMap[parseInt(row.hour)] = {
+                betCount: parseInt(row.bet_count),
+                totalBetAmount: parseFloat(row.total_bet_amount),
+                totalPayout: parseFloat(row.total_payout),
+                profitLoss: parseFloat(row.profit_loss)
+            };
+        });
+        const todayStatsData = {
+            betCount: todayTimeSeries.rows.reduce((sum, row) => sum + parseInt(row.bet_count || 0), 0),
+            totalBetAmount: todayTimeSeries.rows.reduce((sum, row) => sum + parseFloat(row.total_bet_amount || 0), 0),
+            totalPayout: todayTimeSeries.rows.reduce((sum, row) => sum + parseFloat(row.total_payout || 0), 0),
+            profitLoss: 0,
+            timeSeries: {
+                labels: todayHours,
+                betAmount: todayHours.map((_, idx) => todayStatsMap[idx]?.totalBetAmount || 0),
+                payout: todayHours.map((_, idx) => todayStatsMap[idx]?.totalPayout || 0),
+                profitLoss: todayHours.map((_, idx) => todayStatsMap[idx]?.profitLoss || 0)
+            }
+        };
+        todayStatsData.profitLoss = todayStatsData.totalBetAmount - todayStatsData.totalPayout;
 
-        // 当周统计
-        const weekStats = await db.query(`
+        // 當週統計 + 時間序列（每2小時）
+        const weekHours = generateWeekHours();
+        const weekTimeSeries = await db.query(`
             SELECT 
+                DATE_TRUNC('hour', bet_time) as time_slot,
                 COUNT(*) as bet_count,
                 COALESCE(SUM(amount), 0) as total_bet_amount,
                 COALESCE(SUM(CASE WHEN status = 'won' THEN amount * payout_multiplier ELSE 0 END), 0) as total_payout,
                 COALESCE(SUM(amount), 0) - COALESCE(SUM(CASE WHEN status = 'won' THEN amount * payout_multiplier ELSE 0 END), 0) as profit_loss
             FROM bets 
             WHERE bet_time >= $1
+            GROUP BY DATE_TRUNC('hour', bet_time)
+            ORDER BY time_slot
         `, [weekStart]);
+        
+        // 將每小時數據按每2小時分組
+        const weekStatsMap = {};
+        weekTimeSeries.rows.forEach(row => {
+            const betTime = new Date(row.time_slot);
+            const dayOfWeek = betTime.getDay() === 0 ? 6 : betTime.getDay() - 1;
+            const hour = betTime.getHours();
+            const hourSlot = Math.floor(hour / 2) * 2; // 向下取整到最近的2小時倍數
+            const dayName = ['週一', '週二', '週三', '週四', '週五', '週六', '週日'][dayOfWeek];
+            const key = `${dayName} ${hourSlot.toString().padStart(2, '0')}:00`;
+            
+            if (!weekStatsMap[key]) {
+                weekStatsMap[key] = {
+                    betCount: 0,
+                    totalBetAmount: 0,
+                    totalPayout: 0,
+                    profitLoss: 0
+                };
+            }
+            weekStatsMap[key].betCount += parseInt(row.bet_count || 0);
+            weekStatsMap[key].totalBetAmount += parseFloat(row.total_bet_amount || 0);
+            weekStatsMap[key].totalPayout += parseFloat(row.total_payout || 0);
+            weekStatsMap[key].profitLoss += parseFloat(row.profit_loss || 0);
+        });
+        
+        const weekStatsData = {
+            betCount: weekTimeSeries.rows.reduce((sum, row) => sum + parseInt(row.bet_count || 0), 0),
+            totalBetAmount: weekTimeSeries.rows.reduce((sum, row) => sum + parseFloat(row.total_bet_amount || 0), 0),
+            totalPayout: weekTimeSeries.rows.reduce((sum, row) => sum + parseFloat(row.total_payout || 0), 0),
+            profitLoss: 0,
+            timeSeries: {
+                labels: weekHours,
+                betAmount: weekHours.map(label => weekStatsMap[label]?.totalBetAmount || 0),
+                payout: weekHours.map(label => weekStatsMap[label]?.totalPayout || 0),
+                profitLoss: weekHours.map(label => weekStatsMap[label]?.profitLoss || 0)
+            }
+        };
+        weekStatsData.profitLoss = weekStatsData.totalBetAmount - weekStatsData.totalPayout;
 
-        // 当月统计
-        const monthStats = await db.query(`
+        // 當月統計 + 時間序列（按日）
+        const monthDays = generateMonthDays(monthStart, now);
+        const monthTimeSeries = await db.query(`
             SELECT 
+                DATE(bet_time) as date,
                 COUNT(*) as bet_count,
                 COALESCE(SUM(amount), 0) as total_bet_amount,
                 COALESCE(SUM(CASE WHEN status = 'won' THEN amount * payout_multiplier ELSE 0 END), 0) as total_payout,
                 COALESCE(SUM(amount), 0) - COALESCE(SUM(CASE WHEN status = 'won' THEN amount * payout_multiplier ELSE 0 END), 0) as profit_loss
             FROM bets 
             WHERE bet_time >= $1
+            GROUP BY DATE(bet_time)
+            ORDER BY date
         `, [monthStart]);
+        const monthStatsMap = {};
+        monthTimeSeries.rows.forEach(row => {
+            const date = new Date(row.date);
+            const key = `${date.getMonth() + 1}/${date.getDate()}`;
+            monthStatsMap[key] = {
+                betCount: parseInt(row.bet_count),
+                totalBetAmount: parseFloat(row.total_bet_amount),
+                totalPayout: parseFloat(row.total_payout),
+                profitLoss: parseFloat(row.profit_loss)
+            };
+        });
+        const monthStatsData = {
+            betCount: monthTimeSeries.rows.reduce((sum, row) => sum + parseInt(row.bet_count || 0), 0),
+            totalBetAmount: monthTimeSeries.rows.reduce((sum, row) => sum + parseFloat(row.total_bet_amount || 0), 0),
+            totalPayout: monthTimeSeries.rows.reduce((sum, row) => sum + parseFloat(row.total_payout || 0), 0),
+            profitLoss: 0,
+            timeSeries: {
+                labels: monthDays,
+                betAmount: monthDays.map(day => monthStatsMap[day]?.totalBetAmount || 0),
+                payout: monthDays.map(day => monthStatsMap[day]?.totalPayout || 0),
+                profitLoss: monthDays.map(day => monthStatsMap[day]?.profitLoss || 0)
+            }
+        };
+        monthStatsData.profitLoss = monthStatsData.totalBetAmount - monthStatsData.totalPayout;
 
-        // 上月统计
-        const lastMonthStats = await db.query(`
+        // 上月統計 + 時間序列（按日）
+        const lastMonthDays = generateMonthDays(lastMonthStart, lastMonthEnd);
+        const lastMonthTimeSeries = await db.query(`
             SELECT 
+                DATE(bet_time) as date,
                 COUNT(*) as bet_count,
                 COALESCE(SUM(amount), 0) as total_bet_amount,
                 COALESCE(SUM(CASE WHEN status = 'won' THEN amount * payout_multiplier ELSE 0 END), 0) as total_payout,
                 COALESCE(SUM(amount), 0) - COALESCE(SUM(CASE WHEN status = 'won' THEN amount * payout_multiplier ELSE 0 END), 0) as profit_loss
             FROM bets 
             WHERE bet_time >= $1 AND bet_time <= $2
+            GROUP BY DATE(bet_time)
+            ORDER BY date
         `, [lastMonthStart, lastMonthEnd]);
+        const lastMonthStatsMap = {};
+        lastMonthTimeSeries.rows.forEach(row => {
+            const date = new Date(row.date);
+            const key = `${date.getMonth() + 1}/${date.getDate()}`;
+            lastMonthStatsMap[key] = {
+                betCount: parseInt(row.bet_count),
+                totalBetAmount: parseFloat(row.total_bet_amount),
+                totalPayout: parseFloat(row.total_payout),
+                profitLoss: parseFloat(row.profit_loss)
+            };
+        });
+        const lastMonthStatsData = {
+            betCount: lastMonthTimeSeries.rows.reduce((sum, row) => sum + parseInt(row.bet_count || 0), 0),
+            totalBetAmount: lastMonthTimeSeries.rows.reduce((sum, row) => sum + parseFloat(row.total_bet_amount || 0), 0),
+            totalPayout: lastMonthTimeSeries.rows.reduce((sum, row) => sum + parseFloat(row.total_payout || 0), 0),
+            profitLoss: 0,
+            timeSeries: {
+                labels: lastMonthDays,
+                betAmount: lastMonthDays.map(day => lastMonthStatsMap[day]?.totalBetAmount || 0),
+                payout: lastMonthDays.map(day => lastMonthStatsMap[day]?.totalPayout || 0),
+                profitLoss: lastMonthDays.map(day => lastMonthStatsMap[day]?.profitLoss || 0)
+            }
+        };
+        lastMonthStatsData.profitLoss = lastMonthStatsData.totalBetAmount - lastMonthStatsData.totalPayout;
 
         res.status(200).json({
             totalUsers: parseInt(totalUsers),
             totalBets: parseInt(totalBets),
             pendingPayouts: parseInt(pendingPayouts),
-            onlineUsers: onlineUsers, // (★★★ 新增：即时线上人数 ★★★)
-            today: {
-                betCount: parseInt(todayStats.rows[0].bet_count),
-                totalBetAmount: parseFloat(todayStats.rows[0].total_bet_amount),
-                totalPayout: parseFloat(todayStats.rows[0].total_payout),
-                profitLoss: parseFloat(todayStats.rows[0].profit_loss)
-            },
-            week: {
-                betCount: parseInt(weekStats.rows[0].bet_count),
-                totalBetAmount: parseFloat(weekStats.rows[0].total_bet_amount),
-                totalPayout: parseFloat(weekStats.rows[0].total_payout),
-                profitLoss: parseFloat(weekStats.rows[0].profit_loss)
-            },
-            month: {
-                betCount: parseInt(monthStats.rows[0].bet_count),
-                totalBetAmount: parseFloat(monthStats.rows[0].total_bet_amount),
-                totalPayout: parseFloat(monthStats.rows[0].total_payout),
-                profitLoss: parseFloat(monthStats.rows[0].profit_loss)
-            },
-            lastMonth: {
-                betCount: parseInt(lastMonthStats.rows[0].bet_count),
-                totalBetAmount: parseFloat(lastMonthStats.rows[0].total_bet_amount),
-                totalPayout: parseFloat(lastMonthStats.rows[0].total_payout),
-                profitLoss: parseFloat(lastMonthStats.rows[0].profit_loss)
-            }
+            onlineUsers: onlineUsers,
+            today: todayStatsData,
+            week: weekStatsData,
+            month: monthStatsData,
+            lastMonth: lastMonthStatsData
         });
     } catch (error) {
         console.error('[Admin Stats] Error fetching stats:', error);
@@ -362,6 +922,16 @@ router.put('/users/:id', authMiddleware, async (req, res, next) => {
                 updates.push(`referrer_code = $${paramIndex++}`); params.push(referrer_code);
             }
         }
+        // 如果调整余额，先获取旧余额用于记录账变
+        let oldBalance = null;
+        if (balance !== undefined) {
+            const userResult = await db.query('SELECT balance, user_id FROM users WHERE id = $1', [id]);
+            if (userResult.rows.length === 0) {
+                return res.status(404).json({ error: 'User not found.' });
+            }
+            oldBalance = parseFloat(userResult.rows[0].balance || 0);
+        }
+
         if (balance !== undefined) {
             const newBalance = parseFloat(balance);
             if (isNaN(newBalance) || newBalance < 0) { return res.status(400).json({ error: 'Invalid balance.' }); }
@@ -373,6 +943,29 @@ router.put('/users/:id', authMiddleware, async (req, res, next) => {
         const result = await db.query(updateSql, params);
         if (result.rows.length === 0) { return res.status(404).json({ error: 'User not found.' }); }
         console.log(`[Admin Users] User ID ${result.rows[0].id} updated by ${req.user.username}`);
+        
+        // 记录账变（如果调整了余额）
+        if (balance !== undefined && oldBalance !== null) {
+            const newBalance = parseFloat(balance);
+            const balanceChange = newBalance - oldBalance;
+            const user_id = result.rows[0].user_id;
+            
+            if (balanceChange !== 0) {
+                try {
+                    await logBalanceChange({
+                        user_id: user_id,
+                        change_type: CHANGE_TYPES.MANUAL_ADJUST,
+                        amount: balanceChange,
+                        balance_after: newBalance,
+                        remark: `管理员 ${req.user.username} 人工调整余额，旧余额: ${oldBalance}, 新余额: ${newBalance}`
+                    });
+                } catch (error) {
+                    console.error('[Admin Users] Failed to log balance change:', error);
+                    // 不阻止主流程，只记录错误
+                }
+            }
+        }
+        
         const updateFields = [];
         if (nickname !== undefined) updateFields.push(`昵称: ${nickname}`);
         if (level !== undefined) updateFields.push(`等级: ${level}`);
@@ -891,6 +1484,17 @@ router.put('/settings/:key', authMiddleware, checkPermission('settings_game', 'u
         }
         validatedValue = value.toString();
     }
+    // (★★★ 验证平台名称 ★★★)
+    if (key === 'PLATFORM_NAME') {
+        const name = value.toString().trim();
+        if (!name || name.length === 0) {
+            return res.status(400).json({ error: '平台名称不能为空' });
+        }
+        if (name.length > 50) {
+            return res.status(400).json({ error: '平台名称不能超过50个字符' });
+        }
+        validatedValue = name;
+    }
 
     try {
         const result = await db.query(
@@ -1110,9 +1714,10 @@ router.delete('/user-levels/:level', authMiddleware, checkPermission('settings_l
  */
 router.get('/accounts', authMiddleware, checkPermission('admin_accounts', 'read'), async (req, res) => {
     try {
-        // (★★★ Y-6: JOIN admin_roles 获取角色名称 ★★★)
+        // (★★★ Y-6: JOIN admin_roles 获取角色名称，添加谷歌验证状态 ★★★)
         const result = await db.query(`
-            SELECT u.id, u.username, u.status, u.created_at, u.role_id, r.name as role_name 
+            SELECT u.id, u.username, u.status, u.created_at, u.role_id, r.name as role_name,
+                   CASE WHEN u.google_auth_secret IS NOT NULL THEN true ELSE false END as has_google_auth
             FROM admin_users u
             LEFT JOIN admin_roles r ON u.role_id = r.id
             ORDER BY u.id ASC
@@ -1503,7 +2108,7 @@ router.delete('/roles/:id', authMiddleware, checkPermission('admin_permissions',
  * @route GET /api/admin/deposits
  */
 router.get('/deposits', authMiddleware, checkPermission('deposits', 'read'), async (req, res) => {
-    const { page = 1, limit = 10, username, tx_hash, status, user_id, start_time, end_time } = req.query;
+    const { page = 1, limit = 10, username, tx_hash, status, user_id, start_time, end_time, user_address, platform_address } = req.query;
     
     try {
         const params = [];
@@ -1536,6 +2141,19 @@ router.get('/deposits', authMiddleware, checkPermission('deposits', 'read'), asy
         if (username) { params.push(`%${username}%`); whereClauses.push(`u.username ILIKE $${paramIndex++}`); }
         if (status) { params.push(status); whereClauses.push(`pt.status = $${paramIndex++}`); }
         if (tx_hash) { params.push(tx_hash); whereClauses.push(`pt.tx_hash = $${paramIndex++}`); }
+        if (user_address) { 
+            params.push(user_address); 
+            whereClauses.push(`cl.user_deposit_address = $${paramIndex++}`); 
+        }
+        if (platform_address) { 
+            params.push(platform_address); 
+            whereClauses.push(`(
+                cl.collection_wallet_address = $${paramIndex} OR 
+                (pt.chain = 'TRC20' AND u.tron_deposit_address = $${paramIndex}) OR
+                (pt.chain != 'TRC20' AND u.evm_deposit_address = $${paramIndex})
+            )`); 
+            paramIndex++;
+        }
         
         if (user_id) {
             const parsedUserId = parseInt(user_id, 10);
@@ -1560,6 +2178,7 @@ router.get('/deposits', authMiddleware, checkPermission('deposits', 'read'), asy
         const fromSql = `
             FROM platform_transactions pt
             JOIN users u ON pt.user_id = u.user_id
+            LEFT JOIN collection_logs cl ON pt.tx_hash = cl.tx_hash AND pt.user_id = cl.user_id
         `;
         
         const countSql = `SELECT COUNT(pt.id) ${fromSql} ${whereSql}`;
@@ -1574,7 +2193,15 @@ router.get('/deposits', authMiddleware, checkPermission('deposits', 'read'), asy
             SELECT 
                 pt.id, pt.chain, pt.amount, pt.status, pt.tx_hash, pt.created_at,
                 u.username,
-                u.user_id
+                u.user_id,
+                cl.user_deposit_address AS user_address,
+                COALESCE(
+                    cl.collection_wallet_address,
+                    CASE 
+                        WHEN pt.chain = 'TRC20' THEN u.tron_deposit_address
+                        ELSE u.evm_deposit_address
+                    END
+                ) AS platform_address
             ${fromSql}
             ${whereSql}
             ORDER BY pt.created_at DESC
@@ -1738,12 +2365,29 @@ router.post('/withdrawals/:id/reject', authMiddleware, checkPermission('withdraw
             "UPDATE users SET balance = balance + $1 WHERE user_id = $2 RETURNING *",
             [withdrawal.amount, withdrawal.user_id]
         );
+        const updatedUser = userResult.rows[0];
         
         // 4. 更新对应的 platform_transaction
         await client.query(
             "UPDATE platform_transactions SET status = 'cancelled' WHERE user_id = $1 AND type = 'withdraw_request' AND amount = $2 AND status = 'pending'",
             [withdrawal.user_id, -Math.abs(withdrawal.amount)]
         );
+
+        // 4b. 记录账变（提款拒绝退款）
+        try {
+            const newBalance = parseFloat(updatedUser.balance);
+            await logBalanceChange({
+                user_id: withdrawal.user_id,
+                change_type: CHANGE_TYPES.WITHDRAWAL,
+                amount: withdrawal.amount,  // 正数表示退款
+                balance_after: newBalance,
+                remark: `提款拒绝退款 ${withdrawal.amount} USDT, 提款单ID: ${id}, 理由: ${reason}, 管理员: ${req.user.username}`,
+                client: client
+            });
+        } catch (error) {
+            console.error('[Admin Withdrawals] Failed to log balance change (reject refund):', error);
+            // 不阻止主流程，只记录错误
+        }
 
         await client.query('COMMIT');
         
@@ -1760,7 +2404,6 @@ router.post('/withdrawals/:id/reject', authMiddleware, checkPermission('withdraw
         });
         
         // 6. 通知用户 (如果在线)
-        const updatedUser = userResult.rows[0];
         delete updatedUser.password_hash;
         if (connectedUsers && io) {
             const socketId = connectedUsers[updatedUser.user_id];
@@ -1821,6 +2464,126 @@ router.post('/withdrawals/:id/approve', authMiddleware, checkPermission('withdra
     } catch (error) {
         console.error(`[Admin Withdrawals] Error approving withdrawal ${id}:`, error);
         res.status(500).json({ error: '操作失败' });
+    }
+});
+
+/**
+ * @description 获取账变记录列表
+ * @route GET /api/admin/balance-changes
+ */
+router.get('/balance-changes', authMiddleware, checkPermission('balance_changes', 'read'), async (req, res) => {
+    const { 
+        page = 1, 
+        limit = 10, 
+        user_id, 
+        username, 
+        change_type, 
+        start_time, 
+        end_time 
+    } = req.query;
+    
+    try {
+        const params = [];
+        let whereClauses = [];
+        let paramIndex = 1;
+
+        // 时间范围处理
+        let startTimeValue = null;
+        let endTimeValue = null;
+
+        if (start_time) {
+            const parsed = new Date(start_time);
+            if (Number.isNaN(parsed.getTime())) {
+                return res.status(400).json({ error: 'start_time 格式不正确' });
+            }
+            startTimeValue = parsed.toISOString();
+        }
+
+        if (end_time) {
+            const parsed = new Date(end_time);
+            if (Number.isNaN(parsed.getTime())) {
+                return res.status(400).json({ error: 'end_time 格式不正确' });
+            }
+            endTimeValue = parsed.toISOString();
+        }
+
+        if (startTimeValue && endTimeValue && new Date(startTimeValue) > new Date(endTimeValue)) {
+            return res.status(400).json({ error: '开始时间不得晚于结束时间' });
+        }
+
+        // 查询条件
+        if (user_id) {
+            const parsedUserId = parseInt(user_id, 10);
+            if (Number.isNaN(parsedUserId)) {
+                return res.status(400).json({ error: 'user_id 必须为整数' });
+            }
+            params.push(user_id);
+            whereClauses.push(`bc.user_id = $${paramIndex++}`);
+        }
+
+        if (username) {
+            params.push(`%${username}%`);
+            whereClauses.push(`u.username ILIKE $${paramIndex++}`);
+        }
+
+        if (change_type) {
+            params.push(change_type);
+            whereClauses.push(`bc.change_type = $${paramIndex++}`);
+        }
+
+        if (startTimeValue) {
+            params.push(startTimeValue);
+            whereClauses.push(`bc.created_at >= $${paramIndex++}`);
+        }
+
+        if (endTimeValue) {
+            params.push(endTimeValue);
+            whereClauses.push(`bc.created_at <= $${paramIndex++}`);
+        }
+
+        const whereSql = whereClauses.length > 0 ? `WHERE ${whereClauses.join(' AND ')}` : '';
+        
+        const fromSql = `
+            FROM balance_changes bc
+            LEFT JOIN users u ON bc.user_id = u.user_id
+        `;
+        
+        // 获取总数
+        const countSql = `SELECT COUNT(bc.id) ${fromSql} ${whereSql}`;
+        const countResult = await db.query(countSql, params);
+        const total = parseInt(countResult.rows[0].count, 10);
+
+        if (total === 0) {
+            return res.status(200).json({ total: 0, list: [] });
+        }
+
+        // 获取列表
+        const dataSql = `
+            SELECT 
+                bc.id,
+                bc.user_id,
+                u.username,
+                bc.change_type,
+                bc.amount,
+                bc.balance_after,
+                bc.remark,
+                bc.created_at
+            ${fromSql}
+            ${whereSql}
+            ORDER BY bc.created_at DESC
+            LIMIT $${paramIndex++} OFFSET $${paramIndex++}
+        `;
+        
+        const offset = (page - 1) * limit;
+        params.push(limit);
+        params.push(offset);
+        const dataResult = await db.query(dataSql, params);
+
+        res.status(200).json({ total: total, list: dataResult.rows });
+
+    } catch (error) {
+        console.error('[Admin Balance Changes] Error fetching list:', error);
+        res.status(500).json({ error: 'Internal server error' });
     }
 });
 
@@ -2453,20 +3216,46 @@ router.get('/login-query/same-login-ip/:userId', authMiddleware, checkPermission
     try {
         const { userId } = req.params;
         
-        // 获取该用户的所有登录IP
-        const userIps = await db.query(
-            `SELECT DISTINCT login_ip FROM user_login_logs WHERE user_id = $1`,
+        // 获取该用户的登录IP（優先從登入日誌，如果沒有則使用first_login_ip或last_login_ip）
+        const userResult = await db.query(
+            `SELECT first_login_ip, last_login_ip FROM users WHERE user_id = $1`,
             [userId]
         );
         
-        if (userIps.rows.length === 0) {
+        if (userResult.rows.length === 0) {
+            return res.status(404).json({ error: 'User not found' });
+        }
+        
+        const user = userResult.rows[0];
+        
+        // 获取该用户的所有登录IP（從登入日誌）
+        const userIpsResult = await db.query(
+            `SELECT DISTINCT login_ip FROM user_login_logs WHERE user_id = $1 AND login_ip IS NOT NULL`,
+            [userId]
+        );
+        
+        const ipsFromLogs = userIpsResult.rows.map(r => r.login_ip);
+        
+        // 如果沒有登入日誌，使用first_login_ip或last_login_ip
+        const ipsToSearch = [];
+        if (ipsFromLogs.length > 0) {
+            ipsToSearch.push(...ipsFromLogs);
+        } else {
+            // 使用first_login_ip或last_login_ip
+            if (user.first_login_ip) {
+                ipsToSearch.push(user.first_login_ip);
+            }
+            if (user.last_login_ip && !ipsToSearch.includes(user.last_login_ip)) {
+                ipsToSearch.push(user.last_login_ip);
+            }
+        }
+        
+        if (ipsToSearch.length === 0) {
             return res.status(200).json({ list: [] });
         }
         
-        const ips = userIps.rows.map(r => r.login_ip);
-        
-        // 查询使用相同IP的其他用户
-        const result = await db.query(
+        // 查询使用相同IP的其他用户（從登入日誌）
+        const resultFromLogs = await db.query(
             `SELECT DISTINCT 
                 u.user_id,
                 ull.login_ip,
@@ -2477,10 +3266,36 @@ router.get('/login-query/same-login-ip/:userId', authMiddleware, checkPermission
             WHERE ull.login_ip = ANY($1) AND u.user_id != $2
             GROUP BY u.user_id, ull.login_ip, u.created_at
             ORDER BY last_login_time DESC`,
-            [ips, userId]
+            [ipsToSearch, userId]
         );
         
-        res.status(200).json({ list: result.rows });
+        // 如果沒有從登入日誌找到，也查詢first_login_ip或last_login_ip相同的用戶
+        const resultFromUserTable = await db.query(
+            `SELECT DISTINCT 
+                u.user_id,
+                COALESCE(u.last_login_ip, u.first_login_ip) as login_ip,
+                u.created_at as registration_time,
+                u.last_activity_at as last_login_time
+            FROM users u
+            WHERE (u.first_login_ip = ANY($1) OR u.last_login_ip = ANY($1))
+              AND u.user_id != $2
+              AND (u.first_login_ip IS NOT NULL OR u.last_login_ip IS NOT NULL)
+            ORDER BY u.last_activity_at DESC NULLS LAST`,
+            [ipsToSearch, userId]
+        );
+        
+        // 合併結果，去重
+        const allResults = [...resultFromLogs.rows];
+        const existingUserIds = new Set(resultFromLogs.rows.map(r => r.user_id));
+        
+        resultFromUserTable.rows.forEach(row => {
+            if (!existingUserIds.has(row.user_id)) {
+                allResults.push(row);
+                existingUserIds.add(row.user_id);
+            }
+        });
+        
+        res.status(200).json({ list: allResults });
     } catch (error) {
         console.error('[Login Query] Error fetching same login IP:', error);
         res.status(500).json({ error: 'Internal server error' });

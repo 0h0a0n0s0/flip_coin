@@ -1,11 +1,13 @@
 <template>
-  <div class="withdrawal-review-container">
-    <h2 class="title-with-tip">
-      提款審核
-      <el-tooltip content="審核：批准改為出款中；拒绝退回余额；完成需填写TX Hash與Gas" placement="right">
-        <span class="info-tag">i</span>
-      </el-tooltip>
-    </h2>
+  <div class="page-container">
+    <div class="page-header">
+      <h2 class="page-title">
+        提款審核
+        <el-tooltip content="審核：批准改為出款中；拒绝退回余额；完成需填写TX Hash與Gas" placement="right">
+          <el-icon style="margin-left: 8px; color: var(--text-tertiary); cursor: help;"><InfoFilled /></el-icon>
+        </el-tooltip>
+      </h2>
+    </div>
 
     <el-card shadow="never" class="search-card">
       <el-form :inline="true" :model="searchParams" @submit.native.prevent="handleSearch" class="search-form">
@@ -291,29 +293,32 @@ export default {
 </script>
 
 <style scoped>
-.search-card { margin-bottom: 20px; }
-.table-card { margin-bottom: 20px; }
-.pagination-container { margin-top: 20px; display: flex; justify-content: flex-end; }
-.el-form-item { margin-bottom: 10px; }
-.tx-link { color: #409EFF; text-decoration: none; }
-.tx-link:hover { text-decoration: underline; }
+.tx-link {
+  color: #237804;
+  text-decoration: none;
+  transition: all 0.2s ease;
+}
 
-.search-form :deep(.el-input) { width: 180px; }
-.search-form :deep(.el-select) { width: 180px; }
-/* 稍微放宽日期选择器的宽度 */
-.search-form :deep(.el-date-editor) { width: 360px; }
-.title-with-tip { display: flex; align-items: center; gap: 8px; }
-.info-tag {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 18px;
-  height: 18px;
-  border-radius: 50%;
-  background-color: #409EFF;
-  color: #fff;
-  font-style: normal;
-  font-size: 12px;
-  cursor: default;
+.tx-link:hover {
+  color: #135200;
+  text-decoration: underline;
+}
+
+.search-form :deep(.el-input) {
+  width: 180px;
+}
+
+.search-form :deep(.el-select) {
+  width: 180px;
+}
+
+.search-form :deep(.el-date-editor) {
+  width: 360px;
+}
+
+.pagination-container {
+  margin-top: var(--spacing-md);
+  display: flex;
+  justify-content: flex-end;
 }
 </style>

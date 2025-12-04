@@ -1,6 +1,6 @@
 <template>
-  <div class="same-ip-monitor">
-    <h2>同 IP 风控监控</h2>
+  <div class="page-container same-ip-monitor">
+    <h2>同IP风控监控</h2>
 
     <el-card shadow="never" class="info-card">
       <p>

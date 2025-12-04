@@ -6,6 +6,59 @@
     <meta name="viewport" content="width=device-width,initial-scale=1.0">
     <link rel="icon" href="<%= BASE_URL %>favicon.ico">
     <title>FlipCoin 管理後台</title>
+    <script>
+      // (★★★ 在Vue應用加載前就獲取IP，確保所有請求都能帶上IP header ★★★)
+      (function() {
+        // 檢查是否已有緩存的IP
+        var cachedIp = sessionStorage.getItem('cached_real_ip');
+        if (cachedIp) {
+          console.log('[Pre-Vue] Using cached IP from sessionStorage:', cachedIp);
+          return;
+        }
+
+        // IP查詢服務列表（按順序嘗試）
+        var ipServices = [
+          { url: 'https://api.seeip.org/jsonip', key: 'ip' },
+          { url: 'https://api.ipify.org?format=json', key: 'ip' },
+          { url: 'https://api.my-ip.io/ip.json', key: 'ip' },
+          { url: 'https://ipapi.co/json/', key: 'ip' }
+        ];
+
+        console.log('[Pre-Vue] Starting IP detection before Vue app loads...');
+        
+        // 異步獲取IP（不阻塞頁面加載）
+        (async function() {
+          for (var i = 0; i < ipServices.length; i++) {
+            var service = ipServices[i];
+            try {
+              console.log('[Pre-Vue] Trying IP service:', service.url);
+              var controller = new AbortController();
+              var timeoutId = setTimeout(function() { controller.abort(); }, 5000);
+              
+              var response = await fetch(service.url, {
+                signal: controller.signal,
+                mode: 'cors',
+                cache: 'no-cache'
+              });
+              clearTimeout(timeoutId);
+              
+              if (response.ok) {
+                var data = await response.json();
+                var ip = data[service.key];
+                if (ip && typeof ip === 'string') {
+                  console.log('[Pre-Vue] ✅ Detected IP:', ip);
+                  sessionStorage.setItem('cached_real_ip', ip);
+                  return;
+                }
+              }
+            } catch (e) {
+              console.warn('[Pre-Vue] Service failed:', service.url, e.message);
+            }
+          }
+          console.error('[Pre-Vue] ❌ All IP services failed!');
+        })();
+      })();
+    </script>
   </head>
   <body>
     <noscript>

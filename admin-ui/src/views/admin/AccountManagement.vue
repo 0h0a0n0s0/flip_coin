@@ -1,7 +1,11 @@
 <template>
-  <div class="account-management-container">
-    <h2>帐号管理</h2>
-    <p class="page-description">管理可以登入後台的管理员帐号。</p>
+  <div class="page-container">
+    <div class="page-header">
+      <div>
+        <h2 class="page-title">帐号管理</h2>
+        <p class="page-description">管理可以登入後台的管理员帐号。</p>
+      </div>
+    </div>
     <el-card shadow="never" class="action-card">
        <el-button type="primary" @click="handleAdd">新增帐号</el-button>
     </el-card>
@@ -26,10 +30,19 @@
         <el-table-column prop="created_at" label="建立时间">
            <template #default="scope">{{ formatDateTime(scope.row.created_at) }}</template>
         </el-table-column>
-        <el-table-column label="操作" width="150" fixed="right">
+        <el-table-column label="操作" width="280" fixed="right">
           <template #default="scope">
             <el-button type="primary" link @click="handleEdit(scope.row)">编辑</el-button>
             <el-button type="danger" link @click="handleDelete(scope.row)" :disabled="scope.row.id === 1 || scope.row.id === currentUserId">删除</el-button>
+            <el-button 
+              v-if="scope.row.has_google_auth" 
+              type="danger" 
+              @click="handleUnbindGoogleAuth(scope.row)"
+              size="small"
+              style="background-color: #f56c6c; border-color: #f56c6c; color: #fff;"
+            >
+              解绑谷歌验证
+            </el-button>
           </template>
         </el-table-column>
       </el-table>
@@ -62,6 +75,59 @@
       <template #footer>
         <el-button @click="dialogVisible = false">取消</el-button>
         <el-button type="primary" @click="handleSubmit" :loading="submitLoading">确认</el-button>
+      </template>
+    </el-dialog>
+    
+    <!-- 解绑谷歌验证弹窗 -->
+    <el-dialog 
+      v-model="unbindDialogVisible" 
+      title="解绑谷歌验证" 
+      width="500px"
+      :close-on-click-modal="false"
+    >
+      <el-alert
+        type="warning"
+        :closable="false"
+        style="margin-bottom: 20px;"
+      >
+        <template #title>
+          <span>确定要解绑账号 "{{ unbindTargetAccount?.username }}" 的谷歌验证吗？</span>
+        </template>
+      </el-alert>
+      
+      <el-alert
+        type="info"
+        :closable="false"
+        style="margin-bottom: 20px;"
+      >
+        <template #title>
+          <span>请输入<strong>您自己</strong>的谷歌验证码以确认操作</span>
+        </template>
+      </el-alert>
+      
+      <el-form
+        ref="unbindFormRef"
+        :model="unbindForm"
+        :rules="unbindRules"
+        label-width="120px"
+      >
+        <el-form-item label="谷歌验证码" prop="googleAuthCode">
+          <el-input
+            v-model="unbindForm.googleAuthCode"
+            placeholder="请输入6位验证码"
+            maxlength="6"
+            style="width: 200px;"
+          />
+        </el-form-item>
+      </el-form>
+      
+      <template #footer>
+        <span class="dialog-footer">
+          <el-button @click="unbindDialogVisible = false">取消</el-button>
+          <el-button type="danger" @click="handleUnbindSubmit" :loading="unbindLoading">
+            确认解绑
+          </el-button>
+        </span>
       </template>
     </el-dialog>
   </div>
@@ -106,6 +172,19 @@ export default {
                password: [{ validator: validatePassword, trigger: 'blur' }],
                role_id: [{ required: true, message: '必须选择一個角色', trigger: 'change' }], // (★★★ Y-25: 修改规則 ★★★)
                status: [{ required: true, message: '狀态必须选择', trigger: 'change' }],
+           },
+           // 解绑谷歌验证相关
+           unbindDialogVisible: false,
+           unbindLoading: false,
+           unbindTargetAccount: null,
+           unbindForm: {
+               googleAuthCode: ''
+           },
+           unbindRules: {
+               googleAuthCode: [
+                   { required: true, message: '请输入验证码', trigger: 'blur' },
+                   { pattern: /^\d{6}$/, message: '验证码必须是6位数字', trigger: 'blur' }
+               ]
            }
        };
    },
@@ -232,15 +311,60 @@ export default {
            if (!isoString) return '';
            try { return new Date(isoString).toLocaleString('zh-TW', { timeZone: 'Asia/Taipei' }); }
            catch (e) { return isoString; }
+       },
+       
+       // 解绑谷歌验证
+       handleUnbindGoogleAuth(row) {
+           this.unbindTargetAccount = row;
+           this.unbindForm.googleAuthCode = '';
+           this.unbindDialogVisible = true;
+           this.$nextTick(() => {
+               if (this.$refs.unbindFormRef) {
+                   this.$refs.unbindFormRef.clearValidate();
+               }
+           });
+       },
+       
+       async handleUnbindSubmit() {
+           const formEl = this.$refs.unbindFormRef;
+           if (!formEl) return;
+           
+           await formEl.validate(async (valid) => {
+               if (valid) {
+                   this.unbindLoading = true;
+                   try {
+                       await this.$api.unbindGoogleAuthForAccount(this.unbindTargetAccount.id, {
+                           googleAuthCode: this.unbindForm.googleAuthCode
+                       });
+                       ElMessage.success('谷歌验证解绑成功');
+                       this.unbindDialogVisible = false;
+                       await this.fetchAccounts(); // 刷新列表
+                   } catch (error) {
+                       console.error('Failed to unbind google auth:', error);
+                       if (error.response && error.response.data && error.response.data.error) {
+                           ElMessage.error(error.response.data.error);
+                       } else {
+                           ElMessage.error('解绑失败');
+                       }
+                   } finally {
+                       this.unbindLoading = false;
+                   }
+               }
+           });
        }
    }
 };
 </script>
 
 <style scoped>
-.page-description { color: #909399; font-size: 14px; margin-bottom: 20px; }
-.action-card { margin-bottom: 20px; }
-.table-card { margin-bottom: 20px; }
-.el-form-item { margin-bottom: 20px; }
-.form-tip { font-size: 12px; color: #909399; margin-top: 5px; line-height: 1.4; }
+.action-card {
+  margin-bottom: var(--spacing-md);
+}
+
+.form-tip {
+  font-size: 12px;
+  color: var(--text-tertiary);
+  margin-top: 5px;
+  line-height: 1.5;
+}
 </style>

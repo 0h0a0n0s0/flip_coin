@@ -1,5 +1,5 @@
 <template>
-  <div class="deposit-history-container">
+  <div class="page-container deposit-history-container">
     <h2>充值记录</h2>
 
     <el-card shadow="never" class="search-card">
@@ -7,8 +7,10 @@
         <el-form-item label="用户名"><el-input v-model="searchParams.username" placeholder="用户名 (模糊)" clearable></el-input></el-form-item>
         <el-form-item label="用户ID"><el-input v-model="searchParams.user_id" placeholder="精确用户ID" clearable></el-input></el-form-item>
         <el-form-item label="TX Hash"><el-input v-model="searchParams.tx_hash" placeholder="Hash (精确)" clearable></el-input></el-form-item>
+        <el-form-item label="用户地址"><el-input v-model="searchParams.user_address" placeholder="用户地址 (精确)" clearable></el-input></el-form-item>
+        <el-form-item label="平台地址"><el-input v-model="searchParams.platform_address" placeholder="平台地址 (精确)" clearable></el-input></el-form-item>
         <el-form-item label="充值狀态">
-          <el-select v-model="searchParams.status" placeholder="选择状态" clearable>
+          <el-select v-model="searchParams.status" placeholder="选择状态" clearable style="width: 180px;">
             <el-option label="已完成" value="completed" />
             <el-option label="待处理" value="pending" />
             <el-option label="失败" value="failed" />
@@ -46,7 +48,21 @@
            <template #default="scope">{{ formatDateTime(scope.row.created_at) }}</template>
         </el-table-column>
         
-        <el-table-column prop="tx_hash" label="充值 Hash">
+        <el-table-column prop="user_address" label="用户地址" width="200">
+          <template #default="scope">
+            <span v-if="scope.row.user_address" class="address-text">{{ scope.row.user_address }}</span>
+            <span v-else class="text-muted">-</span>
+          </template>
+        </el-table-column>
+        
+        <el-table-column prop="platform_address" label="平台地址" width="200">
+          <template #default="scope">
+            <span v-if="scope.row.platform_address" class="address-text">{{ scope.row.platform_address }}</span>
+            <span v-else class="text-muted">-</span>
+          </template>
+        </el-table-column>
+        
+        <el-table-column prop="tx_hash" label="充值 Hash" width="200">
             <template #default="scope">
                 <a v-if="scope.row.tx_hash" :href="getTxLink(scope.row.chain, scope.row.tx_hash)" target="_blank" class="tx-link">
                 {{ scope.row.tx_hash }}
@@ -101,6 +117,8 @@ export default {
         user_id: '',
         status: '',
         tx_hash: '',
+        user_address: '',
+        platform_address: '',
         dateRange: createTodayRange(),
       },
     };
@@ -119,6 +137,8 @@ export default {
           status: this.searchParams.status || undefined,
           tx_hash: this.searchParams.tx_hash || undefined,
           user_id: this.searchParams.user_id || undefined,
+          user_address: this.searchParams.user_address || undefined,
+          platform_address: this.searchParams.platform_address || undefined,
         };
 
         if (this.searchParams.dateRange && this.searchParams.dateRange.length === 2) {
@@ -183,9 +203,30 @@ export default {
 .table-card { margin-bottom: 20px; }
 .pagination-container { margin-top: 20px; display: flex; justify-content: flex-end; }
 .el-form-item { margin-bottom: 10px; }
-.tx-link { color: #409EFF; text-decoration: none; word-break: break-all; }
-.tx-link:hover { text-decoration: underline; }
+.tx-link { 
+  color: #237804; 
+  text-decoration: none; 
+  word-break: break-all;
+  transition: all 0.2s ease;
+}
+
+.tx-link:hover {
+  color: #135200;
+  text-decoration: underline;
+}
+
+.address-text {
+  font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', 'Consolas', monospace;
+  font-size: 12px;
+  word-break: break-all;
+}
+
+.text-muted {
+  color: var(--text-tertiary);
+  font-style: italic;
+}
+
 .search-form :deep(.el-input) { width: 180px; }
-.search-form :deep(.el-select),
+.search-form :deep(.el-select) { width: 180px; }
 .search-form :deep(.el-date-editor) { width: 300px; }
 </style>

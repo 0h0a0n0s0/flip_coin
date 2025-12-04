@@ -1,6 +1,8 @@
 <template>
-  <div class="bet-management-container">
-    <h2>注单列表</h2>
+  <div class="page-container">
+    <div class="page-header">
+      <h2 class="page-title">注单列表</h2>
+    </div>
 
     <el-card shadow="never" class="search-card">
       <el-form :inline="true" :model="searchParams" @submit.native.prevent="handleSearch" class="search-form">
@@ -232,30 +234,39 @@ export default {
 </script>
 
 <style scoped>
-.search-card { margin-bottom: 20px; }
-.table-card { margin-bottom: 20px; }
-.pagination-container { margin-top: 20px; display: flex; justify-content: flex-end; }
-.el-form-item { margin-bottom: 10px; }
 .tx-link {
-  color: #409EFF;
+  color: #237804;
   text-decoration: none;
+  transition: all 0.2s ease;
 }
+
 .tx-link:hover {
+  color: #135200;
   text-decoration: underline;
 }
+
 .text-muted {
-  color: #909399;
+  color: var(--text-tertiary);
   font-style: italic;
 }
 
-/* (★★★ 修改 2: 新增 CSS 规則 ★★★) */
+/* 搜索表单输入框宽度 */
 .search-form :deep(.el-input) {
   width: 180px;
 }
+
 .search-form :deep(.el-select) {
   width: 180px;
 }
+
 .search-form :deep(.el-date-picker) {
   width: 240px;
+}
+
+/* 分页容器 */
+.pagination-container {
+  margin-top: var(--spacing-md);
+  display: flex;
+  justify-content: flex-end;
 }
 </style>

@@ -1,6 +1,8 @@
 <template>
-  <div class="report-management-container">
-    <h2>盈虧报表</h2>
+  <div class="page-container">
+    <div class="page-header">
+      <h2 class="page-title">盈虧报表</h2>
+    </div>
 
     <el-card shadow="never" class="search-card">
       <el-form :inline="true" :model="searchParams" @submit.native.prevent="handleSearch" class="search-form">
@@ -192,77 +194,118 @@ export default {
 </script>
 
 <style scoped>
-.search-card { margin-bottom: 20px; }
-.form-tip { font-size: 12px; color: #909399; margin-top: 5px; }
-.result-card { margin-bottom: 20px; }
+.form-tip {
+  font-size: 12px;
+  color: var(--text-tertiary);
+  margin-top: 5px;
+  line-height: 1.5;
+}
 
 .report-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-  gap: 20px;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: var(--spacing-md);
 }
+
 .report-item {
-  border: 1px solid #e4e7ed;
-  border-radius: 8px;
-  padding: 20px;
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-lg);
+  padding: var(--spacing-lg);
   text-align: center;
-  background-color: #fafafa;
+  background: var(--bg-secondary);
+  transition: all 0.3s ease;
+  box-shadow: var(--shadow-sm);
 }
+
+.report-item:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-base);
+  border-color: var(--border-base);
+}
+
 .report-label {
   font-size: 14px;
-  color: #606266;
-  margin-bottom: 12px;
+  color: var(--text-secondary);
+  margin-bottom: var(--spacing-sm);
   display: flex;
   justify-content: center;
   align-items: center;
-  gap: 5px; 
+  gap: 6px;
+  font-weight: 500;
 }
+
 .report-label .el-icon {
-  cursor: help; 
-  color: #909399;
+  cursor: help;
+  color: var(--text-tertiary);
+  transition: color 0.2s ease;
 }
+
+.report-label .el-icon:hover {
+  color: #237804;
+}
+
 .report-value {
-  font-size: 22px;
-  font-weight: bold;
-}
-.report-desc {
-  font-size: 12px;
-  color: #909399;
-  margin-top: 8px;
+  font-size: 24px;
+  font-weight: 700;
+  line-height: 1.2;
 }
 
 /* 颜色 */
-.report-item .report-value { color: #303133; } 
-.report-item.info .report-value { color: #909399; } 
-.report-item.gas-fee .report-value { color: #E6A23C; }
+.report-item .report-value {
+  color: var(--text-primary);
+}
+
+.report-item.info .report-value {
+  color: var(--text-tertiary);
+}
+
+.report-item.gas-fee .report-value {
+  color: var(--color-warning);
+}
 
 /* 盈虧颜色 */
-.report-item.profit .report-value { color: #67c23a; } 
-.report-item.loss .report-value { color: #f56c6c; } 
+.report-item.profit .report-value {
+  color: var(--color-success);
+}
 
-/* 净营利 醒目提示 */
+.report-item.loss .report-value {
+  color: var(--color-danger);
+}
+
+/* 净营利醒目提示 - 深绿色系 */
 .report-item.net-profit {
   border-width: 2px;
-  border-color: #409EFF;
-  background-color: #ecf5ff;
-}
-.report-item.net-profit.loss {
-   border-color: #f56c6c;
-   background-color: #fef0f0;
-}
-.report-item.net-profit.profit {
-   border-color: #67c23a;
-   background-color: #f0f9eb;
+  border-color: #237804;
+  background: linear-gradient(135deg, #f6ffed 0%, #f0f9eb 100%);
+  color: #135200;
 }
 
-/* (★★★ 修改 2: 新增 CSS 规則 ★★★) */
+.report-item.net-profit .report-label {
+  color: #135200;
+  font-weight: 600;
+}
+
+.report-item.net-profit .report-value {
+  color: #135200;
+  font-weight: 700;
+}
+
+.report-item.net-profit.loss {
+  border-color: var(--color-danger);
+  background: linear-gradient(135deg, #fef0f0 0%, #fde2e2 100%);
+}
+
+.report-item.net-profit.profit {
+  border-color: var(--color-success);
+  background: linear-gradient(135deg, #f0f9eb 0%, #e1f3d8 100%);
+}
+
+/* 搜索表单输入框宽度 */
 .search-form :deep(.el-input) {
-  width: 180px;
-}
-.search-form :deep(.el-select) {
-  width: 180px;
-}
-.search-form :deep(.el-date-picker) {
   width: 240px;
+}
+
+.search-form :deep(.el-date-picker) {
+  width: 300px;
 }
 </style>

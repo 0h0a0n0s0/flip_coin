@@ -1,5 +1,5 @@
 <template>
-  <div class="user-levels-container">
+  <div class="page-container user-levels-container">
     <h2>用户等级设定</h2>
     <p class="page-description">管理用户等级及其升级条件和奖励。</p>
 

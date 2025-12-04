@@ -1,5 +1,5 @@
 <template>
-  <div class="login-query-container">
+  <div class="page-container login-query-container">
     <h2>登录查询</h2>
 
     <el-card shadow="never" class="search-card">

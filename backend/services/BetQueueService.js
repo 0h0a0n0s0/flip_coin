@@ -2,7 +2,8 @@
 
 const db = require('../db');
 // (★★★ v8.9 修正：从 server.js 改为 services/settingsCache ★★★)
-const { getSettingsCache } = require('./settingsCache.js'); 
+const { getSettingsCache } = require('./settingsCache.js');
+const { logBalanceChange, CHANGE_TYPES } = require('../utils/balanceChangeLogger'); 
 
 class BetQueueService {
     /**
@@ -95,10 +96,11 @@ class BetQueueService {
             }
 
             // 1b. 扣款
-            await client.query(
-                "UPDATE users SET balance = balance - $1 WHERE id = $2",
+            const updateResult = await client.query(
+                "UPDATE users SET balance = balance - $1 WHERE id = $2 RETURNING balance",
                 [amount, user.id]
             );
+            const newBalance = parseFloat(updateResult.rows[0].balance);
             
             // 1c. 寫入 Pending 注单 (★★★ v9.2 新增：记录投注IP ★★★)
             const betResult = await client.query(
@@ -108,6 +110,21 @@ class BetQueueService {
                 [userId, choice, amount, item.betIp || null]
             );
             betId = betResult.rows[0].id;
+            
+            // 1d. 记录账变（下注扣款）
+            try {
+                await logBalanceChange({
+                    user_id: userId,
+                    change_type: CHANGE_TYPES.BET,
+                    amount: -amount,  // 负数表示扣款
+                    balance_after: newBalance,
+                    remark: `下注 ${amount} USDT, 注单ID: ${betId}`,
+                    client: client
+                });
+            } catch (error) {
+                console.error('[BetQueueService] Failed to log balance change (bet):', error);
+                // 不阻止主流程，只记录错误
+            }
             
             await client.query('COMMIT');
             client.release(); // (释放 TX 1)
@@ -170,6 +187,22 @@ class BetQueueService {
                     [payoutAmount, user.id]
                 );
                 updatedUser = userResult.rows[0];
+                
+                // 记录账变（派奖）
+                try {
+                    const newBalance = parseFloat(updatedUser.balance);
+                    await logBalanceChange({
+                        user_id: user.user_id,
+                        change_type: CHANGE_TYPES.PAYOUT,
+                        amount: payoutAmount,  // 正数表示增加
+                        balance_after: newBalance,
+                        remark: `派奖 ${payoutAmount} USDT, 注单ID: ${betId}, 倍率: ${multiplier}x`,
+                        client: client
+                    });
+                } catch (error) {
+                    console.error('[BetQueueService] Failed to log balance change (payout):', error);
+                    // 不阻止主流程，只记录错误
+                }
             } else {
                  const userResult = await client.query(
                     `UPDATE users 
@@ -214,9 +247,26 @@ class BetQueueService {
                 "UPDATE users SET balance = balance + $1 WHERE user_id = $2 RETURNING *",
                 [amount, userId]
             );
+            const updatedUser = userResult.rows[0];
+            
+            // 记录账变（下注退款）
+            try {
+                const newBalance = parseFloat(updatedUser.balance);
+                await logBalanceChange({
+                    user_id: userId,
+                    change_type: CHANGE_TYPES.PAYOUT,  // 使用PAYOUT类型表示退款
+                    amount: amount,  // 正数表示退款
+                    balance_after: newBalance,
+                    remark: `下注失败退款 ${amount} USDT, 注单ID: ${betId}, 原因: ${errorMsg}`
+                });
+            } catch (error) {
+                console.error('[BetQueueService] Failed to log balance change (refund):', error);
+                // 不阻止主流程，只记录错误
+            }
+            
             this._notifySocketBetUpdate(userId, { id: betId, status: status, notes: errorMsg });
-            delete userResult.rows[0].password_hash;
-            this._notifySocketUserInfo(userId, userResult.rows[0]);
+            delete updatedUser.password_hash;
+            this._notifySocketUserInfo(userId, updatedUser);
         } catch (refundError) {
             console.error(`[v7 Bet] CRITICAL PANIC: REFUND FAILED for bet ${betId} (User: ${userId})!`, refundError);
         }

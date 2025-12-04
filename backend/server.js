@@ -31,6 +31,7 @@ const settingsCacheModule = require('./services/settingsCache.js'); // (★★�
 const { setRiskControlSockets, enforceSameIpRiskControl } = require('./services/riskControlService');
 const { sendError } = require('./utils/safeResponse');
 const { maskAddress, maskTxHash } = require('./utils/maskUtils');
+const { logBalanceChange, CHANGE_TYPES } = require('./utils/balanceChangeLogger');
 const { loginRateLimiter, registerRateLimiter, withdrawRateLimiter } = require('./middleware/rateLimiter');
 const { validateRegisterInput, validateLoginInput, validateWithdrawalInput } = require('./validators/authValidators');
 
@@ -186,7 +187,6 @@ passport.use('local-login', new LocalStrategy({
         if (user.status !== 'active') {
              return done(null, false, { message: '账户已被停用' });
         }
-        console.log(`[v6 Auth] User logged in: ${user.username}`);
         return done(null, user);
     } catch (error) {
         return done(error);
@@ -255,10 +255,8 @@ io.use(async (socket, next) => {
 });
 io.on('connection', (socket) => { 
     const userId = socket.user_id;
-    console.log(`[Socket.io] User connected: ${userId} (Socket: ${socket.id})`);
     connectedUsers[userId] = socket.id;
     socket.on('disconnect', () => {
-        console.log(`[Socket.io] User disconnected: ${userId} (Socket: ${socket.id})`);
         if (connectedUsers[userId] === socket.id) {
             delete connectedUsers[userId];
         }
@@ -292,11 +290,6 @@ function v1ApiRouter(router, passport) {
      */
     async function executeAutoPayout(withdrawalRequest) {
         const { id, user_id, amount, chain_type, address } = withdrawalRequest;
-        console.log(`[v8 Payout] ========== STARTING AUTO-PAYOUT ==========`);
-        console.log(`[v8 Payout] Executing auto-payout for WID: ${id} (User: ${user_id})`);
-        console.log(`[v8 Payout] Amount: ${amount} ${chain_type} to address: ${address}`);
-        console.log(`[v8 Payout] payoutService exists: ${!!payoutService}`);
-        console.log(`[v8 Payout] payoutService.isReady(): ${payoutService ? payoutService.isReady() : 'N/A'}`);
         
         try {
             // (目前僅支援 TRC20)
@@ -309,18 +302,15 @@ function v1ApiRouter(router, passport) {
             }
             
             if (!payoutService.isReady()) {
-                console.log(`[v8 Payout] PayoutService not ready, attempting to load wallets...`);
                 await payoutService.ensureWalletsLoaded();
                 if (!payoutService.isReady()) {
                     throw new Error('PayoutService is not ready after attempting to load wallets');
                 }
             }
             
-            console.log(`[v8 Payout] Calling sendTrc20Payout...`);
             const txHash = await payoutService.sendTrc20Payout(withdrawalRequest);
             
             // (出款成功)
-            console.log(`[v8 Payout] SUCCESS (WID: ${id}). TX: ${txHash}. Updating DB...`);
             const client = await db.pool.connect();
             try {
                 await client.query('BEGIN');
@@ -368,11 +358,56 @@ function v1ApiRouter(router, passport) {
         }
     }
     
-    // ( /api/v1/register ) (不变)
+    // ( GET /api/v1/platform-name ) - 公開API，獲取平台名稱
+    router.get('/api/v1/platform-name', async (req, res) => {
+        try {
+            const result = await db.query(
+                "SELECT value FROM system_settings WHERE key = 'PLATFORM_NAME' LIMIT 1"
+            );
+            const platformName = result.rows[0]?.value || 'FlipCoin';
+            res.status(200).json({ platform_name: platformName });
+        } catch (error) {
+            console.error('[API v1] Error fetching platform name:', error);
+            res.status(200).json({ platform_name: 'FlipCoin' }); // 默认值
+        }
+    });
+    
+    // ( /api/v1/register ) (★★★ 新增：註冊後自動登入時記錄登錄IP ★★★)
     router.post('/api/v1/register', registerRateLimiter, validateRegisterInput, (req, res, next) => {
-        passport.authenticate('local-signup', { session: false }, (err, user, info) => {
+        passport.authenticate('local-signup', { session: false }, async (err, user, info) => {
             if (err) return next(err);
             if (!user) return sendError(res, 400, info.message || '注册失败。');
+            
+            // (★★★ 新增：註冊後自動登入時記錄首次登錄信息 ★★★)
+            try {
+                const { getClientIp, extractDeviceId, getCountryFromIp } = require('./utils/ipUtils');
+                const clientIp = getClientIp(req);
+                const userAgent = req.headers['user-agent'] || null;
+                const deviceId = extractDeviceId(req);
+                const country = await getCountryFromIp(clientIp);
+                
+                // 註冊後自動登入，記錄首次登錄信息
+                await db.query(
+                    `UPDATE users 
+                     SET first_login_ip = $1, first_login_country = $2, first_login_at = NOW(),
+                         last_login_ip = $1, last_activity_at = NOW(), user_agent = $3,
+                         device_id = COALESCE(device_id, $4)
+                     WHERE id = $5`,
+                    [clientIp, country, userAgent, deviceId, user.id]
+                );
+                
+                // 記錄登錄日誌
+                await db.query(
+                    `INSERT INTO user_login_logs (user_id, login_ip, login_country, device_id, user_agent) 
+                     VALUES ($1, $2, $3, $4, $5)`,
+                    [user.user_id, clientIp, country, deviceId, userAgent]
+                );
+                
+            } catch (error) {
+                console.error('[Register] Failed to record auto-login info:', error);
+                // 不阻擋註冊流程，僅記錄錯誤
+            }
+            
             const payload = { id: user.id, username: user.username };
             const token = jwt.sign(payload, process.env.JWT_SECRET, { expiresIn: '8h' });
             delete user.password_hash;
@@ -390,8 +425,6 @@ function v1ApiRouter(router, passport) {
             try {
                 const { getClientIp, extractDeviceId, getCountryFromIp } = require('./utils/ipUtils');
                 const clientIp = getClientIp(req);
-                // (★★★ 調試：記錄 IP 獲取詳情 ★★★)
-                console.log(`[Login] User ${user.user_id} login - Detected IP: ${clientIp}, Headers: X-Forwarded-For=${req.headers['x-forwarded-for']}, X-Real-IP=${req.headers['x-real-ip']}, req.ip=${req.ip}`);
                 const userAgent = req.headers['user-agent'] || null;
                 const deviceId = extractDeviceId(req);
                 const country = await getCountryFromIp(clientIp);
@@ -472,7 +505,6 @@ function v1ApiRouter(router, passport) {
             
             const updatedUser = result.rows[0];
             delete updatedUser.password_hash;
-            console.log(`[v7 API] User ${updatedUser.user_id} updated nickname to: ${updatedUser.nickname}`);
             res.status(200).json(updatedUser);
 
         } catch (error) {
@@ -528,7 +560,6 @@ function v1ApiRouter(router, passport) {
             
             const updatedUser = updateResult.rows[0];
             delete updatedUser.password_hash;
-            console.log(`[v7 API] User ${updatedUser.user_id} bound referrer to: ${updatedUser.referrer_code}`);
             res.status(200).json(updatedUser);
 
         } catch (error) {
@@ -691,22 +722,11 @@ function v1ApiRouter(router, passport) {
         const settingsCache = settingsCacheModule.getSettingsCache();
         const threshold = parseFloat(settingsCache['AUTO_WITHDRAW_THRESHOLD']?.value || '0');
         
-        // (★★★ v8.1 新增：调試日志 ★★★)
-        console.log(`[v8 Payout Debug] Checking auto-payout eligibility:`);
-        console.log(`  - payoutService exists: ${!!payoutService}`);
-        console.log(`  - payoutService.isReady(): ${payoutService ? payoutService.isReady() : 'N/A'}`);
-        console.log(`  - threshold: ${threshold}`);
-        console.log(`  - withdrawalAmount: ${withdrawalAmount}`);
-        console.log(`  - chain_type: ${chain_type}`);
-        console.log(`  - settingsCache['AUTO_WITHDRAW_THRESHOLD']:`, settingsCache['AUTO_WITHDRAW_THRESHOLD']);
-        
         const isAutoPayoutEligible = payoutService && 
                                      payoutService.isReady() &&
                                      threshold > 0 && 
                                      withdrawalAmount <= threshold && 
                                      chain_type === 'TRC20'; // (目前僅 TRC20 支援自动出款)
-        
-        console.log(`[v8 Payout Debug] isAutoPayoutEligible: ${isAutoPayoutEligible}`);
 
         const client = await db.pool.connect();
         try {
@@ -746,7 +766,6 @@ function v1ApiRouter(router, passport) {
                 platformTxStatus = 'processing';
                 responseMessage = '提款请求已批准，正在自动出款...';
                 rejectionReason = 'Auto-Payout Queued';
-                console.log(`[v8 Payout] User ${user.user_id} qualifies for auto-payout (${withdrawalAmount} <= ${threshold}).`);
             } else {
                 // (不符合：设为 'pending')
                 withdrawalStatus = 'pending';
@@ -770,6 +789,22 @@ function v1ApiRouter(router, passport) {
                  [user.user_id, chain_type, -Math.abs(withdrawalAmount), platformTxStatus]
             );
 
+            // 6b. 记录账变（提款扣款）
+            try {
+                const newBalance = parseFloat(updatedUser.balance);
+                await logBalanceChange({
+                    user_id: user.user_id,
+                    change_type: CHANGE_TYPES.WITHDRAWAL,
+                    amount: -withdrawalAmount,  // 负数表示扣款
+                    balance_after: newBalance,
+                    remark: `提款申请 ${withdrawalAmount} USDT, 提款单ID: ${withdrawalRequest.id}, 地址: ${address}`,
+                    client: client
+                });
+            } catch (error) {
+                console.error('[Server] Failed to log balance change (withdrawal):', error);
+                // 不阻止主流程，只记录错误
+            }
+
             // 7. 提交资料库事务
             await client.query('COMMIT');
             
@@ -787,17 +822,9 @@ function v1ApiRouter(router, passport) {
             // 10. (★★★ 異步 ★★★)
             // (在回应後，才真正执行链上出款)
             if (isAutoPayoutEligible) {
-                console.log(`[v8 Payout] Triggering auto-payout for withdrawal ID: ${withdrawalRequest.id}`);
                 executeAutoPayout(withdrawalRequest).catch(err => {
                     console.error(`[v8 Payout] Unhandled error in executeAutoPayout:`, err);
                 }); // (Fire-and-forget，但捕获未处理的错误)
-            } else {
-                console.log(`[v8 Payout] Auto-payout NOT triggered. Reasons:`);
-                if (!payoutService) console.log(`  - payoutService is not initialized`);
-                if (payoutService && !payoutService.isReady()) console.log(`  - payoutService.isReady() returned false`);
-                if (threshold <= 0) console.log(`  - threshold (${threshold}) <= 0`);
-                if (withdrawalAmount > threshold) console.log(`  - withdrawalAmount (${withdrawalAmount}) > threshold (${threshold})`);
-                if (chain_type !== 'TRC20') console.log(`  - chain_type (${chain_type}) !== 'TRC20'`);
             }
 
         } catch (error) { // (捕捉 余额不足 / 密码错误 / DB 错误)
@@ -867,12 +894,10 @@ httpServer.listen(PORT, async () => {
     
     // (★★★ v8.1 新增：初始化 PayoutService ★★★)
     payoutService = getPayoutServiceInstance();
-    console.log(`[v8 Payout] PayoutService instance created.`);
     
     // (★★★ v8.1 新增：初始化後立即载入钱包 ★★★)
     try {
         await payoutService.ensureWalletsLoaded();
-        console.log(`[v8 Payout] PayoutService initialization complete. isReady(): ${payoutService.isReady()}`);
     } catch (payoutError) {
         console.error("[v8 Payout] Warning: Failed to load payout wallets during startup:", payoutError.message);
         // (不中断启动，允许後续重試)
@@ -889,8 +914,6 @@ httpServer.listen(PORT, async () => {
     
     // 4. 启动 Collection Service (每日执行一次)
     if (tronCollectionService) {
-        console.log(`[Collection] Starting collection service timer (Daily execution)`);
-        
         // 计算到明天凌晨的时间
         const now = new Date();
         const tomorrow = new Date(now);
@@ -907,7 +930,5 @@ httpServer.listen(PORT, async () => {
                 tronCollectionService.collectFunds().catch(err => console.error("[Collection] Daily run failed:", err));
             }, 24 * 60 * 60 * 1000); // 24小时
         }, msUntilTomorrow);
-        
-        console.log(`[Collection] First collection will run at: ${tomorrow.toISOString()}`);
     }
 });

@@ -32,6 +32,7 @@ export function getWalletMonitoring() {
     return request({
         url: '/api/admin/wallet-monitoring',
         method: 'get',
+        timeout: 30000, // 增加到30秒，因為需要查詢多個錢包餘額
     });
 }
 
@@ -208,6 +209,14 @@ export function deleteAdminAccount(id) {
     });
 }
 
+export function unbindGoogleAuthForAccount(id, data) {
+    return request({
+        url: `/api/admin/accounts/${id}/unbind-google-auth`,
+        method: 'post',
+        data: data, // { googleAuthCode }
+    });
+}
+
 export function getIpWhitelist() {
     return request({
         url: '/api/admin/ip-whitelist',
@@ -346,6 +355,14 @@ export function getWithdrawals(params) {
         params: params,
     });
 }
+
+export function getBalanceChanges(params) {
+    return request({
+        url: '/api/admin/balance-changes',
+        method: 'get',
+        params: params,
+    });
+}
 export function approveWithdrawal(id) {
     return request({
         url: `/api/admin/withdrawals/${id}/approve`,
@@ -406,5 +423,45 @@ export function getLoginQueryDetail(endpoint) {
     return request({
         url: `/api/admin${endpoint}`,
         method: 'get',
+    });
+}
+
+// --- Profile Management ---
+export function getProfile() {
+    return request({
+        url: '/api/admin/profile',
+        method: 'get',
+    });
+}
+
+export function updateProfile(data) {
+    return request({
+        url: '/api/admin/profile',
+        method: 'put',
+        data: data,
+    });
+}
+
+// --- Google Authenticator ---
+export function getGoogleAuthSetup() {
+    return request({
+        url: '/api/admin/google-auth/setup',
+        method: 'get',
+    });
+}
+
+export function bindGoogleAuth(data) {
+    return request({
+        url: '/api/admin/google-auth/bind',
+        method: 'post',
+        data: data,
+    });
+}
+
+export function unbindGoogleAuth(data) {
+    return request({
+        url: '/api/admin/google-auth/unbind',
+        method: 'post',
+        data: data,
     });
 }

@@ -1,5 +1,5 @@
 <template>
-  <div class="blocked-regions-container">
+  <div class="page-container blocked-regions-container">
     <h2>阻挡地区设定</h2>
     <p class="page-description">在此处新增或刪除要阻挡的 IP 地址或 CIDR 范围。</p>
 

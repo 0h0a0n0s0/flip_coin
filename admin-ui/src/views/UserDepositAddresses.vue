@@ -1,5 +1,5 @@
 <template>
-  <div class="user-addresses-container">
+  <div class="page-container user-addresses-container">
     <h2>用户充值地址</h2>
     <p class="page-description">查看由 HD 钱包派生给所有用户的专属充值地址。</p>
 

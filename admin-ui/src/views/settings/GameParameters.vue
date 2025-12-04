@@ -1,5 +1,5 @@
 <template>
-  <div class="game-parameters-container">
+  <div class="page-container game-parameters-container">
     <h2>系统参数</h2>
     <p class="page-description">管理遊戏参数、金流参数、风控参数等系统设定。</p>
 
@@ -93,7 +93,18 @@
         
         <el-tab-pane label="其他参数" name="General">
            <el-form v-if="formGroups.General" ref="generalFormRef" :model="formGroups.General" label-width="200px" class="settings-form">
-              <el-empty description="無其他参数"></el-empty>
+              <el-form-item
+                label="平台名称"
+                prop="PLATFORM_NAME.value"
+                :rules="[{ required: true, message: '平台名称不能为空' }, { max: 50, message: '平台名称不能超过50个字符' }]"
+              >
+                <el-input v-model="formGroups.General.PLATFORM_NAME.value" style="width: 300px;" placeholder="请输入平台名称" maxlength="50" show-word-limit />
+                <div class="form-tip">{{ formGroups.General.PLATFORM_NAME.description }}</div>
+              </el-form-item>
+              
+              <el-form-item>
+                <el-button type="primary" @click="handleSubmit('General')" :loading="submitLoading">储存其他参数</el-button>
+              </el-form-item>
            </el-form>
            <el-empty v-else description="無其他参数"></el-empty>
         </el-tab-pane>
@@ -193,8 +204,12 @@ export default {
                        const updatePromises = [];
                        
                        // (只提交有变动的 key)
+                       let hasPlatformNameUpdate = false;
                        for (const key in settingsToUpdate) {
                            if (settingsToUpdate[key].value !== originalGroupSettings[key]?.value) {
+                               if (key === 'PLATFORM_NAME') {
+                                   hasPlatformNameUpdate = true;
+                               }
                                updatePromises.push(
                                    this.$api.updateSetting(key, settingsToUpdate[key].value)
                                );
@@ -208,6 +223,15 @@ export default {
                        }
 
                        await Promise.all(updatePromises);
+                       
+                       // (如果更新了平台名称，通知Layout组件刷新)
+                       if (hasPlatformNameUpdate) {
+                           // 触发全局事件，通知Layout组件重新加载平台名称
+                           this.$nextTick(() => {
+                               window.dispatchEvent(new CustomEvent('platformNameUpdated'));
+                           });
+                       }
+                       
                        ElMessage.success('设定储存成功！');
                        
                        // (储存成功後重新载入所有设定，以更新 originalSettings)

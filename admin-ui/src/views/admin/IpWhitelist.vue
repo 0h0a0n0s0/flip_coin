@@ -1,5 +1,5 @@
 <template>
-  <div class="ip-whitelist-container">
+  <div class="page-container ip-whitelist-container">
     <h2>後台ip白名单</h2>
     <p class="page-description">
       <el-alert type="warning" show-icon :closable="false">
