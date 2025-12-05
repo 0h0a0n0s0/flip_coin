@@ -88,8 +88,31 @@ function handleClose() {
 
 <style scoped>
 :deep(.el-dialog) {
-  background-color: var(--card);
-  border: 1px solid var(--border);
+  background-color: rgb(var(--surface-light));
+  border: 1px solid rgb(var(--border));
+}
+
+:deep(.el-dialog__title) {
+  color: rgb(var(--foreground));
+}
+
+:deep(.el-dialog__body) {
+  color: rgb(var(--foreground));
+}
+
+:deep(.el-input__inner) {
+  background-color: rgb(var(--surface));
+  border-color: rgb(var(--border));
+  color: rgb(var(--foreground));
+  border-radius: var(--radius-sm);
+}
+
+:deep(.el-input__inner::placeholder) {
+  color: rgb(var(--text-muted));
+}
+
+:deep(.el-form-item__label) {
+  color: rgb(var(--foreground));
 }
 </style>
 

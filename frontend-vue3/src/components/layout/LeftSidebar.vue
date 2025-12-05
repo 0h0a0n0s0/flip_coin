@@ -1,3 +1,5 @@
+<!-- 模块 4: LeftSidebar - 左侧可收缩菜单 -->
+<!-- 包含：游戏分类菜单、搜索、收缩/展开功能 -->
 <template>
   <!-- Desktop Sidebar -->
   <aside
@@ -18,15 +20,16 @@
 
       <!-- Search - Hidden when collapsed -->
       <div v-if="!isCollapsed" class="sidebar-search">
-        <el-input
-          v-model="searchQuery"
-          placeholder="Search..."
-          class="search-input"
-        >
-          <template #prefix>
-            <el-icon><Search /></el-icon>
-          </template>
-        </el-input>
+        <div class="search-input-wrapper">
+          <div class="search-icon-wrapper">
+            <el-icon class="search-icon"><Search /></el-icon>
+          </div>
+          <el-input
+            v-model="searchQuery"
+            placeholder="Search games..."
+            class="search-input"
+          />
+        </div>
       </div>
 
       <!-- Menu Items -->
@@ -159,11 +162,11 @@ defineExpose({
 .sidebar-desktop {
   display: none;
   position: sticky;
-  top: 88px;
-  height: calc(100vh - 88px);
-  width: 200px;
-  border-right: 1px solid var(--border);
-  background-color: rgba(19, 20, 22, 0.6);
+  top: 104px; /* Header 64px + TopCategoryNav 40px */
+  height: calc(100vh - 104px);
+  width: 230px; /* 展开宽度改为 230px */
+  border-right: 1px solid rgb(var(--border));
+  background-color: rgb(var(--background) / 0.6);
   backdrop-filter: blur(8px);
   transition: width 0.3s;
   overflow-y: auto;
@@ -195,15 +198,69 @@ defineExpose({
   color: var(--text-muted);
 }
 
+/* Search Bar - 暗色科技风格，符合项目宪法 */
 .sidebar-search {
   margin-bottom: var(--space-1);
+  position: relative;
+}
+
+.search-input-wrapper {
+  position: relative;
+  width: 100%;
+}
+
+.search-icon-wrapper {
+  position: absolute;
+  left: var(--space-3);
+  top: 50%;
+  transform: translateY(-50%);
+  z-index: 1;
+  pointer-events: none;
+  display: flex;
+  align-items: center;
+  transition: color 0.2s;
+}
+
+.search-icon {
+  width: 14px;
+  height: 14px;
+  color: rgb(var(--text-muted)); /* 默认灰色 */
+  transition: color 0.2s;
+}
+
+/* 聚焦时图标变金色 */
+.search-input-wrapper:focus-within .search-icon {
+  color: rgb(var(--primary)); /* 聚焦时变金色 */
 }
 
 .search-input :deep(.el-input__inner) {
-  height: 28px;
-  font-size: 11px;
-  background-color: rgba(26, 28, 31, 0.5);
-  border-color: var(--border);
+  height: 32px;
+  font-size: 13px;
+  background-color: rgb(var(--surface)); /* 背景色：深灰色 #131416 */
+  border: 1px solid rgb(var(--border)); /* 边框：深灰边框，1px */
+  color: rgb(var(--foreground)); /* 文字颜色：白灰 */
+  border-radius: var(--radius-md); /* 圆角：8px */
+  padding-left: calc(var(--space-3) + 14px + var(--space-2)); /* 为图标留出空间 */
+  padding-right: var(--space-3);
+  transition: all 0.2s;
+}
+
+.search-input :deep(.el-input__inner:focus) {
+  outline: none;
+  border-color: rgb(var(--primary)); /* 聚焦时边框变金色 */
+  box-shadow: 0 0 0 1px rgb(var(--primary)); /* 金色光晕效果 */
+}
+
+.search-input :deep(.el-input__inner::placeholder) {
+  color: rgb(var(--text-muted)); /* Placeholder 颜色：暗灰 */
+}
+
+.search-input :deep(.el-input__wrapper) {
+  box-shadow: none; /* 移除 Element Plus 默认阴影 */
+}
+
+.search-input :deep(.el-input__wrapper.is-focus) {
+  box-shadow: none; /* 聚焦时也移除默认阴影，使用自定义光晕 */
 }
 
 .sidebar-nav {
@@ -220,7 +277,7 @@ defineExpose({
   padding: var(--space-2);
   height: 32px;
   border-radius: var(--radius-md);
-  font-size: 13px;
+  font-size: 14px; /* 文案增加到 14px */
   font-weight: 500;
   transition: all 0.2s;
   background: transparent;
@@ -230,19 +287,19 @@ defineExpose({
 }
 
 .menu-item:hover {
-  color: var(--foreground);
-  background-color: rgba(26, 28, 31, 0.5);
+  color: rgb(var(--foreground));
+  background-color: rgb(var(--surface-light) / 0.5);
 }
 
 .menu-item.active {
-  background-color: rgba(243, 195, 64, 0.1);
-  color: var(--primary);
-  border: 1px solid rgba(243, 195, 64, 0.2);
+  background-color: rgb(var(--primary) / 0.1);
+  color: rgb(var(--primary));
+  border: 1px solid rgb(var(--primary) / 0.2);
 }
 
 .menu-icon {
-  width: 16px;
-  height: 16px;
+  width: 14px; /* icon 增加到 14px */
+  height: 14px;
   flex-shrink: 0;
 }
 

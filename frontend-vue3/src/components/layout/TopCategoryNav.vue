@@ -1,3 +1,5 @@
+<!-- 模块 2: TopCategoryNav - Header 下方游戏分类 Tab 区 -->
+<!-- 包含：Home, Hash Game, Sports, Live Casino, Pokers, Slot, 街机 -->
 <template>
   <div class="top-category-nav">
     <!-- Desktop -->
@@ -6,7 +8,7 @@
         <button
           v-for="category in categories"
           :key="category.id"
-          @click="setActiveCategory(category.id)"
+          @click="handleCategoryClick(category.id)"
           :class="['category-item', { active: activeCategory === category.id }]"
         >
           <component :is="category.icon" class="category-icon" />
@@ -22,7 +24,7 @@
         <button
           v-for="category in categories"
           :key="category.id"
-          @click="setActiveCategory(category.id)"
+          @click="handleCategoryClick(category.id)"
           :class="['category-item', { active: activeCategory === category.id }]"
         >
           <component :is="category.icon" class="category-icon" />
@@ -35,19 +37,16 @@
 </template>
 
 <script setup>
-import { ref } from 'vue'
+import { ref, watch } from 'vue'
+import { useRouter, useRoute } from 'vue-router'
 import {
-  Grid,
+  HomeFilled,
+  Lock,
   Trophy,
   VideoPlay,
-  Box,
-  Promotion,
-  VideoCamera,
-  Key,
+  Grid,
   Coin,
-  DataLine,
-  Monitor,
-  Present
+  Monitor
 } from '@element-plus/icons-vue'
 
 const props = defineProps({
@@ -59,32 +58,55 @@ const props = defineProps({
 
 const emit = defineEmits(['update:modelValue'])
 
+const router = useRouter()
+const route = useRoute()
 const activeCategory = ref(props.modelValue)
 
+// 监听路由变化，更新 activeCategory
+watch(() => route.path, (newPath) => {
+  if (newPath === '/' || newPath === '') {
+    activeCategory.value = 'home'
+  } else if (newPath.startsWith('/hash')) {
+    activeCategory.value = 'hash-game'
+  } else if (newPath.startsWith('/sports')) {
+    activeCategory.value = 'sports'
+  } else if (newPath.startsWith('/live-casino')) {
+    activeCategory.value = 'live-casino'
+  } else if (newPath.startsWith('/pokers')) {
+    activeCategory.value = 'pokers'
+  } else if (newPath.startsWith('/slot')) {
+    activeCategory.value = 'slot'
+  } else if (newPath.startsWith('/arcade')) {
+    activeCategory.value = 'arcade'
+  }
+  emit('update:modelValue', activeCategory.value)
+}, { immediate: true })
+
 const categories = [
-  { id: 'home', label: 'Home', icon: Grid },
-  { id: 'sports', label: 'Sports', icon: Trophy },
-  { id: 'live', label: 'Live', icon: VideoPlay },
-  { id: 'casino', label: 'Casino', icon: Box },
-  { id: 'aviator', label: 'Aviator', icon: Promotion },
-  { id: 'live-casino', label: 'Live Casino', icon: VideoCamera },
-  { id: 'lucky-numbers', label: 'Lucky Numbers', icon: Key },
-  { id: 'betgames', label: 'BetGames', icon: Coin },
-  { id: 'esports', label: 'Esports', icon: DataLine },
-  { id: 'virtuals', label: 'Virtuals', icon: Monitor },
-  { id: 'promotions', label: 'Promotions', icon: Present }
+  { id: 'home', label: 'Home', icon: HomeFilled, route: '/' },
+  { id: 'hash-game', label: 'Hash Game', icon: Lock, route: '/hash' },
+  { id: 'sports', label: 'Sports', icon: Trophy, route: '/sports' },
+  { id: 'live-casino', label: 'Live Casino', icon: VideoPlay, route: '/live-casino' },
+  { id: 'pokers', label: 'Pokers', icon: Grid, route: '/pokers' },
+  { id: 'slot', label: 'Slot', icon: Coin, route: '/slot' },
+  { id: 'arcade', label: '街机', icon: Monitor, route: '/arcade' }
 ]
 
-function setActiveCategory(id) {
+function handleCategoryClick(id) {
   activeCategory.value = id
   emit('update:modelValue', id)
+  
+  const category = categories.find(cat => cat.id === id)
+  if (category) {
+    router.push({ path: category.route })
+  }
 }
 </script>
 
 <style scoped>
 .top-category-nav {
   position: sticky;
-  top: 56px;
+  top: 64px; /* Header 高度 64px */
   z-index: 40;
   border-bottom: 1px solid var(--border);
   background-color: rgba(19, 20, 22, 0.95);
@@ -93,6 +115,27 @@ function setActiveCategory(id) {
 
 .category-nav-desktop {
   display: none;
+  overflow-x: auto; /* 支持横向滚动 */
+  scrollbar-width: thin; /* Firefox 滚动条 */
+  scrollbar-color: rgb(41, 43, 47) transparent; /* Firefox 滚动条颜色 */
+}
+
+/* 自定义桌面端滚动条样式 - 黑色，比底色浅 */
+.category-nav-desktop::-webkit-scrollbar {
+  height: 4px; /* 滚动条高度 */
+}
+
+.category-nav-desktop::-webkit-scrollbar-track {
+  background: transparent; /* 滚动条轨道透明 */
+}
+
+.category-nav-desktop::-webkit-scrollbar-thumb {
+  background-color: rgb(41, 43, 47); /* 比背景色浅的黑色 */
+  border-radius: 2px;
+}
+
+.category-nav-desktop::-webkit-scrollbar-thumb:hover {
+  background-color: rgb(50, 52, 56); /* 悬停时稍亮一点 */
 }
 
 @media (min-width: 1024px) {
@@ -102,22 +145,37 @@ function setActiveCategory(id) {
 }
 
 .category-nav-container {
-  max-width: 1280px;
-  margin: 0 auto;
-  padding: 0 var(--space-4);
+  padding-left: 24px; /* 与浏览器左侧保持 24px 距离，与 logo 对齐 */
+  padding-right: 24px; /* 减少右边距，与左边保持一致 */
   display: flex;
   align-items: center;
+  gap: var(--space-2); /* 固定间隔 8px，与移动端保持一致 */
+  min-width: max-content; /* 确保内容不会被压缩，可以横向滚动 */
 }
 
 .category-nav-mobile {
   display: block;
   overflow-x: auto;
-  scrollbar-width: none;
-  -ms-overflow-style: none;
+  scrollbar-width: thin; /* Firefox 滚动条 */
+  scrollbar-color: rgb(41, 43, 47) transparent; /* Firefox 滚动条颜色 */
 }
 
+/* 自定义移动端滚动条样式 - 黑色，比底色浅 */
 .category-nav-mobile::-webkit-scrollbar {
-  display: none;
+  height: 4px; /* 滚动条高度 */
+}
+
+.category-nav-mobile::-webkit-scrollbar-track {
+  background: transparent; /* 滚动条轨道透明 */
+}
+
+.category-nav-mobile::-webkit-scrollbar-thumb {
+  background-color: rgb(41, 43, 47); /* 比背景色浅的黑色 */
+  border-radius: 2px;
+}
+
+.category-nav-mobile::-webkit-scrollbar-thumb:hover {
+  background-color: rgb(50, 52, 56); /* 悬停时稍亮一点 */
 }
 
 @media (min-width: 1024px) {
@@ -129,8 +187,9 @@ function setActiveCategory(id) {
 .category-nav-scroll {
   display: flex;
   align-items: center;
-  gap: 2px;
-  padding: 0 var(--space-2);
+  gap: var(--space-2); /* 固定间隔 8px，与桌面端保持一致，避免跳动 */
+  padding-left: 24px; /* 左边距 24px，与桌面端对齐 */
+  padding-right: 24px; /* 右边距 24px，与桌面端保持一致 */
   min-width: max-content;
 }
 
@@ -139,8 +198,8 @@ function setActiveCategory(id) {
   align-items: center;
   gap: var(--space-2);
   padding: 0 var(--space-3);
-  height: 40px;
-  font-size: 13px;
+  height: 40px; /* 固定高度 */
+  font-size: 16px; /* 固定字体大小 16px */
   font-weight: 500;
   transition: all 0.2s;
   background: transparent;
@@ -149,6 +208,7 @@ function setActiveCategory(id) {
   color: var(--text-muted);
   position: relative;
   white-space: nowrap;
+  flex-shrink: 0; /* 防止被压缩 */
 }
 
 .category-item:hover {
@@ -161,8 +221,9 @@ function setActiveCategory(id) {
 }
 
 .category-icon {
-  width: 16px;
+  width: 16px; /* 固定 icon 大小 16px */
   height: 16px;
+  flex-shrink: 0; /* 防止 icon 被压缩 */
 }
 
 .active-indicator {
@@ -175,15 +236,7 @@ function setActiveCategory(id) {
   border-radius: 2px 2px 0 0;
 }
 
-.category-nav-mobile .category-item {
-  padding: 0 var(--space-2);
-  height: 36px;
-  font-size: 11px;
-}
-
-.category-nav-mobile .category-icon {
-  width: 14px;
-  height: 14px;
-}
+/* 移除移动端的响应式样式，保持固定大小 */
+/* 无论浏览器宽度如何，文字和 icon 都保持 16px 大小 */
 </style>
 

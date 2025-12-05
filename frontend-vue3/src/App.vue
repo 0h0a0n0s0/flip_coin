@@ -28,8 +28,14 @@ onMounted(async () => {
 <style>
 #app {
   min-height: 100vh;
-  background-color: var(--background);
-  color: var(--foreground);
+  background-color: rgb(var(--background));
+  color: rgb(var(--foreground));
+}
+
+body {
+  background-color: rgb(var(--background));
+  margin: 0;
+  padding: 0;
 }
 </style>
 

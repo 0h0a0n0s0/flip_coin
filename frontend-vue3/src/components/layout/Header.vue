@@ -1,28 +1,23 @@
+<!-- 模块 1: Header - 顶部导航栏 -->
+<!-- 包含：Logo、平台名称、登入/注册/馀额/储值/头像 -->
 <template>
   <header class="header">
     <div class="header-container">
-      <div class="header-content">
-        <!-- Logo -->
-        <div class="logo">
-          <div class="logo-icon">#</div>
-          <span class="logo-text">{{ platformName }}</span>
+      <!-- Logo 区块 - 固定位置：左边 6px，宽 160px，高 35px -->
+      <div class="logo-block">
+        <!-- 预留平台 logo 区块 -->
+        <div class="logo-placeholder">
+          <!-- 可以在这里放置实际的 logo 图片 -->
         </div>
+      </div>
 
-        <!-- Search Bar - Desktop only -->
-        <div class="search-bar-desktop">
-          <el-input
-            v-model="searchQuery"
-            placeholder="Search games..."
-            class="search-input"
-          >
-            <template #prefix>
-              <el-icon><Search /></el-icon>
-            </template>
-          </el-input>
-        </div>
+      <!-- 平台名称 - 与 logo 保持 6px 距离 -->
+      <div class="platform-name">
+        {{ platformName }}
+      </div>
 
-        <!-- Right Actions -->
-        <div class="header-actions">
+      <!-- Right Actions - 用户认证/钱包/头像区，永远置右对齐 -->
+      <div class="header-actions">
           <template v-if="isLoggedIn">
             <!-- Wallet Balance - Desktop -->
             <div class="wallet-balance-desktop">
@@ -62,14 +57,13 @@
             </el-button>
           </template>
         </div>
-      </div>
     </div>
   </header>
 </template>
 
 <script setup>
 import { ref, computed, onMounted } from 'vue'
-import { Search, Wallet, User, UserFilled } from '@element-plus/icons-vue'
+import { Wallet, User, UserFilled } from '@element-plus/icons-vue'
 import { getCurrentUser, getToken } from '@/store/index.js'
 import * as api from '@/api/index.js'
 
@@ -80,7 +74,6 @@ const props = defineProps({
   onRegisterClick: Function
 })
 
-const searchQuery = ref('')
 const platformName = ref('FairHash')
 
 const isLoggedIn = computed(() => {
@@ -126,74 +119,61 @@ onMounted(async () => {
   position: sticky;
   top: 0;
   z-index: 50;
-  border-bottom: 1px solid var(--border);
-  background-color: rgba(19, 20, 22, 0.95);
+  height: 64px;
+  border-bottom: 1px solid rgb(var(--border));
+  background-color: rgb(var(--background) / 0.95);
   backdrop-filter: blur(8px);
 }
 
 .header-container {
-  max-width: 1400px;
-  margin: 0 auto;
-  padding: var(--space-2) var(--space-3);
-}
-
-.header-content {
+  position: relative;
+  width: 100%;
+  height: 100%;
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: var(--space-4);
+  padding-left: 24px;
+  padding-right: var(--space-3);
 }
 
-.logo {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-  flex-shrink: 0;
-}
-
-.logo-icon {
-  width: 28px;
-  height: 28px;
+/* Logo 区块 - 固定位置：左边 24px，宽 160px，高 35px，上下置中 */
+.logo-block {
+  position: absolute;
+  left: 24px;
+  height: 35px;
+  width: 160px;
   display: flex;
   align-items: center;
   justify-content: center;
-  border-radius: var(--radius-md);
-  background: linear-gradient(to bottom right, var(--accent), var(--accent-secondary));
-  font-size: 13px;
-  font-weight: bold;
-  color: var(--foreground);
 }
 
-.logo-text {
+.logo-placeholder {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  /* 预留样式，可以放置 logo 图片 */
+  /* background-color: rgb(var(--surface-light)); */
+  /* border: 1px dashed rgb(var(--border)); */
+}
+
+/* 平台名称 - 与 logo 保持 6px 距离，上下置中 */
+.platform-name {
+  position: absolute;
+  left: calc(24px + 160px + 6px); /* logo 左边 24px + logo 宽度 160px + 间距 6px */
+  height: 100%;
+  display: flex;
+  align-items: center;
   font-size: 16px;
   font-weight: bold;
-  color: var(--foreground);
+  color: rgb(var(--foreground));
 }
 
-.search-bar-desktop {
-  display: none;
-  flex: 1;
-  max-width: 35%;
-}
-
-@media (min-width: 768px) {
-  .search-bar-desktop {
-    display: block;
-  }
-}
-
-.search-input {
-  width: 100%;
-}
-
-.search-input :deep(.el-input__inner) {
-  height: 32px;
-  font-size: 13px;
-  background-color: rgba(26, 28, 31, 0.5);
-  border-color: var(--border);
-}
-
+/* Right Actions - 用户认证/钱包/头像区，永远置右对齐，上下置中 */
 .header-actions {
+  position: absolute;
+  right: var(--space-3);
+  height: 100%;
   display: flex;
   align-items: center;
   gap: var(--space-2);
@@ -205,11 +185,11 @@ onMounted(async () => {
   gap: var(--space-2);
   padding: var(--space-2) var(--space-3);
   border-radius: var(--radius-md);
-  background-color: rgba(26, 28, 31, 0.5);
-  border: 1px solid var(--border);
+  background-color: rgb(var(--surface-light) / 0.5);
+  border: 1px solid rgb(var(--border));
   font-size: 13px;
   font-weight: 600;
-  color: var(--foreground);
+  color: rgb(var(--foreground));
 }
 
 @media (min-width: 768px) {
@@ -218,11 +198,20 @@ onMounted(async () => {
   }
 }
 
-.deposit-btn {
+.deposit-btn :deep(.el-button) {
   height: 32px;
   padding: 0 var(--space-4);
   font-size: 12px;
   font-weight: 600;
+  background-color: rgb(var(--primary));
+  border-color: rgb(var(--primary));
+  color: rgb(var(--primary-foreground));
+  border-radius: var(--radius-lg);
+}
+
+.deposit-btn :deep(.el-button:hover) {
+  background-color: rgb(var(--primary) / 0.9);
+  border-color: rgb(var(--primary) / 0.9);
 }
 
 .login-btn-desktop {

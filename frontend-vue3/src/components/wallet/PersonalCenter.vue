@@ -325,8 +325,31 @@ function handleClose() {
 
 <style scoped>
 .personal-center-modal :deep(.el-dialog) {
-  background-color: var(--card);
-  border: 1px solid var(--border);
+  background-color: rgb(var(--surface-light));
+  border: 1px solid rgb(var(--border));
+}
+
+.personal-center-modal :deep(.el-dialog__title) {
+  color: rgb(var(--foreground));
+}
+
+.personal-center-modal :deep(.el-dialog__body) {
+  color: rgb(var(--foreground));
+}
+
+.personal-center-modal :deep(.el-input__inner) {
+  background-color: rgb(var(--surface));
+  border-color: rgb(var(--border));
+  color: rgb(var(--foreground));
+  border-radius: var(--radius-sm);
+}
+
+.personal-center-modal :deep(.el-input__inner::placeholder) {
+  color: rgb(var(--text-muted));
+}
+
+.personal-center-modal :deep(.el-form-item__label) {
+  color: rgb(var(--foreground));
 }
 
 .info-content,

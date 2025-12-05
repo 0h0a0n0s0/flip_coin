@@ -129,15 +129,15 @@ async function handleBet() {
 }
 
 .streak-positive {
-  background-color: rgba(40, 192, 129, 0.2);
-  color: #28C081;
+  background-color: rgb(var(--success) / 0.2);
+  color: rgb(var(--success));
   padding: var(--space-1) var(--space-2);
   border-radius: var(--radius-sm);
 }
 
 .streak-negative {
-  background-color: rgba(232, 85, 85, 0.2);
-  color: #E85555;
+  background-color: rgb(var(--danger) / 0.2);
+  color: rgb(var(--danger));
   padding: var(--space-1) var(--space-2);
   border-radius: var(--radius-sm);
 }

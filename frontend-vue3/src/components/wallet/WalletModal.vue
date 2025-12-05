@@ -181,8 +181,32 @@ function handleClose() {
 
 <style scoped>
 .wallet-modal :deep(.el-dialog) {
-  background-color: var(--card);
-  border: 1px solid var(--border);
+  background-color: rgb(var(--surface-light));
+  border: 1px solid rgb(var(--border));
+}
+
+.wallet-modal :deep(.el-dialog__title) {
+  color: rgb(var(--foreground));
+}
+
+.wallet-modal :deep(.el-dialog__body) {
+  color: rgb(var(--foreground));
+}
+
+.wallet-modal :deep(.el-input__inner) {
+  background-color: rgb(var(--surface));
+  border-color: rgb(var(--border));
+  color: rgb(var(--foreground));
+  border-radius: var(--radius-sm);
+}
+
+.wallet-modal :deep(.el-input__inner::placeholder) {
+  color: rgb(var(--text-muted));
+}
+
+.wallet-modal :deep(.el-select .el-input__inner) {
+  background-color: rgb(var(--surface));
+  border-color: rgb(var(--border));
 }
 
 .deposit-content,

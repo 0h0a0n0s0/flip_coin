@@ -1,5 +1,6 @@
 <template>
   <div class="main-layout-wrapper">
+    <!-- 模块 1: Header - 顶部导航栏（Logo、Search、登入/注册/馀额/储值/头像） -->
     <Header
       :on-wallet-click="openWallet"
       :on-personal-center-click="openPersonalCenter"
@@ -7,15 +8,18 @@
       :on-register-click="openRegister"
     />
 
+    <!-- 模块 2: TopCategoryNav - Header 下方游戏分类 Tab 区（Home 到 Promotions） -->
     <TopCategoryNav v-model="activeCategory" />
 
     <div class="main-layout">
+      <!-- 模块 4: LeftSidebar - 左侧可收缩菜单（游戏分类、搜索） -->
       <LeftSidebar
         :active-category="activeCategory"
         @update:active-category="handleCategoryChange"
         ref="sidebarRef"
       />
 
+      <!-- 模块 3: PageContent - 页面内容区（Banner、游戏列表、最近赢得等） -->
       <main class="main-content">
         <router-view />
       </main>
@@ -68,8 +72,14 @@ const { initializeSocket } = useSocket()
 const activeCategory = ref('all')
 
 function getCategoryFromRoute(path) {
-  if (path === '/' || path === '') return 'all'
-  if (path.startsWith('/hash')) return 'hash'
+  if (path === '/' || path === '') return 'home'
+  if (path.startsWith('/hash')) return 'hash-game'
+  if (path.startsWith('/sports')) return 'sports'
+  if (path.startsWith('/live-casino')) return 'live-casino'
+  if (path.startsWith('/pokers')) return 'pokers'
+  if (path.startsWith('/slot')) return 'slot'
+  if (path.startsWith('/arcade')) return 'arcade'
+  // 保留左侧菜单的分类映射
   if (path.startsWith('/trending')) return 'trending'
   if (path.startsWith('/new')) return 'new'
   if (path.startsWith('/slots')) return 'slots'
@@ -79,7 +89,7 @@ function getCategoryFromRoute(path) {
   if (path.startsWith('/scratch')) return 'scratch'
   if (path.startsWith('/bingo')) return 'bingo'
   if (path.startsWith('/lowdata')) return 'lowdata'
-  return 'all'
+  return 'home'
 }
 
 watch(() => route.path, (newPath) => {
@@ -120,9 +130,26 @@ function openSidebar() {
 function handleCategoryChange(category) {
   activeCategory.value = category
   
-  if (category === 'hash') {
+  // 处理 TopCategoryNav 的分类切换
+  if (category === 'home') {
+    router.push({ path: '/' })
+  } else if (category === 'hash-game') {
+    router.push({ path: '/hash' })
+  } else if (category === 'sports') {
+    router.push({ path: '/sports' })
+  } else if (category === 'live-casino') {
+    router.push({ path: '/live-casino' })
+  } else if (category === 'pokers') {
+    router.push({ path: '/pokers' })
+  } else if (category === 'slot') {
+    router.push({ path: '/slot' })
+  } else if (category === 'arcade') {
+    router.push({ path: '/arcade' })
+  } else if (category === 'hash') {
+    // 左侧菜单的 hash 分类
     router.push({ path: '/hash' })
   } else if (category === 'all') {
+    // 左侧菜单的 all 分类
     router.push({ path: '/' })
   } else {
     router.push({ path: `/${category}` })

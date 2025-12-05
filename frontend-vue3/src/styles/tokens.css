@@ -1,71 +1,120 @@
-/* Design System Tokens - 遵循 PROJECT_CONSTITUTION.md */
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
 
+@layer base {
 :root {
-  /* Spacing Tokens (憲法要求) */
+    /* 遵循 PROJECT_CONSTITUTION.md 第 8 章 - 项目宪法颜色值 */
+    /* 使用 RGB 格式以支持 Tailwind opacity */
+    
+    /* 主背景色 - 项目宪法要求：--surface: #131416 */
+    --background: 19 20 22;        /* #131416 - Main Background */
+    --foreground: 230 230 230;     /* #E6E6E6 - Main Text */
+    
+    /* 卡片/弹窗背景 - 项目宪法要求：--surface-light: #1A1C1F (比主背景亮约 8%) */
+    --card: 26 28 31;              /* #1A1C1F - Cards/Modals (比背景亮约 37% 在 RGB 值上) */
+    --card-foreground: 230 230 230; /* #E6E6E6 */
+    
+    --popover: 26 28 31;           /* #1A1C1F - 与 card 相同 */
+    --popover-foreground: 230 230 230;
+    
+    /* 金色主调 - 项目宪法要求：--primary: #F3C340 */
+    --primary: 243 195 64;         /* #F3C340 - 金色（主 CTA、重要按钮） */
+    --primary-foreground: 19 20 22; /* 深色文字在金色背景上 */
+    
+    /* 次要紫色 - 项目宪法要求：--secondary: #8A6CF4 */
+    --secondary: 138 108 244;      /* #8A6CF4 - 次要强调 */
+  --secondary-foreground: 230 230 230;
+
+    /* 辅助色 */
+    --muted: 41 43 47;             /* #292B2F - 与 border 相同 */
+    --muted-foreground: 153 153 153; /* #999999 - 项目宪法要求：--text-muted */
+
+    /* 强调色 - 使用 secondary 作为 accent */
+    --accent: 138 108 244;         /* #8A6CF4 - 与 secondary 相同 */
+    --accent-secondary: 107 76 230; /* #6B4CE6 - 更深一点的紫色 */
+    --accent-foreground: 230 230 230;
+    
+    /* 危险/成功色 - 项目宪法要求 */
+    --destructive: 232 85 85;      /* #E85555 - 项目宪法要求：--danger */
+    --destructive-foreground: 230 230 230;
+    
+    --success: 40 192 129;         /* #28C081 - 项目宪法要求 */
+    
+    /* 边框和输入框 - 项目宪法要求：--border: #292B2F */
+    --border: 41 43 47;            /* #292B2F - 边框色 */
+    --input: 19 20 22;             /* #131416 - 输入框背景（与主背景相同） */
+    --ring: 243 195 64;            /* #F3C340 - 焦点环颜色（与 primary 相同） */
+
+    /* 圆角 - 项目宪法要求 */
+  --radius-sm: 4px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+    --radius: 0.5rem;              /* 8px - 用于 Tailwind 计算 */
+
+    /* 间距 tokens - 项目宪法要求 */
   --space-1: 4px;
   --space-2: 8px;
   --space-3: 12px;
   --space-4: 16px;
   --space-5: 20px;
   --space-6: 24px;
-  
-  /* Radius Tokens (憲法要求) */
-  --radius-sm: 4px;
-  --radius-md: 8px;
-  --radius-lg: 12px;
-  
-  /* Color Tokens (憲法要求) */
-  --primary: #F3C340;
-  --secondary: #8A6CF4;
-  --success: #28C081;
-  --danger: #E85555;
-  --text: #E6E6E6;
-  --text-muted: #999999;
-  --surface: #131416;
-  --surface-light: #1A1C1F;
-  --border: #292B2F;
-  
-  /* 額外顏色（從 v0_source 適配） */
-  --background: #131416;
-  --foreground: #E6E6E6;
-  --card: #1A1C1F;
-  --card-foreground: #E6E6E6;
-  --muted: #292B2F;
-  --muted-foreground: #999999;
-  --accent: #8A6CF4;
-  --accent-secondary: #6B4CE6;
+    
+    /* 兼容旧命名 - 保持向后兼容 */
+    --surface: 19 20 22;           /* #131416 - 与 background 相同 */
+    --surface-light: 26 28 31;     /* #1A1C1F - 与 card 相同 */
+    --text: 230 230 230;           /* #E6E6E6 - 与 foreground 相同 */
+    --text-muted: 153 153 153;     /* #999999 */
+  }
 }
 
-/* Element Plus 主題覆蓋 */
+@layer base {
+  * {
+    @apply border-border;
+  }
+  body {
+    @apply bg-background text-foreground;
+  }
+}
+
+/* Element Plus 主題覆蓋 - 使用 RGB 變量 */
 .el-button--primary {
-  background-color: var(--primary);
-  border-color: var(--primary);
-  color: var(--surface);
+  background-color: rgb(var(--primary));
+  border-color: rgb(var(--primary));
+  color: rgb(var(--primary-foreground));
 }
 
 .el-button--primary:hover {
-  background-color: #E5B530;
-  border-color: #E5B530;
+  background-color: rgb(var(--primary) / 0.9);
+  border-color: rgb(var(--primary) / 0.9);
 }
 
 .el-input__inner {
-  background-color: var(--surface-light);
-  border-color: var(--border);
-  color: var(--text);
+  background-color: rgb(var(--input));
+  border-color: rgb(var(--border));
+  color: rgb(var(--foreground));
+  border-radius: var(--radius-sm);
+}
+
+.el-input__inner::placeholder {
+  color: rgb(var(--text-muted));
 }
 
 .el-dialog {
-  background-color: var(--card);
-  border-color: var(--border);
+  background-color: rgb(var(--card));
+  border: 1px solid rgb(var(--border));
 }
 
 .el-dialog__title {
-  color: var(--foreground);
+  color: rgb(var(--foreground));
+}
+
+.el-dialog__body {
+  color: rgb(var(--foreground));
 }
 
 .el-card {
-  background-color: var(--card);
-  border-color: var(--border);
-  color: var(--foreground);
+  background-color: rgb(var(--card));
+  border-color: rgb(var(--border));
+  color: rgb(var(--foreground));
 }
-

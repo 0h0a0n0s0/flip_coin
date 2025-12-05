@@ -159,3 +159,24 @@ If any violation detected:
 ```
 
 This is mandatory and cannot be disabled.
+
+### 11.1 Frontend Simulation (UI & Logic)
+* **Dependency Check:** Verify all components imports exist and `package.json` includes required libs.
+* **Visual Logic:** Confirm `tokens.css` variables are used. Check for "invisible text" (contrast issues) and broken RWD layouts.
+* **State Logic:** Ensure local state vs. global store (Pinia/Vuex) usage aligns with Section 1.1.
+
+### 11.2 Backend Simulation (Server & DB)
+* **Layer Isolation:** Verify NO SQL logic exists in Routes. (Routes must only call Services).
+* **API Contract Check:**
+  * Does the return format MATCH `{ success: true, data: ... }`?
+  * Are error responses handled via `sendError()`?
+  * Does the Service function strictly return data (not `res.json`)?
+* **Safety Check:** Ensure `req.body` inputs are validated before passing to Services.
+
+### 11.3 Integration Simulation (Handshake)
+* **Contract Matching:** If generating both FE and BE, does the FE payload (e.g., `POST body`) match exactly what the BE Validator expects?
+* **Auth Flow:** Is the endpoint protected? If so, does the code handle the token/session correctly?
+
+**Action Protocol:**
+* If a logical gap is found (e.g., FE calls an API that doesn't exist yet): **Flag it explicitly** or generate the missing counterpart.
+* **STOP** if the code violates the API standard response format.
