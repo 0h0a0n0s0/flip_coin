@@ -86,7 +86,8 @@ import {
   Pointer,
   Tickets,
   CircleCheck,
-  Link
+  Link,
+  Lock
 } from '@element-plus/icons-vue'
 
 const props = defineProps({
@@ -106,6 +107,7 @@ const isMobile = ref(false)
 
 const menuItems = [
   { id: 'all', label: 'All Games', icon: Grid },
+  { id: 'hash', label: 'Hash Game', icon: Lock },
   { id: 'trending', label: 'Trending', icon: DataLine },
   { id: 'new', label: 'New', icon: Star },
   { id: 'slots', label: 'Slots', icon: Money },

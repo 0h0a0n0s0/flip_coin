@@ -1,0 +1,161 @@
+---
+alwaysApply: true
+---
+## 1. General Enforcement Principles
+
+Cursor must always:
+
+* Apply these rules before generating or modifying code.
+* Stop generation if a rule may be violated.
+* Explain the violation: rule, reason, location.
+* Present interactive buttons:
+
+  [Continue (Single-Time Exception)]
+  [Cancel Operation]
+
+Only when the user explicitly clicks **Continue** may Cursor proceed.
+Exceptions do not modify the constitution.
+
+## 2. Architectural Rules (Global)
+
+Cursor Must:
+
+* Maintain strict separation of concerns across frontend and backend.
+* Use modular code; avoid monolithic files (> 400 lines).
+* Ensure all new features align with service-based backend and modular frontend.
+
+Cursor Must Not:
+
+* Introduce tightly coupled logic across layers.
+* Mix UI logic with business logic.
+* Create large files without splitting them into modules.
+
+## 3. Frontend Rules (Always Enforced)
+
+Cursor Must:
+
+* Use a unified API module (e.g., api.js).
+* Implement all requests through api.get/api.post/api.request.
+* Keep UI operations inside UI modules/components.
+* Centralize state (state.js or designated store).
+* Keep components < 300 lines unless explicitly approved.
+* Use spacing tokens (space-1 to space-6), radius tokens (4/8/12px).
+* Use design tokens for colors; avoid raw hex values.
+
+Cursor Must Not:
+
+* Use bare fetch().
+* Mix DOM operations with business logic.
+* Duplicate logic across multiple files.
+* Introduce new spacing values or arbitrary px sizes.
+* Redesign H5 layouts; only scale down Web layout (structural consistency rule).
+
+## 4. Backend Rules (Always Enforced)
+
+Cursor Must:
+
+* Place DB logic in services or repositories only.
+* Keep routing thin: validate → call service → format response.
+* Use standardized API responses:
+
+  success format:
+  { "success": true, "data": … }
+
+  error format (via sendError):
+  { "success": false, "error": "message" }
+
+Cursor Must Not:
+
+* Write SQL or ORM queries inside routes.
+* Allow services to access req/res.
+* Expose raw error messages or stack traces.
+* Modify user balances without validator + service checks.
+
+## 5. Security Rules
+
+Cursor Must:
+
+* Validate all money-related operations.
+* Sanitize all external-facing error messages.
+* Mask blockchain addresses when displaying them.
+* Apply IP whitelist logic for admin areas when relevant.
+
+Cursor Must Not:
+
+* Output sensitive data, internal DB structure, or raw chain errors.
+
+## 6. UI Density and Structural Rules (Critical)
+
+Cursor Must:
+
+* Enforce high-density casino-grade UI.
+* Maintain structural parity between Web and H5 (H5 = scaled version, not redesigned).
+* Apply component density guidelines:
+
+  * Web GameCard height: ~180–210px
+  * H5 GameCard = ~60–70% Web size
+  * Quick Entry Card: Web 88–110px; H5 68–82px
+
+Cursor Must Not:
+
+* Modify fundamental layout patterns for H5.
+* Introduce excessive white space.
+* Break spacing rhythm.
+
+## 7. RWD Scaling Rules
+
+Cursor Must:
+
+* Use breakpoint logic:
+  desktop >= 1280
+  tablet 768–1279
+  mobile <= 767
+* Ensure H5 uses proportional scaling:
+  spacing 70–80%
+  icons 80–90%
+  cards 60–70%
+  modals 70%
+
+## 8. Naming & File Rules
+
+Cursor Must:
+
+* Use camelCase for variables/functions.
+* Use PascalCase for classes/components.
+* Ensure file names match import paths exactly (case-sensitive).
+
+Cursor Must Not:
+
+* Introduce version comments inside the code (e.g., // v1.2).
+* Use inconsistent file naming styles.
+
+## 9. Versioning & Documentation Rules
+
+Cursor Must:
+
+* Place all change history in CHANGELOG.md.
+  Cursor Must Not:
+* Add version markers inside source files.
+
+## 10. Automatic Violation Detection (Mandatory)
+
+Before generating code, Cursor must check:
+
+* Layering violations (route writing SQL, service using req/res)
+* Design system violations (raw px, raw color)
+* UI density violations
+* RWD structure violations
+* Security violations (money, addresses, admin area)
+* Performance violations (monolithic file creation)
+
+If any violation detected:
+→ Stop generation
+→ Provide violation summary
+→ Display:
+
+```
+[Continue (Single-Time Exception)]
+[Cancel Operation]
+```
+
+This is mandatory and cannot be disabled.

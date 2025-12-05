@@ -4,7 +4,40 @@
 
 ## 重构版本 (当前)
 
-### 前端重构
+### 前端重构 - 单页应用布局重构
+- **单页应用架构**: 重构为单页应用（SPA）架构
+  - 创建 MainLayout.vue 主布局组件，包含 Header、TopCategoryNav、LeftSidebar、Footer 等公共部分
+  - 所有子界面（首页、游戏分类、游戏页面等）都在主内容区域（红框）内呈现
+  - 移除了全页跳转，改为在内容区域切换视图
+  - 使用嵌套路由结构，所有路由都在 MainLayout 下
+- **页面组件简化**: 所有页面组件只包含内容部分
+  - Home.vue：只包含首页内容（Hero Strip、Trending Games、Latest Wins）
+  - HashGame.vue：只包含 Hash Game 分类内容
+  - FlipCoinGamePage.vue：只包含 Flip Coin 游戏内容
+  - 移除了所有页面中的布局元素（Header、Sidebar、Footer 等）
+- **路由同步**: 实现了路由与侧边栏状态的自动同步
+  - 路由变化时自动更新侧边栏 activeCategory
+  - 侧边栏点击时自动跳转到对应路由
+
+### 前端重构 - 游戏分类和首页重构
+- **游戏分类系统**: 实现游戏分类浏览功能
+  - 添加 Hash Game 分类，将 Flip Coin 游戏归类到该分类下
+  - 创建 HashGame 分类页面（`/hash`）
+  - 创建 FlipCoinGame 独立页面（`/hash/flip-coin`）
+  - 在侧边栏菜单中添加 Hash Game 分类选项
+- **首页重构**: 参考 v0_source 设计重构首页
+  - 移除首页中的 FlipCoinGame 直接展示
+  - 添加 TrendingGamesGrid 组件，展示热门游戏列表
+  - 添加 SmallWinnerTicker 组件，展示实时中奖记录
+  - 创建 CompactHeroStrip 组件，优化首页横幅设计
+- **UI 组件创建**: 遵循 PROJECT_CONSTITUTION.md 规范创建新组件
+  - GameCard 组件：符合 v0_source 风格的游戏卡片组件
+  - SmallWinnerTicker 组件：实时显示玩家中奖信息
+  - TrendingGamesGrid 组件：展示热门游戏网格
+  - CompactHeroStrip 组件：紧凑型首页横幅
+- **路由配置**: 添加新的页面路由
+  - `/hash` - Hash Game 分类页面
+  - `/hash/flip-coin` - Flip Coin 游戏页面
 - **模块化拆分**: 将 `app.js` (1000+ 行) 拆分为多个模块
   - `modules/state.js`: 全局状态管理
   - `modules/auth.js`: 认证相关逻辑
