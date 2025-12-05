@@ -63,6 +63,13 @@ services:
     # 因為 Nginx 將會代理它，它不需要對外開放
     restart: unless-stopped
 
+  # (v3 新增) Vue 3 前端服務
+  frontend-vue3:
+    build: ./frontend-vue3
+    container_name: flipcoin-frontend-vue3
+    # 不直接暴露端口，由 nginx 代理
+    restart: unless-stopped
+
   # (v2 新增) Nginx 代理服務
   nginx:
     build: ./nginx # 指向我們剛才建立的 nginx 資料夾
@@ -72,6 +79,7 @@ services:
     depends_on:
       - api        # 確保 Nginx 在 api 之後啟動
       - admin-ui   # 確保 Nginx 在 admin-ui 之後啟動
+      - frontend-vue3  # 確保 Nginx 在 frontend-vue3 之後啟動
     env_file:
       - .env       # 讀取環境變數
     environment:

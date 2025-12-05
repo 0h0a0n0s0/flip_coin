@@ -286,11 +286,11 @@ VALUES ('AUTO_WITHDRAW_THRESHOLD', '10', '自動出款門檻 (小於等於此金
 INSERT INTO system_settings (key, value, description, category) 
 VALUES ('MAX_SAME_IP_USERS', '5', '同IP允許的最大用戶數，超過則觸發風控封鎖', 'RiskControl');
 
--- 4. 插入本地 IP 到白名單
+-- 4. 插入本地 IP 到白名單（仅允许本机和同一 WiFi 内网访问）
 INSERT INTO admin_ip_whitelist (ip_range, description) VALUES ('127.0.0.1/32', 'Localhost Access');
 INSERT INTO admin_ip_whitelist (ip_range, description) VALUES ('::1/128', 'Localhost IPv6 Access');
+INSERT INTO admin_ip_whitelist (ip_range, description) VALUES ('192.168.50.0/24', 'Same WiFi Network (192.168.50.x)');
 INSERT INTO admin_ip_whitelist (ip_range, description) VALUES ('192.168.65.1/32', 'Docker Host IP (Local Dev)');
-INSERT INTO admin_ip_whitelist (ip_range, description) VALUES ('125.229.37.48/32', 'My Public IP'); -- (請確認這是您的 IP)
 
 -- 建立 withdrawals (新表格)
 CREATE TABLE withdrawals (

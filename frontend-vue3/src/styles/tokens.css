@@ -1,0 +1,71 @@
+/* Design System Tokens - 遵循 PROJECT_CONSTITUTION.md */
+
+:root {
+  /* Spacing Tokens (憲法要求) */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  
+  /* Radius Tokens (憲法要求) */
+  --radius-sm: 4px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+  
+  /* Color Tokens (憲法要求) */
+  --primary: #F3C340;
+  --secondary: #8A6CF4;
+  --success: #28C081;
+  --danger: #E85555;
+  --text: #E6E6E6;
+  --text-muted: #999999;
+  --surface: #131416;
+  --surface-light: #1A1C1F;
+  --border: #292B2F;
+  
+  /* 額外顏色（從 v0_source 適配） */
+  --background: #131416;
+  --foreground: #E6E6E6;
+  --card: #1A1C1F;
+  --card-foreground: #E6E6E6;
+  --muted: #292B2F;
+  --muted-foreground: #999999;
+  --accent: #8A6CF4;
+  --accent-secondary: #6B4CE6;
+}
+
+/* Element Plus 主題覆蓋 */
+.el-button--primary {
+  background-color: var(--primary);
+  border-color: var(--primary);
+  color: var(--surface);
+}
+
+.el-button--primary:hover {
+  background-color: #E5B530;
+  border-color: #E5B530;
+}
+
+.el-input__inner {
+  background-color: var(--surface-light);
+  border-color: var(--border);
+  color: var(--text);
+}
+
+.el-dialog {
+  background-color: var(--card);
+  border-color: var(--border);
+}
+
+.el-dialog__title {
+  color: var(--foreground);
+}
+
+.el-card {
+  background-color: var(--card);
+  border-color: var(--border);
+  color: var(--foreground);
+}
+

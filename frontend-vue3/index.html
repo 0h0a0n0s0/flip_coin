@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>FairHash - Provably Fair Crypto Gambling</title>
+  <meta name="description" content="Experience transparent and fair crypto gambling powered by blockchain technology. Play Hash Dice, Baccarat, Roulette and more with provably fair games.">
+  <link rel="icon" type="image/png" href="/icon-light-32x32.png">
+  <script>
+    // (★★★ 在應用加載前獲取真實IP，確保所有API請求都能帶上IP header ★★★)
+    (function() {
+      // 檢查是否已有緩存的IP
+      var cachedIp = sessionStorage.getItem('cached_real_ip');
+      if (cachedIp) {
+        console.log('[Frontend] Using cached IP from sessionStorage:', cachedIp);
+        return;
+      }
+
+      // IP查詢服務列表（按順序嘗試）
+      var ipServices = [
+        { url: 'https://api.seeip.org/jsonip', key: 'ip' },
+        { url: 'https://api.ipify.org?format=json', key: 'ip' },
+        { url: 'https://api.my-ip.io/ip.json', key: 'ip' },
+        { url: 'https://ipapi.co/json/', key: 'ip' }
+      ];
+
+      console.log('[Frontend] Starting IP detection...');
+      
+      // 異步獲取IP（不阻塞頁面加載）
+      (async function() {
+        for (var i = 0; i < ipServices.length; i++) {
+          var service = ipServices[i];
+          try {
+            console.log('[Frontend] Trying IP service:', service.url);
+            var controller = new AbortController();
+            var timeoutId = setTimeout(function() { controller.abort(); }, 5000);
+            
+            var response = await fetch(service.url, {
+              signal: controller.signal,
+              mode: 'cors',
+              cache: 'no-cache'
+            });
+            clearTimeout(timeoutId);
+            
+            if (response.ok) {
+              var data = await response.json();
+              var ip = data[service.key];
+              if (ip && typeof ip === 'string') {
+                console.log('[Frontend] ✅ Detected IP:', ip);
+                sessionStorage.setItem('cached_real_ip', ip);
+                return;
+              }
+            }
+          } catch (e) {
+            console.warn('[Frontend] Service failed:', service.url, e.message);
+          }
+        }
+        console.error('[Frontend] ❌ All IP services failed!');
+      })();
+    })();
+  </script>
+</head>
+<body>
+  <div id="app"></div>
+  <script type="module" src="/src/main.js"></script>
+</body>
+</html>
+

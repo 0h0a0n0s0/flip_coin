@@ -11,12 +11,16 @@ const { getClientIp } = require('../utils/ipUtils'); // 引用現有的工具
  */
 const adminIpWhitelistMiddleware = async (req, res, next) => {
     
-    // 1. 獲取網絡層面的 IP (在您的情況下是 155.102.184.147)
+    // 1. 獲取網絡層面的 IP
     const networkIp = getClientIp(req);
     
-    // 2. (新增) 獲取前端匯報的真實 IP (在您的情況下是 125.229.37.48)
+    // 2. 獲取前端匯報的真實 IP
     const frontendReportedIp = req.headers['x-client-real-ip'];
-
+    
+    // 3. 獲取 X-Forwarded-For 中的所有 IP（用於內網訪問）
+    const forwardedFor = req.headers['x-forwarded-for'];
+    const forwardedIps = forwardedFor ? forwardedFor.split(',').map(ip => ip.trim()) : [];
+    
     // 如果連 Network IP 都抓不到，直接阻擋
     if (!networkIp) {
         console.warn('[Admin Whitelist] Cannot determine client IP. Denying request.');
@@ -33,25 +37,30 @@ const adminIpWhitelistMiddleware = async (req, res, next) => {
             return next();
         }
 
-        // 2. 核心邏輯：先檢查 Network IP，如果失敗，再檢查 Frontend IP
+        // 2. 核心邏輯：檢查所有可能的 IP（Network IP、Frontend IP、X-Forwarded-For 中的 IP）
         const query = "SELECT EXISTS(SELECT 1 FROM admin_ip_whitelist WHERE ip_range >>= $1)";
         
-        // 檢查 Network IP
-        let result = await db.query(query, [networkIp]);
-        if (result.rows[0].exists) {
-            return next(); // Network IP 在白名單中，放行
-        }
-
-        // 檢查 Frontend Reported IP (如果存在)
+        // 收集所有需要檢查的 IP
+        const ipsToCheck = [networkIp];
         if (frontendReportedIp) {
-            // 簡單的 IP 格式驗證，防止 SQL 注入或錯誤格式
             const ipRegex = /^(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)$/;
-            
-            if (ipRegex.test(frontendReportedIp)) {
-                const frontendResult = await db.query(query, [frontendReportedIp]);
-                if (frontendResult.rows[0].exists) {
-                    return next(); // Frontend IP 在白名單中，放行
-                }
+            if (ipRegex.test(frontendReportedIp) && !ipsToCheck.includes(frontendReportedIp)) {
+                ipsToCheck.push(frontendReportedIp);
+            }
+        }
+        // 添加 X-Forwarded-For 中的 IP（用於內網訪問）
+        forwardedIps.forEach(ip => {
+            if (ip && !ipsToCheck.includes(ip)) {
+                ipsToCheck.push(ip);
+            }
+        });
+        
+        // 檢查所有 IP，只要有一個在白名單中就放行
+        for (const ip of ipsToCheck) {
+            const result = await db.query(query, [ip]);
+            if (result.rows[0].exists) {
+                console.log(`[Admin Whitelist] Allowed IP: ${ip}`);
+                return next(); // IP 在白名單中，放行
             }
         }
 
