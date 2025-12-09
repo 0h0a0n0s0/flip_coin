@@ -1,14 +1,14 @@
 <template>
   <section class="leaderboard">
     <h2>🏆 最高連胜排行榜</h2>
-    <ol v-if="leaderboardData.length > 0" class="leaderboard-list">
+    <ol v-if="displayedLeaderboard.length > 0" class="leaderboard-list">
       <li
-        v-for="(player, index) in leaderboardData"
+        v-for="(player, index) in displayedLeaderboard"
         :key="player.id || index"
         class="leaderboard-item"
       >
         <span class="rank">{{ index + 1 }}.</span>
-        <span class="name">{{ player.display_name || player.username }}</span>
+        <span class="name">{{ formatUserName(player) }}</span>
         <span class="streak">🔥 {{ player.max_streak }} 連胜</span>
       </li>
     </ol>
@@ -17,10 +17,41 @@
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import * as api from '@/api/index.js'
 
 const leaderboardData = ref([])
+const MAX_DISPLAY = 10 // 最多显示前10名
+
+// 只显示前10名
+const displayedLeaderboard = computed(() => {
+  return leaderboardData.value.slice(0, MAX_DISPLAY)
+})
+
+// 格式化用户名：有昵称优先显示昵称，没有就显示ID，ID中间3码用***隐藏
+function formatUserName(player) {
+  // 优先显示昵称
+  if (player.display_name || player.nickname) {
+    return player.display_name || player.nickname
+  }
+  
+  // 没有昵称，显示ID，中间3码用***隐藏
+  const userId = player.user_id || player.id || player.username || ''
+  if (userId.length > 6) {
+    // ID长度大于6，隐藏中间3码
+    const start = userId.substring(0, 3)
+    const end = userId.substring(userId.length - 3)
+    return `${start}***${end}`
+  } else if (userId.length > 3) {
+    // ID长度3-6，隐藏中间部分
+    const start = userId.substring(0, 2)
+    const end = userId.substring(userId.length - 2)
+    return `${start}***${end}`
+  }
+  
+  // ID太短，直接显示
+  return userId
+}
 
 async function loadLeaderboard() {
   try {

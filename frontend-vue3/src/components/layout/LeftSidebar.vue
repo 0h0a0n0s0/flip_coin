@@ -8,28 +8,17 @@
     :class="{ collapsed: isCollapsed }"
   >
     <div class="sidebar-content">
-      <!-- Collapse Button -->
-      <el-button
-        text
-        @click="toggleCollapse"
-        class="collapse-btn"
-      >
-        <el-icon><ArrowLeft /></el-icon>
-        <span v-if="!isCollapsed">Collapse</span>
-      </el-button>
-
       <!-- Search - Hidden when collapsed -->
       <div v-if="!isCollapsed" class="sidebar-search">
-        <div class="search-input-wrapper">
-          <div class="search-icon-wrapper">
+        <el-input
+          v-model="searchQuery"
+          placeholder="Search games..."
+          class="search-input"
+        >
+          <template #prefix>
             <el-icon class="search-icon"><Search /></el-icon>
-          </div>
-          <el-input
-            v-model="searchQuery"
-            placeholder="Search games..."
-            class="search-input"
-          />
-        </div>
+          </template>
+        </el-input>
       </div>
 
       <!-- Menu Items -->
@@ -154,7 +143,9 @@ onUnmounted(() => {
 })
 
 defineExpose({
-  openDrawer
+  openDrawer,
+  toggleCollapse,
+  isCollapsed
 })
 </script>
 
@@ -189,39 +180,45 @@ defineExpose({
   gap: var(--space-2);
 }
 
-.collapse-btn {
-  width: 100%;
-  justify-content: flex-start;
-  height: 28px;
-  padding: 0 var(--space-2);
-  font-size: 11px;
-  color: var(--text-muted);
-}
+/* Collapse Button 已移至 TopCategoryNav，此处样式已移除 */
 
 /* Search Bar - 暗色科技风格，符合项目宪法 */
 .sidebar-search {
   margin-bottom: var(--space-1);
-  position: relative;
 }
 
-.search-input-wrapper {
-  position: relative;
-  width: 100%;
+/* 覆盖 Element Plus 外层容器 - 强制深色背景 */
+.search-input :deep(.el-input__wrapper) {
+  background-color: rgb(var(--surface)) !important; /* 强制深色背景 #131416 */
+  box-shadow: none !important; /* 去除预设阴影 */
+  border: 1px solid rgb(var(--border)) !important; /* 加上深灰边框 */
+  border-radius: var(--radius-sm); /* 稍微圆角 (4px) */
+  padding: 0 var(--space-2);
+  transition: all 0.2s ease;
+  height: 32px; /* 固定高度 */
 }
 
-.search-icon-wrapper {
-  position: absolute;
-  left: var(--space-3);
-  top: 50%;
-  transform: translateY(-50%);
-  z-index: 1;
-  pointer-events: none;
-  display: flex;
-  align-items: center;
-  transition: color 0.2s;
+/* 聚焦时的效果 */
+.search-input :deep(.el-input__wrapper.is-focus) {
+  border-color: rgb(var(--primary)) !important; /* 聚焦变金色 */
+  box-shadow: 0 0 0 1px rgb(var(--primary)) !important; /* 金色光晕 */
 }
 
-.search-icon {
+/* 输入框内部文字 */
+.search-input :deep(.el-input__inner) {
+  height: 32px;
+  color: rgb(var(--foreground)) !important; /* 文字颜色：白灰 */
+  font-size: 13px;
+  background-color: transparent !important; /* 输入框内部透明，使用外层背景 */
+  border: none !important; /* 移除内部边框，使用外层边框 */
+}
+
+.search-input :deep(.el-input__inner::placeholder) {
+  color: rgb(var(--text-muted)) !important; /* Placeholder 颜色：暗灰 */
+}
+
+/* 图标样式 */
+.search-input .search-icon {
   width: 14px;
   height: 14px;
   color: rgb(var(--text-muted)); /* 默认灰色 */
@@ -229,38 +226,15 @@ defineExpose({
 }
 
 /* 聚焦时图标变金色 */
-.search-input-wrapper:focus-within .search-icon {
-  color: rgb(var(--primary)); /* 聚焦时变金色 */
+.search-input :deep(.el-input__wrapper.is-focus) .search-icon {
+  color: rgb(var(--primary)) !important; /* 聚焦时变金色 */
 }
 
-.search-input :deep(.el-input__inner) {
-  height: 32px;
-  font-size: 13px;
-  background-color: rgb(var(--surface)); /* 背景色：深灰色 #131416 */
-  border: 1px solid rgb(var(--border)); /* 边框：深灰边框，1px */
-  color: rgb(var(--foreground)); /* 文字颜色：白灰 */
-  border-radius: var(--radius-md); /* 圆角：8px */
-  padding-left: calc(var(--space-3) + 14px + var(--space-2)); /* 为图标留出空间 */
-  padding-right: var(--space-3);
-  transition: all 0.2s;
-}
-
-.search-input :deep(.el-input__inner:focus) {
-  outline: none;
-  border-color: rgb(var(--primary)); /* 聚焦时边框变金色 */
-  box-shadow: 0 0 0 1px rgb(var(--primary)); /* 金色光晕效果 */
-}
-
-.search-input :deep(.el-input__inner::placeholder) {
-  color: rgb(var(--text-muted)); /* Placeholder 颜色：暗灰 */
-}
-
-.search-input :deep(.el-input__wrapper) {
-  box-shadow: none; /* 移除 Element Plus 默认阴影 */
-}
-
-.search-input :deep(.el-input__wrapper.is-focus) {
-  box-shadow: none; /* 聚焦时也移除默认阴影，使用自定义光晕 */
+/* 图标容器样式 */
+.search-input :deep(.el-input__prefix-inner) {
+  padding-right: var(--space-2);
+  display: flex;
+  align-items: center;
 }
 
 .sidebar-nav {
@@ -298,8 +272,8 @@ defineExpose({
 }
 
 .menu-icon {
-  width: 14px; /* icon 增加到 14px */
-  height: 14px;
+  width: 20px; /* icon 改为 20x20 */
+  height: 20px;
   flex-shrink: 0;
 }
 

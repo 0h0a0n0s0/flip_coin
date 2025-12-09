@@ -77,27 +77,35 @@ class GameOpenerService {
             throw new Error("Opener wallets (A or B) are not configured.");
         }
         
-        console.log(`[v7 Opener] Sending 0 TRX TX from ${this.addressA} to ${this.addressB}...`);
+        console.log(`[v7 Opener] Sending 1 SUN TX from ${this.addressA} to ${this.addressB}...`);
         
         try {
             this.tronWeb.setPrivateKey(this.walletA_PrivateKey);
             
+            // TronWeb 5.x 不接受 0 作为金额，需要发送至少 1 SUN (1 SUN = 1, 1 TRX = 1,000,000 SUN)
             const tx = await this.tronWeb.transactionBuilder.sendTrx(
                 this.addressB, // toAddress
-                0, // amount (0 SUN)
+                1, // amount (1 SUN = 最小单位)
                 this.addressA // fromAddress
             );
             
             const signedTx = await this.tronWeb.trx.sign(tx);
             const receipt = await this.tronWeb.trx.sendRawTransaction(signedTx);
             
-            if (!receipt || !receipt.txid) {
-                 // (v8.49 修正：tronweb@5.x 成功时 receipt.result 为 true)
-                if (receipt && receipt.result === true) {
-                    // 這是成功的
-                } else {
-                    throw new Error("Transaction failed to broadcast or txid not returned.");
-                }
+            // (v8.49 修正：tronweb@5.x 成功时 receipt.result 为 true)
+            // 先检查 receipt 是否存在
+            if (!receipt) {
+                throw new Error("Transaction receipt is null or undefined.");
+            }
+            
+            // 检查交易是否成功
+            if (receipt.result !== true) {
+                throw new Error(`Transaction failed. Result: ${receipt.result}, Message: ${receipt.message || 'Unknown error'}`);
+            }
+            
+            // 检查是否有 txid
+            if (!receipt.txid) {
+                throw new Error("Transaction succeeded but txid is missing.");
             }
             
             const txHash = receipt.txid;
@@ -108,7 +116,10 @@ class GameOpenerService {
         } catch (error) {
             console.error("[v7 Opener] CRITICAL: Failed to send opener transaction (TRON):", error.message || error);
             logError(error, `Error in triggerBetTransaction`, this.addressA);
-            throw new Error("On-chain transaction failed.");
+            
+            // 保留原始错误信息，提供更详细的错误消息
+            const errorMessage = error.message || String(error);
+            throw new Error(`On-chain transaction failed: ${errorMessage}`);
         }
     }
 

@@ -7,9 +7,12 @@
         class="banner-img"
       />
       <div class="banner-overlay">
-        <div class="banner-content">
-          <h1 class="banner-title">{{ title }}</h1>
-          <p class="banner-subtitle">{{ subtitle }}</p>
+        <!-- 真正的内容容器，用于对齐 -->
+        <div class="banner-inner" :class="{ 'sidebar-collapsed': isSidebarCollapsed }">
+          <div class="banner-content">
+            <h1 class="banner-title">{{ title }}</h1>
+            <p class="banner-subtitle">{{ subtitle }}</p>
+          </div>
         </div>
       </div>
     </div>
@@ -35,6 +38,10 @@ const props = defineProps({
   bannerAlt: {
     type: String,
     default: 'Banner'
+  },
+  isSidebarCollapsed: {
+    type: Boolean,
+    default: false
   }
 })
 
@@ -93,7 +100,34 @@ const bannerImage = ref(
   );
   display: flex;
   align-items: center;
-  padding: var(--space-6);
+  /* 移除 padding，由 .banner-inner 控制 */
+  padding: 0;
+}
+
+/* 真正的内容容器，用于对齐 - 左右各 24px padding */
+.banner-inner {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  padding-left: var(--space-6);
+  padding-right: var(--space-6);
+}
+
+/* 桌面端：.banner-inner 的对齐规则 */
+@media (min-width: 1024px) {
+  .banner-inner {
+    /* 左边缘：与左侧菜单区域右侧保持 24px 间距 */
+    padding-left: calc(230px + var(--space-6));
+    /* 右边缘：与 Sign Up 按钮右边缘对齐（距离浏览器右边缘 24px） */
+    padding-right: var(--space-6);
+    transition: padding-left 0.3s; /* 跟随 sidebar 收缩/展开动画 */
+  }
+  
+  /* 当 sidebar 收缩时 */
+  .banner-inner.sidebar-collapsed {
+    padding-left: calc(54px + var(--space-6)); /* sidebar 收缩宽度 54px + 24px 间距 */
+  }
 }
 
 .banner-content {

@@ -50,19 +50,45 @@ export function useGame() {
         notifyError('可惜，未中奖')
       }
       
-      // 显示硬币结果
-      const outcome = (parseInt(settledBet.tx_hash.slice(-1), 16) % 2 === 0) ? 'head' : 'tail'
-      coinResult.value = outcome
+      // 显示硬币结果（检查 tx_hash 是否存在）
+      if (settledBet.tx_hash) {
+        const outcome = (parseInt(settledBet.tx_hash.slice(-1), 16) % 2 === 0) ? 'head' : 'tail'
+        coinResult.value = outcome
+      } else {
+        // 如果没有 tx_hash，根据 status 推断结果
+        coinResult.value = settledBet.status === 'won' ? 'head' : 'tail'
+      }
       
       return settledBet
     } catch (error) {
       console.warn('Bet failed:', error.message)
       
-      if (error.status === 400 || error.status === 401) {
-        notifyWarning(`下注失败：${error.message}`)
+      // 根据错误类型提供更详细的错误提示
+      let errorMessage = error.message || '未知错误'
+      
+      // 错误分类处理
+      if (error.status === 400) {
+        // 客户端错误（参数错误、余额不足等）
+        if (errorMessage.includes('余额不足') || errorMessage.includes('Insufficient balance')) {
+          notifyError('余额不足，请先充值')
+        } else if (errorMessage.includes('链上交易失败') || errorMessage.includes('On-chain transaction failed')) {
+          notifyWarning('链上交易失败，资金已自动退回，请稍后重试')
+        } else if (errorMessage.includes('帐号已被禁用') || errorMessage.includes('Account disabled')) {
+          notifyError('账户已被禁用，请联系客服')
+        } else {
+          notifyWarning(`下注失败：${errorMessage}`)
+        }
+      } else if (error.status === 401) {
+        // 认证错误
+        notifyError('登录已过期，请重新登录')
+      } else if (error.status === 503) {
+        // 服务不可用
+        notifyError('投注服务暂未就绪，请稍后重试')
       } else {
-        notifyError(`下注失败：${error.message}`)
+        // 其他错误（网络错误、服务器错误等）
+        notifyError(`下注失败：${errorMessage}`)
       }
+      
       throw error
     } finally {
       setBettingState(false)

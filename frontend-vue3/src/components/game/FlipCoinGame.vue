@@ -64,6 +64,7 @@
 import { ref, computed } from 'vue'
 import { useGame } from '@/composables/useGame.js'
 import { getCurrentUser } from '@/store/index.js'
+import { notifyError } from '@/utils/notify.js'
 
 const props = defineProps({
   onBetSuccess: Function
@@ -97,6 +98,11 @@ async function handleBet() {
     emit('bet-success', result)
   } catch (error) {
     console.error('Bet failed:', error)
+    // 后备错误处理：如果 useGame 中的错误处理没有正常工作，这里确保用户能看到错误
+    // 注意：useGame 中已经会显示错误通知，这里主要是作为最后的保障
+    if (error && error.message && !error.message.includes('下注失败')) {
+      notifyError(`投注处理失败：${error.message}`)
+    }
   }
 }
 </script>

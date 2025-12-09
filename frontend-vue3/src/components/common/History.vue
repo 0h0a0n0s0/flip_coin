@@ -1,9 +1,9 @@
 <template>
   <section class="history" v-if="isLoggedIn">
     <h2>投注历史</h2>
-    <ul v-if="historyList.length > 0" class="history-list">
+    <ul v-if="displayedHistory.length > 0" class="history-list">
       <li
-        v-for="(item, index) in historyList"
+        v-for="(item, index) in displayedHistory"
         :key="item.id || index"
         class="history-item"
       >
@@ -24,19 +24,51 @@
       </li>
     </ul>
     <div v-else class="empty">登入後以查看历史记录</div>
+    
+    <!-- 查看更多按钮 -->
+    <div v-if="hasMoreHistory" class="view-more">
+      <button class="view-more-button" @click="handleViewMore">
+        查看更多 →
+      </button>
+    </div>
   </section>
 </template>
 
 <script setup>
 import { ref, computed, onMounted, watch } from 'vue'
+import { useRouter, useRoute } from 'vue-router'
 import * as api from '@/api/index.js'
 import { getToken, getCurrentUser } from '@/store/index.js'
 
+const router = useRouter()
+const route = useRoute()
 const historyList = ref([])
 const loading = ref(false)
+const MAX_DISPLAY = 5 // 最多显示5笔
+
+const props = defineProps({
+  // 是否限制显示数量（在投注记录页面显示全部）
+  limitDisplay: {
+    type: Boolean,
+    default: true
+  }
+})
 
 const isLoggedIn = computed(() => {
   return !!getToken() && !!getCurrentUser()
+})
+
+// 根据 limitDisplay prop 决定显示数量
+const displayedHistory = computed(() => {
+  if (props.limitDisplay) {
+    return historyList.value.slice(0, MAX_DISPLAY)
+  }
+  return historyList.value
+})
+
+// 是否有更多记录（只在限制显示时显示）
+const hasMoreHistory = computed(() => {
+  return props.limitDisplay && historyList.value.length > MAX_DISPLAY
 })
 
 function formatTime(timeString) {
@@ -78,6 +110,11 @@ async function loadHistory() {
 
 function refresh() {
   loadHistory()
+}
+
+function handleViewMore() {
+  // 跳转到投注记录页面
+  router.push({ path: '/history' })
 }
 
 watch(isLoggedIn, (newVal) => {
@@ -181,6 +218,28 @@ defineExpose({
   text-align: center;
   color: var(--text-muted);
   padding: var(--space-4);
+}
+
+.view-more {
+  margin-top: var(--space-3);
+  text-align: center;
+}
+
+.view-more-button {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--primary);
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-sm);
+  transition: all 0.2s;
+}
+
+.view-more-button:hover {
+  background-color: rgb(var(--primary) / 0.1);
+  color: #E5B530;
 }
 </style>
 

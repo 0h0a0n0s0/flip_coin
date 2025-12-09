@@ -107,7 +107,7 @@ class BetQueueService {
                 `INSERT INTO bets (user_id, choice, amount, status, bet_ip, bet_time) 
                  VALUES ($1, $2, $3, 'pending', $4, NOW()) 
                  RETURNING *`,
-                [userId, choice, amount, item.betIp || null]
+                [userId, choice, amount, betIp || null]
             );
             betId = betResult.rows[0].id;
             
@@ -146,9 +146,11 @@ class BetQueueService {
         try {
             txHash = await this.gameOpener.triggerBetTransaction();
         } catch (onChainError) {
-            console.error(`[v7 Bet] On-Chain TX failed for bet ${betId}. Refunding...`);
-            await this._refundBet(betId, userId, amount, 'failed', onChainError.message);
-            throw onChainError; 
+            const errorMessage = onChainError.message || 'Unknown on-chain transaction error';
+            console.error(`[v7 Bet] On-Chain TX failed for bet ${betId}. Error: ${errorMessage}. Refunding...`);
+            await this._refundBet(betId, userId, amount, 'failed', errorMessage);
+            // 抛出更详细的错误信息
+            throw new Error(`链上交易失败: ${errorMessage}`);
         }
 
         // --- 3. 交易 2：结算 & 派奖 ---
@@ -240,14 +242,28 @@ class BetQueueService {
      * (辅助) 处理退款 (当开奖或结算失败时)
      */
     async _refundBet(betId, userId, amount, status, errorMsg) {
-        // ... (此函数保持不变) ...
+        let client;
         try {
-            await db.query("UPDATE bets SET status = $1, notes = $2 WHERE id = $3", [status, errorMsg, betId]);
-            const userResult = await db.query(
+            // 使用事务确保数据一致性
+            client = await db.pool.connect();
+            await client.query('BEGIN');
+            
+            // 更新注单状态（bets 表中没有 notes 字段，使用 status 和可能的其他字段记录错误信息）
+            await client.query(
+                "UPDATE bets SET status = $1 WHERE id = $2",
+                [status, betId]
+            );
+            
+            // 退款给用户
+            const userResult = await client.query(
                 "UPDATE users SET balance = balance + $1 WHERE user_id = $2 RETURNING *",
                 [amount, userId]
             );
             const updatedUser = userResult.rows[0];
+            
+            if (!updatedUser) {
+                throw new Error(`User ${userId} not found for refund`);
+            }
             
             // 记录账变（下注退款）
             try {
@@ -257,18 +273,34 @@ class BetQueueService {
                     change_type: CHANGE_TYPES.PAYOUT,  // 使用PAYOUT类型表示退款
                     amount: amount,  // 正数表示退款
                     balance_after: newBalance,
-                    remark: `下注失败退款 ${amount} USDT, 注单ID: ${betId}, 原因: ${errorMsg}`
+                    remark: `下注失败退款 ${amount} USDT, 注单ID: ${betId}, 原因: ${errorMsg}`,
+                    client: client
                 });
             } catch (error) {
                 console.error('[BetQueueService] Failed to log balance change (refund):', error);
                 // 不阻止主流程，只记录错误
             }
             
+            await client.query('COMMIT');
+            client.release();
+            
+            // 通知 Socket.IO
             this._notifySocketBetUpdate(userId, { id: betId, status: status, notes: errorMsg });
             delete updatedUser.password_hash;
             this._notifySocketUserInfo(userId, updatedUser);
+            
+            console.log(`[v7 Bet] Refund completed for bet ${betId}, user ${userId}, amount ${amount}`);
         } catch (refundError) {
+            if (client) {
+                try {
+                    await client.query('ROLLBACK');
+                    client.release();
+                } catch (rollbackError) {
+                    console.error(`[v7 Bet] CRITICAL: Rollback failed during refund:`, rollbackError);
+                }
+            }
             console.error(`[v7 Bet] CRITICAL PANIC: REFUND FAILED for bet ${betId} (User: ${userId})!`, refundError);
+            // 即使退款失败，也不抛出错误，避免影响主流程
         }
     }
 

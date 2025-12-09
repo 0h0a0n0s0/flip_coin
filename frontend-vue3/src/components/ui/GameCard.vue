@@ -24,15 +24,6 @@
           <VideoPlay class="play-icon" />
           Play
         </button>
-        <div class="hover-actions">
-          <button class="action-button" @click.stop="handleDemo">Demo</button>
-          <button class="action-button-icon" @click.stop="handleFavorite">
-            <StarFilled class="action-icon" />
-          </button>
-          <button class="action-button-icon" @click.stop="handleInfo">
-            <InfoFilled class="action-icon" />
-          </button>
-        </div>
       </div>
     </div>
 
@@ -57,7 +48,7 @@
 
 <script setup>
 import { ref, computed } from 'vue'
-import { Lightning, VideoPlay, StarFilled, InfoFilled, Star, Coin } from '@element-plus/icons-vue'
+import { Lightning, VideoPlay, Star, Coin } from '@element-plus/icons-vue'
 
 const props = defineProps({
   game: {
@@ -70,7 +61,7 @@ const props = defineProps({
   }
 })
 
-const emit = defineEmits(['click', 'play', 'demo', 'favorite', 'info'])
+const emit = defineEmits(['click', 'play'])
 
 const isHovered = ref(false)
 
@@ -102,21 +93,6 @@ function handleClick() {
 function handlePlay(e) {
   e.stopPropagation()
   emit('play', props.game)
-}
-
-function handleDemo(e) {
-  e.stopPropagation()
-  emit('demo', props.game)
-}
-
-function handleFavorite(e) {
-  e.stopPropagation()
-  emit('favorite', props.game)
-}
-
-function handleInfo(e) {
-  e.stopPropagation()
-  emit('info', props.game)
 }
 </script>
 
@@ -211,10 +187,8 @@ function handleInfo(e) {
   background-color: rgba(0, 0, 0, 0.75);
   backdrop-filter: blur(4px);
   display: flex;
-  flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: var(--space-2);
   opacity: 0;
   transition: opacity 0.2s;
 }
@@ -246,50 +220,6 @@ function handleInfo(e) {
 }
 
 .play-icon {
-  width: 10px;
-  height: 10px;
-}
-
-.hover-actions {
-  display: flex;
-  gap: var(--space-1);
-}
-
-.action-button {
-  height: 24px;
-  padding: 0 var(--space-2);
-  background-color: rgba(26, 28, 31, 0.2);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-md);
-  font-size: 10px;
-  color: var(--foreground);
-  cursor: pointer;
-  transition: all 0.2s;
-}
-
-.action-button:hover {
-  background-color: rgba(26, 28, 31, 0.4);
-}
-
-.action-button-icon {
-  width: 24px;
-  height: 24px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background-color: rgba(26, 28, 31, 0.2);
-  border: none;
-  border-radius: var(--radius-md);
-  color: var(--foreground);
-  cursor: pointer;
-  transition: all 0.2s;
-}
-
-.action-button-icon:hover {
-  background-color: rgba(26, 28, 31, 0.4);
-}
-
-.action-icon {
   width: 10px;
   height: 10px;
 }

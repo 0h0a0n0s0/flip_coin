@@ -132,7 +132,7 @@ onMounted(async () => {
   display: flex;
   align-items: center;
   padding-left: 24px;
-  padding-right: var(--space-3);
+  padding-right: var(--space-6);
 }
 
 /* Logo 区块 - 固定位置：左边 24px，宽 160px，高 35px，上下置中 */
@@ -172,7 +172,7 @@ onMounted(async () => {
 /* Right Actions - 用户认证/钱包/头像区，永远置右对齐，上下置中 */
 .header-actions {
   position: absolute;
-  right: var(--space-3);
+  right: var(--space-6);
   height: 100%;
   display: flex;
   align-items: center;

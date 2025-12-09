@@ -5,6 +5,18 @@
     <!-- Desktop -->
     <div class="category-nav-desktop">
       <div class="category-nav-container">
+        <!-- Collapse Button - 放在 Home 左边 -->
+        <button
+          @click="handleToggleSidebar"
+          class="collapse-toggle-btn"
+          :title="isSidebarCollapsed ? '展开菜单' : '收缩菜单'"
+        >
+          <el-icon class="collapse-icon">
+            <ArrowRight v-if="isSidebarCollapsed" />
+            <ArrowLeft v-else />
+          </el-icon>
+        </button>
+        
         <button
           v-for="category in categories"
           :key="category.id"
@@ -21,6 +33,18 @@
     <!-- Mobile -->
     <div class="category-nav-mobile">
       <div class="category-nav-scroll">
+        <!-- Collapse Button - 移动端也放在 Home 左边 -->
+        <button
+          @click="handleToggleSidebar"
+          class="collapse-toggle-btn"
+          :title="isSidebarCollapsed ? '展开菜单' : '收缩菜单'"
+        >
+          <el-icon class="collapse-icon">
+            <ArrowRight v-if="isSidebarCollapsed" />
+            <ArrowLeft v-else />
+          </el-icon>
+        </button>
+        
         <button
           v-for="category in categories"
           :key="category.id"
@@ -46,17 +70,23 @@ import {
   VideoPlay,
   Grid,
   Coin,
-  Monitor
+  Monitor,
+  ArrowLeft,
+  ArrowRight
 } from '@element-plus/icons-vue'
 
 const props = defineProps({
   modelValue: {
     type: String,
     default: 'home'
+  },
+  isSidebarCollapsed: {
+    type: Boolean,
+    default: false
   }
 })
 
-const emit = defineEmits(['update:modelValue'])
+const emit = defineEmits(['update:modelValue', 'toggle-sidebar'])
 
 const router = useRouter()
 const route = useRoute()
@@ -100,6 +130,10 @@ function handleCategoryClick(id) {
   if (category) {
     router.push({ path: category.route })
   }
+}
+
+function handleToggleSidebar() {
+  emit('toggle-sidebar')
 }
 </script>
 
@@ -153,6 +187,31 @@ function handleCategoryClick(id) {
   min-width: max-content; /* 确保内容不会被压缩，可以横向滚动 */
 }
 
+/* Collapse Toggle Button - 放在 Home 左边 */
+.collapse-toggle-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: auto;
+  height: 40px; /* 与 category-item 高度一致 */
+  padding: 0 var(--space-2);
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  color: rgb(var(--text-muted)); /* 默认灰色，不变化 */
+  transition: none; /* 不需要颜色变化 */
+  flex-shrink: 0;
+}
+
+.collapse-toggle-btn:hover {
+  color: rgb(var(--foreground)); /* 悬停时稍微变亮 */
+}
+
+.collapse-icon {
+  width: 16px; /* 与 Home icon 大小一样 */
+  height: 16px;
+}
+
 .category-nav-mobile {
   display: block;
   overflow-x: auto;
@@ -193,6 +252,11 @@ function handleCategoryClick(id) {
   min-width: max-content;
 }
 
+/* 移动端 Collapse Button */
+.category-nav-mobile .collapse-toggle-btn {
+  height: 40px; /* 与桌面端一致 */
+}
+
 .category-item {
   display: flex;
   align-items: center;
@@ -217,13 +281,18 @@ function handleCategoryClick(id) {
 }
 
 .category-item.active {
-  color: var(--primary);
+  color: rgb(var(--primary)); /* 文字颜色变黄 */
+}
+
+.category-item.active .category-icon {
+  color: rgb(var(--primary)); /* icon 颜色变黄 */
 }
 
 .category-icon {
   width: 16px; /* 固定 icon 大小 16px */
   height: 16px;
   flex-shrink: 0; /* 防止 icon 被压缩 */
+  transition: color 0.2s;
 }
 
 .active-indicator {
@@ -232,7 +301,7 @@ function handleCategoryClick(id) {
   left: 0;
   right: 0;
   height: 2px;
-  background-color: var(--primary);
+  background-color: rgb(var(--primary)); /* 底线：黄色 */
   border-radius: 2px 2px 0 0;
 }
 

@@ -9,7 +9,11 @@
     />
 
     <!-- 模块 2: TopCategoryNav - Header 下方游戏分类 Tab 区（Home 到 Promotions） -->
-    <TopCategoryNav v-model="activeCategory" />
+    <TopCategoryNav 
+      v-model="activeCategory"
+      :is-sidebar-collapsed="isSidebarCollapsed"
+      @toggle-sidebar="handleToggleSidebar"
+    />
 
     <div class="main-layout">
       <!-- 模块 4: LeftSidebar - 左侧可收缩菜单（游戏分类、搜索） -->
@@ -20,7 +24,7 @@
       />
 
       <!-- 模块 3: PageContent - 页面内容区（Banner、游戏列表、最近赢得等） -->
-      <main class="main-content">
+      <main class="main-content" :class="{ 'sidebar-collapsed': isSidebarCollapsed }">
         <router-view />
       </main>
     </div>
@@ -51,7 +55,7 @@
 </template>
 
 <script setup>
-import { ref, computed, provide, watch } from 'vue'
+import { ref, computed, provide, watch, nextTick } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import Header from '@/components/layout/Header.vue'
 import Footer from '@/components/layout/Footer.vue'
@@ -100,6 +104,7 @@ const showRegisterModal = ref(false)
 const showWalletModal = ref(false)
 const showPersonalCenter = ref(false)
 const sidebarRef = ref(null)
+const isSidebarCollapsed = ref(false)
 
 const isLoggedIn = computed(() => {
   return !!getToken() && !!getCurrentUser()
@@ -126,6 +131,23 @@ function openSidebar() {
     sidebarRef.value.openDrawer()
   }
 }
+
+function handleToggleSidebar() {
+  if (sidebarRef.value) {
+    sidebarRef.value.toggleCollapse()
+    // 同步状态
+    nextTick(() => {
+      isSidebarCollapsed.value = sidebarRef.value.isCollapsed
+    })
+  }
+}
+
+// 监听 sidebar 的 collapsed 状态变化
+watch(() => sidebarRef.value?.isCollapsed, (newVal) => {
+  if (newVal !== undefined) {
+    isSidebarCollapsed.value = newVal
+  }
+}, { immediate: true })
 
 function handleCategoryChange(category) {
   activeCategory.value = category
@@ -176,6 +198,7 @@ provide('openLogin', openLogin)
 provide('openRegister', openRegister)
 provide('openWallet', openWallet)
 provide('openPersonalCenter', openPersonalCenter)
+provide('isSidebarCollapsed', isSidebarCollapsed)
 </script>
 
 <style scoped>
