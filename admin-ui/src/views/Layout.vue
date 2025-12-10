@@ -1061,23 +1061,23 @@ export default {
   align-items: center !important;
 }
 
-/* --- 防止抖動的關鍵樣式 --- */
+/* --- 防抖動專用樣式 --- */
 
-/* 1. 強制所有菜單項文字不換行，超出隱藏 */
+/* 1. 確保選單在容器內保持固定寬度，只由外層 aside 切割顯示 */
+.el-menu-vertical-demo:not(.el-menu--collapse) {
+  width: 200px;
+  min-height: 400px;
+}
+
+/* 2. 強制所有文字不換行，避免寬度變化時高度跳動 */
 .layout-aside .el-menu-item, 
 .layout-aside .el-sub-menu__title,
 .layout-aside .el-sub-menu__title span {
   white-space: nowrap !important;
   overflow: hidden !important;
-  text-overflow: clip !important;
 }
 
-/* 2. 優化寬度過渡，確保與 width 動畫同步 */
-.el-menu-vertical-demo:not(.el-menu--collapse) {
-  width: 200px; /* 展開時的固定寬度 */
-}
-
-/* 3. 隱藏折疊時的箭頭與文字 (雙重保險) */
+/* 3. 在折疊瞬間立即隱藏箭頭與文字 */
 .layout-aside.is-collapsed .el-sub-menu__title span,
 .layout-aside.is-collapsed .el-sub-menu__icon-arrow {
   display: none !important;
