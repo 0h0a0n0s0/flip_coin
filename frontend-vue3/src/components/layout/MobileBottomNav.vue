@@ -20,8 +20,11 @@
 </template>
 
 <script setup>
-import { ref } from 'vue'
+import { ref, computed } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { Grid, ChatDotRound, User, Wallet } from '@element-plus/icons-vue'
+
+const { t } = useI18n()
 
 const props = defineProps({
   onMenuClick: Function,
@@ -30,13 +33,13 @@ const props = defineProps({
 
 const activeTab = ref('home')
 
-const navItems = [
-  { icon: Grid, label: 'Menu', id: 'menu' },
-  { icon: Grid, label: 'Home', id: 'home' },
-  { icon: Wallet, label: 'Deposit', id: 'deposit', highlight: true },
-  { icon: ChatDotRound, label: 'Chat', id: 'chat' },
-  { icon: User, label: 'Me', id: 'me' }
-]
+const navItems = computed(() => [
+  { icon: Grid, label: t('mobile.menu'), id: 'menu' },
+  { icon: Grid, label: t('mobile.home'), id: 'home' },
+  { icon: Wallet, label: t('mobile.deposit'), id: 'deposit', highlight: true },
+  { icon: ChatDotRound, label: t('mobile.chat'), id: 'chat' },
+  { icon: User, label: t('mobile.me'), id: 'me' }
+])
 
 function handleNavClick(id) {
   activeTab.value = id

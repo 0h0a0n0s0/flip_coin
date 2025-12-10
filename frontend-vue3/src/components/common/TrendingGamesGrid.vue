@@ -2,11 +2,11 @@
   <section class="trending-games-section">
     <div class="section-header">
       <div>
-        <h2 class="section-title">Trending Now</h2>
-        <p class="section-subtitle">24h Volume Leaders</p>
+        <h2 class="section-title">{{ t('trending.title') }}</h2>
+        <p class="section-subtitle">{{ t('trending.subtitle') }}</p>
       </div>
       <button class="view-all-button">
-        View All →
+        {{ t('trending.view_all') }}
       </button>
     </div>
 
@@ -24,11 +24,14 @@
 
 <script setup>
 import { ref, onMounted, computed, watch } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { useRouter } from 'vue-router'
 import { getGames } from '@/api/index.js'
 import { getGamesCache, setGamesCache } from '@/store/index.js'
 import { useLanguage } from '@/composables/useLanguage.js'
 import GameCard from '@/components/ui/GameCard.vue'
+
+const { t } = useI18n()
 
 const router = useRouter()
 const { language, getGameName } = useLanguage()
@@ -169,6 +172,9 @@ onMounted(() => {
   cursor: pointer;
   transition: color 0.2s;
   padding: 0;
+  white-space: nowrap; /* 防止文字换行 */
+  min-width: fit-content; /* 保持最小宽度 */
+  flex-shrink: 0; /* 防止被压缩 */
 }
 
 .view-all-button:hover {

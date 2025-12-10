@@ -97,35 +97,52 @@
         </el-tab-pane>
 
         <el-tab-pane label="多语系" name="I18n">
-          <el-form v-if="formGroups.I18n" ref="i18nFormRef" :model="formGroups.I18n" label-width="200px" class="settings-form">
-            <el-form-item
-              label="默认语言"
-              prop="DEFAULT_LANGUAGE.value"
-              :rules="[{ required: true, message: '默认语言不能为空' }]"
+          <div style="padding: 20px;">
+            <el-alert
+              title="多语系管理"
+              type="info"
+              :closable="false"
+              style="margin-bottom: 20px;"
             >
-              <el-select v-model="formGroups.I18n.DEFAULT_LANGUAGE.value" style="width: 200px;">
-                <el-option label="简体中文 (zh-CN)" value="zh-CN" />
-                <el-option label="English (en-US)" value="en-US" />
-              </el-select>
-              <div class="form-tip">{{ formGroups.I18n.DEFAULT_LANGUAGE.description }}</div>
-            </el-form-item>
+              <template #default>
+                <p>管理前台多语系翻译，支持导出、上传和实时编辑。</p>
+                <el-button type="primary" @click="goToI18nManagement" style="margin-top: 10px;">
+                  <el-icon><Setting /></el-icon>
+                  进入多语系管理界面
+                </el-button>
+              </template>
+            </el-alert>
             
-            <el-form-item
-              label="支持的语言"
-              prop="SUPPORTED_LANGUAGES.value"
-            >
-              <el-checkbox-group v-model="supportedLanguagesList">
-                <el-checkbox label="zh-CN">简体中文</el-checkbox>
-                <el-checkbox label="en-US">English</el-checkbox>
-              </el-checkbox-group>
-              <div class="form-tip">{{ formGroups.I18n.SUPPORTED_LANGUAGES.description }}</div>
-            </el-form-item>
-            
-            <el-form-item>
-              <el-button type="primary" @click="handleSubmitI18n" :loading="submitLoading">储存多语系参数</el-button>
-            </el-form-item>
-          </el-form>
-          <el-empty v-else description="無多语系参数"></el-empty>
+            <el-form v-if="formGroups.I18n" ref="i18nFormRef" :model="formGroups.I18n" label-width="200px" class="settings-form">
+              <el-form-item
+                label="默认语言"
+                prop="DEFAULT_LANGUAGE.value"
+                :rules="[{ required: true, message: '默认语言不能为空' }]"
+              >
+                <el-select v-model="formGroups.I18n.DEFAULT_LANGUAGE.value" style="width: 200px;">
+                  <el-option label="简体中文 (zh-CN)" value="zh-CN" />
+                  <el-option label="English (en-US)" value="en-US" />
+                </el-select>
+                <div class="form-tip">{{ formGroups.I18n.DEFAULT_LANGUAGE.description }}</div>
+              </el-form-item>
+              
+              <el-form-item
+                label="支持的语言"
+                prop="SUPPORTED_LANGUAGES.value"
+              >
+                <el-checkbox-group v-model="supportedLanguagesList">
+                  <el-checkbox label="zh-CN">简体中文</el-checkbox>
+                  <el-checkbox label="en-US">English</el-checkbox>
+                </el-checkbox-group>
+                <div class="form-tip">{{ formGroups.I18n.SUPPORTED_LANGUAGES.description }}</div>
+              </el-form-item>
+              
+              <el-form-item>
+                <el-button type="primary" @click="handleSubmitI18n" :loading="submitLoading">储存多语系参数</el-button>
+              </el-form-item>
+            </el-form>
+            <el-empty v-else description="無多语系参数"></el-empty>
+          </div>
         </el-tab-pane>
 
       </el-tabs>
@@ -135,6 +152,7 @@
 
 <script>
 import { ElMessage } from 'element-plus';
+import { Setting } from '@element-plus/icons-vue';
 
 export default {
   name: 'GameParametersView',
@@ -195,15 +213,40 @@ export default {
                 this.formGroups = settingsByCategory;
 
                 // 处理多语系配置
-                if (this.formGroups.I18n && this.formGroups.I18n.SUPPORTED_LANGUAGES) {
-                    const supportedLangs = this.formGroups.I18n.SUPPORTED_LANGUAGES.value;
-                    if (supportedLangs) {
+                if (this.formGroups.I18n) {
+                    // 处理支持的语言列表
+                    if (this.formGroups.I18n.SUPPORTED_LANGUAGES && this.formGroups.I18n.SUPPORTED_LANGUAGES.value) {
+                        const supportedLangs = this.formGroups.I18n.SUPPORTED_LANGUAGES.value;
                         try {
                             this.supportedLanguagesList = JSON.parse(supportedLangs);
                         } catch (e) {
                             this.supportedLanguagesList = ['zh-CN', 'en-US'];
                         }
+                    } else {
+                        // 如果没有配置，使用默认值
+                        this.supportedLanguagesList = ['zh-CN', 'en-US'];
                     }
+                    // 确保默认语言有值
+                    if (!this.formGroups.I18n.DEFAULT_LANGUAGE || !this.formGroups.I18n.DEFAULT_LANGUAGE.value) {
+                        if (!this.formGroups.I18n.DEFAULT_LANGUAGE) {
+                            this.formGroups.I18n.DEFAULT_LANGUAGE = {};
+                        }
+                        this.formGroups.I18n.DEFAULT_LANGUAGE.value = 'zh-CN';
+                        this.formGroups.I18n.DEFAULT_LANGUAGE.description = '系统默认语言';
+                    }
+                } else {
+                    // 如果 I18n 分类不存在，初始化默认结构
+                    this.formGroups.I18n = {
+                        DEFAULT_LANGUAGE: {
+                            value: 'zh-CN',
+                            description: '系统默认语言，可选值：zh-CN（简体中文）或 en-US（英文）'
+                        },
+                        SUPPORTED_LANGUAGES: {
+                            value: '["zh-CN","en-US"]',
+                            description: '系统支持的语言列表，JSON 数组格式'
+                        }
+                    };
+                    this.supportedLanguagesList = ['zh-CN', 'en-US'];
                 }
 
                 // (检查预设 tab 是否有内容)
@@ -332,7 +375,14 @@ export default {
                    }
                }
            });
+       },
+       
+       goToI18nManagement() {
+           this.$router.push('/settings/i18n')
        }
+   },
+   components: {
+       Setting
    }
 };
 </script>

@@ -1,19 +1,19 @@
 <template>
   <el-dialog
     v-model="dialogVisible"
-    title="Wallet"
+    :title="t('wallet.title')"
     width="420px"
     :close-on-click-modal="true"
     @close="handleClose"
     class="wallet-modal"
   >
     <el-tabs v-model="activeTab">
-      <el-tab-pane label="Deposit" name="deposit">
+      <el-tab-pane :label="t('wallet.deposit')" name="deposit">
         <div class="deposit-content">
           <el-select v-model="selectedChain" class="chain-select">
-            <el-option label="USDT (TRC20)" value="TRC20" />
-            <el-option label="USDT (ERC20)" value="ERC20" />
-            <el-option label="USDT (BEP20)" value="BEP20" />
+            <el-option :label="t('wallet.chain_trc20')" value="TRC20" />
+            <el-option :label="t('wallet.chain_erc20')" value="ERC20" />
+            <el-option :label="t('wallet.chain_bep20')" value="BEP20" />
           </el-select>
 
           <div class="qr-code-area">
@@ -29,7 +29,7 @@
               readonly
               class="address-input"
             />
-            <el-button @click="handleCopyAddress">Copy</el-button>
+            <el-button @click="handleCopyAddress">{{ t('wallet.copy') }}</el-button>
           </div>
 
           <el-alert
@@ -38,30 +38,30 @@
             class="deposit-warning"
           >
             <template #default>
-              <strong>Min: $10</strong> • Only send {{ selectedChain }}. Other assets may be lost permanently.
+              <strong>{{ t('wallet.min_deposit') }}</strong> • {{ t('wallet.deposit_warning', { chain: selectedChain }) }}
             </template>
           </el-alert>
         </div>
       </el-tab-pane>
 
-      <el-tab-pane label="Withdraw" name="withdraw">
+      <el-tab-pane :label="t('wallet.withdraw')" name="withdraw">
         <div class="withdraw-content">
           <div class="balance-display">
-            <div class="balance-label">Available Balance</div>
+            <div class="balance-label">{{ t('wallet.available_balance') }}</div>
             <div class="balance-amount">${{ formatBalance(currentUser?.balance) }}</div>
           </div>
 
           <el-select v-model="withdrawChain" class="chain-select">
-            <el-option label="TRC20 (TRON)" value="TRC20" />
-            <el-option label="BSC (BEP20)" value="BSC" />
-            <el-option label="ETH (ERC20)" value="ETH" />
-            <el-option label="SOL (Solana)" value="SOL" />
-            <el-option label="Polygon" value="POLYGON" />
+            <el-option :label="t('wallet.chain_tron')" value="TRC20" />
+            <el-option :label="t('wallet.chain_bsc')" value="BSC" />
+            <el-option :label="t('wallet.chain_eth')" value="ETH" />
+            <el-option :label="t('wallet.chain_sol')" value="SOL" />
+            <el-option :label="t('wallet.chain_polygon')" value="POLYGON" />
           </el-select>
 
           <el-input
             v-model="withdrawAddress"
-            placeholder="Enter wallet address"
+            :placeholder="t('wallet.enter_withdraw_address')"
             class="withdraw-input"
           />
 
@@ -72,14 +72,14 @@
               placeholder="0.00"
               class="amount-input"
             />
-            <span class="amount-label">USDT</span>
-            <el-button text @click="setMaxAmount">MAX</el-button>
+            <span class="amount-label">{{ t('wallet.usdt') }}</span>
+            <el-button text @click="setMaxAmount">{{ t('wallet.max') }}</el-button>
           </div>
 
           <el-input
             v-model="withdrawPassword"
             type="password"
-            placeholder="Withdrawal password"
+            :placeholder="t('wallet.withdraw_password_placeholder')"
             class="withdraw-input"
           />
 
@@ -89,7 +89,7 @@
             :loading="loading"
             class="withdraw-button"
           >
-            Withdraw
+            {{ t('wallet.withdraw') }}
           </el-button>
 
           <el-alert
@@ -98,7 +98,7 @@
             class="withdraw-info"
           >
             <template #default>
-              Min: $20 • Processing: 5-30 min • Network fee deducted
+              {{ t('wallet.withdraw_info') }}
             </template>
           </el-alert>
         </div>
@@ -109,9 +109,12 @@
 
 <script setup>
 import { ref, computed, watch } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { Document as QrCodeIcon } from '@element-plus/icons-vue'
 import { useWallet } from '@/composables/useWallet.js'
 import { getCurrentUser } from '@/store/index.js'
+
+const { t } = useI18n()
 
 const props = defineProps({
   modelValue: Boolean
@@ -198,6 +201,19 @@ function handleClose() {
   border-color: rgb(var(--border));
   color: rgb(var(--foreground));
   border-radius: var(--radius-sm);
+}
+
+.wallet-modal :deep(.el-button) {
+  min-width: 80px; /* 固定按钮最小宽度 */
+  white-space: nowrap; /* 防止按钮文字换行 */
+}
+
+.wallet-modal :deep(.el-select) {
+  width: 100%; /* 下拉框保持全宽 */
+}
+
+.wallet-modal :deep(.el-input) {
+  width: 100%; /* 输入框保持全宽 */
 }
 
 .wallet-modal :deep(.el-input__inner::placeholder) {

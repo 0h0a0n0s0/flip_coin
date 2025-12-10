@@ -1495,14 +1495,59 @@ router.put('/settings/:key', authMiddleware, checkPermission('settings_game', 'u
         }
         validatedValue = name;
     }
+    // (★★★ 验证多语系设置 ★★★)
+    if (key === 'DEFAULT_LANGUAGE') {
+        const lang = value.toString().trim();
+        if (lang !== 'zh-CN' && lang !== 'en-US') {
+            return res.status(400).json({ error: '默认语言必须是 zh-CN 或 en-US' });
+        }
+        validatedValue = lang;
+    }
+    if (key === 'SUPPORTED_LANGUAGES') {
+        // 验证是否为有效的 JSON 数组
+        try {
+            const langs = JSON.parse(value.toString());
+            if (!Array.isArray(langs)) {
+                return res.status(400).json({ error: '支持的语言必须是数组格式' });
+            }
+            // 验证数组中的语言代码
+            const validLangs = ['zh-CN', 'en-US'];
+            for (const lang of langs) {
+                if (!validLangs.includes(lang)) {
+                    return res.status(400).json({ error: `不支持的语言代码: ${lang}` });
+                }
+            }
+            validatedValue = value.toString(); // 保持 JSON 字符串格式
+        } catch (e) {
+            return res.status(400).json({ error: '支持的语言必须是有效的 JSON 数组格式' });
+        }
+    }
 
     try {
-        const result = await db.query(
+        // 先尝试更新
+        let result = await db.query(
             'UPDATE system_settings SET value = $1, updated_at = NOW() WHERE key = $2 RETURNING key, value',
             [validatedValue, key]
         );
+        
+        // 如果设置不存在，尝试创建（仅对 I18n 分类的设置）
         if (result.rows.length === 0) {
-            return res.status(404).json({ error: `Setting key '${key}' not found.` });
+            // 检查是否为 I18n 分类的设置
+            if (key === 'DEFAULT_LANGUAGE' || key === 'SUPPORTED_LANGUAGES') {
+                const description = key === 'DEFAULT_LANGUAGE' 
+                    ? '系统默认语言，可选值：zh-CN（简体中文）或 en-US（英文）'
+                    : '系统支持的语言列表，JSON 数组格式，可选值：zh-CN（简体中文）、en-US（英文）';
+                
+                result = await db.query(
+                    `INSERT INTO system_settings (key, value, description, category, created_at, updated_at)
+                     VALUES ($1, $2, $3, 'I18n', NOW(), NOW())
+                     RETURNING key, value`,
+                    [key, validatedValue, description]
+                );
+                console.log(`[Admin Settings] Created new I18n setting '${key}' with value '${validatedValue}'`);
+            } else {
+                return res.status(404).json({ error: `Setting key '${key}' not found.` });
+            }
         }
         // (★★★ 触发快取更新 ★★★)
         await settingsCacheModule.loadSettings();
@@ -1525,6 +1570,129 @@ router.put('/settings/:key', authMiddleware, checkPermission('settings_game', 'u
         res.status(500).json({ error: 'Internal server error' });
     }
 });
+
+// ★★★ 系统设定 - 多语系 (i18n) API ★★★
+/**
+ * @description 获取指定语言的翻译文件
+ * @route GET /api/admin/i18n/:lang
+ * @access Private
+ */
+router.get('/i18n/:lang', authMiddleware, checkPermission('settings_game', 'read'), async (req, res) => {
+    try {
+        const { lang } = req.params
+        const validLangs = ['en', 'zh-CN', 'zh-TW']
+        
+        if (!validLangs.includes(lang)) {
+            return res.status(400).json({ error: `Invalid language code. Supported: ${validLangs.join(', ')}` })
+        }
+        
+        // 读取前台语言文件
+        const fs = require('fs')
+        const path = require('path')
+        // 在 Docker 容器中，frontend-vue3/src/locales 被挂载到 /usr/src/app/frontend-vue3/src/locales
+        // __dirname 是 /usr/src/app/routes，所以路径是 ../frontend-vue3/src/locales
+        const localeFile = path.join(__dirname, '../frontend-vue3/src/locales', `${lang}.json`)
+        
+        console.log(`[Admin I18n] Loading language file: ${localeFile}`)
+        console.log(`[Admin I18n] File exists: ${fs.existsSync(localeFile)}`)
+        
+        if (!fs.existsSync(localeFile)) {
+            // 如果文件不存在，返回空对象
+            console.log(`[Admin I18n] File not found: ${localeFile}`)
+            return res.status(200).json({})
+        }
+        
+        const content = fs.readFileSync(localeFile, 'utf-8')
+        const translations = JSON.parse(content)
+        
+        console.log(`[Admin I18n] Loaded ${Object.keys(translations).length} top-level keys for ${lang}`)
+        
+        res.status(200).json(translations)
+    } catch (error) {
+        console.error('[Admin I18n] Error fetching language file:', error)
+        res.status(500).json({ error: 'Internal server error' })
+    }
+})
+
+/**
+ * @description 更新指定语言的翻译文件
+ * @route POST /api/admin/i18n/:lang
+ * @access Private
+ */
+router.post('/i18n/:lang', authMiddleware, checkPermission('settings_game', 'update'), async (req, res) => {
+    try {
+        const { lang } = req.params
+        const { data } = req.body
+        const validLangs = ['en', 'zh-CN', 'zh-TW']
+        
+        if (!validLangs.includes(lang)) {
+            return res.status(400).json({ error: `Invalid language code. Supported: ${validLangs.join(', ')}` })
+        }
+        
+        if (!data || typeof data !== 'object') {
+            return res.status(400).json({ error: 'Invalid data format. Expected JSON object.' })
+        }
+        
+        // 写入前台语言文件
+        const fs = require('fs')
+        const path = require('path')
+        // 在 Docker 容器中，frontend-vue3/src/locales 被挂载到 /usr/src/app/frontend-vue3/src/locales
+        // __dirname 是 /usr/src/app/routes，所以路径是 ../frontend-vue3/src/locales
+        const localeDir = path.join(__dirname, '../frontend-vue3/src/locales')
+        const localeFile = path.join(localeDir, `${lang}.json`)
+        
+        console.log(`[Admin I18n] Saving language file: ${localeFile}`)
+        
+        // 确保目录存在
+        if (!fs.existsSync(localeDir)) {
+            fs.mkdirSync(localeDir, { recursive: true })
+        }
+        
+        // 排序并写入文件
+        const sortedData = sortObject(data)
+        fs.writeFileSync(
+            localeFile,
+            JSON.stringify(sortedData, null, 2) + '\n',
+            'utf-8'
+        )
+        
+        console.log(`[Admin I18n] Language file '${lang}.json' updated by ${req.user.username}`)
+        
+        await recordAuditLog({
+            adminId: req.user.id,
+            adminUsername: req.user.username,
+            action: 'update_i18n',
+            resource: 'i18n',
+            resourceId: lang,
+            description: `更新多语系文件 ${lang}.json`,
+            ipAddress: getClientIp(req),
+            userAgent: req.headers['user-agent']
+        })
+        
+        res.status(200).json({ success: true, message: 'Language file updated successfully' })
+    } catch (error) {
+        console.error(`[Admin I18n] Error updating language file '${req.params.lang}':`, error)
+        res.status(500).json({ error: 'Internal server error' })
+    }
+})
+
+/**
+ * 递归排序对象
+ */
+function sortObject(obj) {
+    if (typeof obj !== 'object' || obj === null || Array.isArray(obj)) {
+        return obj
+    }
+    
+    const sorted = {}
+    const keys = Object.keys(obj).sort()
+    
+    for (const key of keys) {
+        sorted[key] = sortObject(obj[key])
+    }
+    
+    return sorted
+}
 
 // ★★★ 系统设定 - 阻挡地区 API ★★★
 /**

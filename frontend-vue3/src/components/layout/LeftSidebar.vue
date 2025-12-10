@@ -12,7 +12,7 @@
       <div v-if="!isCollapsed" class="sidebar-search">
         <el-input
           v-model="searchQuery"
-          placeholder="Search games..."
+          :placeholder="t('sidebar.search_games')"
           class="search-input"
         >
           <template #prefix>
@@ -50,7 +50,7 @@
   >
     <div class="drawer-content">
       <div class="drawer-header">
-        <h3>Game Categories</h3>
+        <h3>{{ t('sidebar.game_categories') }}</h3>
       </div>
       <nav class="sidebar-nav">
         <button
@@ -74,6 +74,7 @@
 
 <script setup>
 import { ref, computed, onMounted, onUnmounted } from 'vue'
+import { useI18n } from 'vue-i18n'
 import {
   Search,
   ArrowLeft,
@@ -91,6 +92,8 @@ import {
 } from '@element-plus/icons-vue'
 import LanguageSwitcher from '@/components/common/LanguageSwitcher.vue'
 
+const { t } = useI18n()
+
 const props = defineProps({
   activeCategory: {
     type: String,
@@ -106,19 +109,19 @@ const activeItem = ref('all')
 const mobileDrawerOpen = ref(false)
 const isMobile = ref(false)
 
-const menuItems = [
-  { id: 'all', label: 'All Games', icon: Grid },
-  { id: 'hash', label: 'Hash Game', icon: Lock },
-  { id: 'trending', label: 'Trending', icon: DataLine },
-  { id: 'new', label: 'New', icon: Star },
-  { id: 'slots', label: 'Slots', icon: Money },
-  { id: 'crash', label: 'Crash Games', icon: Bottom },
-  { id: 'quick', label: 'Quick Games', icon: Lightning },
-  { id: 'tap', label: 'Tap Games', icon: Pointer },
-  { id: 'scratch', label: 'Scratch Cards', icon: Tickets },
-  { id: 'bingo', label: 'Bingo', icon: CircleCheck },
-  { id: 'lowdata', label: 'Low Data Games', icon: Link }
-]
+const menuItems = computed(() => [
+  { id: 'all', label: t('sidebar.all_games'), icon: Grid },
+  { id: 'hash', label: t('sidebar.hash_game'), icon: Lock },
+  { id: 'trending', label: t('sidebar.trending'), icon: DataLine },
+  { id: 'new', label: t('sidebar.new'), icon: Star },
+  { id: 'slots', label: t('sidebar.slots'), icon: Money },
+  { id: 'crash', label: t('sidebar.crash_games'), icon: Bottom },
+  { id: 'quick', label: t('sidebar.quick_games'), icon: Lightning },
+  { id: 'tap', label: t('sidebar.tap_games'), icon: Pointer },
+  { id: 'scratch', label: t('sidebar.scratch_cards'), icon: Tickets },
+  { id: 'bingo', label: t('sidebar.bingo'), icon: CircleCheck },
+  { id: 'lowdata', label: t('sidebar.low_data_games'), icon: Link }
+])
 
 function toggleCollapse() {
   isCollapsed.value = !isCollapsed.value

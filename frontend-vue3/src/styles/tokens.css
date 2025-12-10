@@ -89,6 +89,18 @@
   border-color: rgb(var(--primary) / 0.9);
 }
 
+/* 固定 Deposit 按钮尺寸 - 全局覆盖 */
+.deposit-btn.el-button.el-button--primary,
+button.deposit-btn.el-button.el-button--primary,
+.header-actions .deposit-btn.el-button.el-button--primary {
+  width: 82.97px !important;
+  height: 32px !important;
+  min-width: 82.97px !important;
+  max-width: 82.97px !important;
+  padding: 0 !important;
+  box-sizing: border-box !important;
+}
+
 .el-input__inner {
   background-color: rgb(var(--input));
   border-color: rgb(var(--border));

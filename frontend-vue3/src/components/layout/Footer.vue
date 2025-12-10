@@ -4,26 +4,26 @@
       <div class="footer-grid">
         <!-- About -->
         <div class="footer-section">
-          <h3 class="footer-title">About FairHash</h3>
+          <h3 class="footer-title">{{ t('footer.about_title') }}</h3>
           <p class="footer-text">
-            The most transparent and fair crypto gambling platform powered by blockchain technology.
+            {{ t('footer.about_text') }}
           </p>
         </div>
 
         <!-- Quick Links -->
         <div class="footer-section">
-          <h3 class="footer-title">Quick Links</h3>
+          <h3 class="footer-title">{{ t('footer.quick_links_title') }}</h3>
           <ul class="footer-links">
-            <li>Fairness Verification</li>
-            <li>Terms & Conditions</li>
-            <li>Responsible Gaming</li>
-            <li>Help Center</li>
+            <li>{{ t('footer.fairness_verification') }}</li>
+            <li>{{ t('footer.terms_conditions') }}</li>
+            <li>{{ t('footer.responsible_gaming') }}</li>
+            <li>{{ t('footer.help_center') }}</li>
           </ul>
         </div>
 
         <!-- Payment Methods -->
         <div class="footer-section">
-          <h3 class="footer-title">Accepted Payments</h3>
+          <h3 class="footer-title">{{ t('footer.accepted_payments_title') }}</h3>
           <div class="payment-methods">
             <div class="payment-badge">
               <el-icon><Wallet /></el-icon>
@@ -43,14 +43,17 @@
 
       <!-- Bottom Bar -->
       <div class="footer-bottom">
-        <p>© 2025 FairHash. Licensed and regulated. Play responsibly.</p>
+        <p>{{ t('footer.copyright') }}</p>
       </div>
     </div>
   </footer>
 </template>
 
 <script setup>
+import { useI18n } from 'vue-i18n'
 import { Wallet } from '@element-plus/icons-vue'
+
+const { t } = useI18n()
 </script>
 
 <style scoped>
@@ -109,6 +112,8 @@ import { Wallet } from '@element-plus/icons-vue'
   color: var(--text-muted);
   cursor: pointer;
   transition: color 0.2s;
+  white-space: nowrap; /* 防止文字换行 */
+  min-width: fit-content; /* 保持最小宽度 */
 }
 
 .footer-links li:hover {

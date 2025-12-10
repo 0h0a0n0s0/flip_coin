@@ -15,6 +15,7 @@ services:
       - ./style.css:/usr/src/app/v1_frontend/style.css
       - ./modules:/usr/src/app/v1_frontend/modules
       - ./403.html:/usr/src/app/v1_frontend/403.html
+      - ./frontend-vue3/src/locales:/usr/src/app/frontend-vue3/src/locales
     dns:
       - 8.8.8.8
       - 1.1.1.1  

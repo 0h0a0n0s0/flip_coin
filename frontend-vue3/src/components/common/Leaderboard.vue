@@ -1,6 +1,6 @@
 <template>
   <section class="leaderboard">
-    <h2>🏆 最高連胜排行榜</h2>
+    <h2>{{ t('leaderboard.title') }}</h2>
     <ol v-if="displayedLeaderboard.length > 0" class="leaderboard-list">
       <li
         v-for="(player, index) in displayedLeaderboard"
@@ -9,16 +9,19 @@
       >
         <span class="rank">{{ index + 1 }}.</span>
         <span class="name">{{ formatUserName(player) }}</span>
-        <span class="streak">🔥 {{ player.max_streak }} 連胜</span>
+        <span class="streak">🔥 {{ player.max_streak }} {{ t('leaderboard.streak') }}</span>
       </li>
     </ol>
-    <div v-else class="loading">Loading...</div>
+    <div v-else class="loading">{{ t('leaderboard.loading') }}</div>
   </section>
 </template>
 
 <script setup>
 import { ref, computed, onMounted } from 'vue'
+import { useI18n } from 'vue-i18n'
 import * as api from '@/api/index.js'
+
+const { t } = useI18n()
 
 const leaderboardData = ref([])
 const MAX_DISPLAY = 10 // 最多显示前10名

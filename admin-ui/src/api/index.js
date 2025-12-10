@@ -534,3 +534,19 @@ export function getGamePayoutMultiplier(id) {
         method: 'get',
     });
 }
+
+// --- I18n Management ---
+export function getI18nLanguage(lang) {
+    return request({
+        url: `/api/admin/i18n/${lang}`,
+        method: 'get',
+    });
+}
+
+export function updateI18nLanguage(lang, data) {
+    return request({
+        url: `/api/admin/i18n/${lang}`,
+        method: 'post',
+        data: data,
+    });
+}

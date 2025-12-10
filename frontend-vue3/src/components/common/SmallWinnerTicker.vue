@@ -5,8 +5,8 @@
         <Trophy class="icon" />
       </div>
       <div>
-        <h3 class="ticker-title">Latest Wins</h3>
-        <p class="ticker-subtitle">Live results from players</p>
+        <h3 class="ticker-title">{{ t('winners.title') }}</h3>
+        <p class="ticker-subtitle">{{ t('winners.subtitle') }}</p>
       </div>
     </div>
 
@@ -24,7 +24,7 @@
           <div class="item-info">
             <div class="item-user-row">
               <span class="item-user">{{ win.user }}</span>
-              <span class="item-won-text">won</span>
+              <span class="item-won-text">{{ t('winners.won') }}</span>
             </div>
             <span class="item-game">{{ win.game }}</span>
           </div>
@@ -43,9 +43,12 @@
 
 <script setup>
 import { ref, onMounted, onUnmounted } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { Trophy, Lightning } from '@element-plus/icons-vue'
 import { useSocket } from '@/composables/useSocket.js'
 import { getToken } from '@/store/index.js'
+
+const { t } = useI18n()
 
 const wins = ref([])
 const listRef = ref(null)
@@ -68,15 +71,15 @@ function formatAmount(amount) {
 }
 
 function formatTimeAgo(timestamp) {
-  if (!timestamp) return 'Just now'
+  if (!timestamp) return t('winners.just_now')
   const seconds = Math.floor((Date.now() - timestamp) / 1000)
-  if (seconds < 60) return 'Just now'
+  if (seconds < 60) return t('winners.just_now')
   const minutes = Math.floor(seconds / 60)
-  if (minutes < 60) return `${minutes}m ago`
+  if (minutes < 60) return `${minutes}${t('winners.minutes')} ${t('winners.ago')}`
   const hours = Math.floor(minutes / 60)
-  if (hours < 24) return `${hours}h ago`
+  if (hours < 24) return `${hours}${t('winners.hours')} ${t('winners.ago')}`
   const days = Math.floor(hours / 24)
-  return `${days}d ago`
+  return `${days}${t('winners.days')} ${t('winners.ago')}`
 }
 
 function addWin(winData) {

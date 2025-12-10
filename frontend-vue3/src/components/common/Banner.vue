@@ -10,8 +10,8 @@
         <!-- 真正的内容容器，用于对齐 -->
         <div class="banner-inner" :class="{ 'sidebar-collapsed': isSidebarCollapsed }">
         <div class="banner-content">
-          <h1 class="banner-title">{{ title }}</h1>
-          <p class="banner-subtitle">{{ subtitle }}</p>
+          <h1 class="banner-title">{{ title || t('home.banner_title') }}</h1>
+          <p class="banner-subtitle">{{ subtitle || t('home.banner_subtitle') }}</p>
           </div>
         </div>
       </div>
@@ -21,15 +21,18 @@
 
 <script setup>
 import { ref } from 'vue'
+import { useI18n } from 'vue-i18n'
+
+const { t } = useI18n()
 
 const props = defineProps({
   title: {
     type: String,
-    default: 'Win Big with Crypto Fairness'
+    default: ''
   },
   subtitle: {
     type: String,
-    default: 'Transparent blockchain gaming • Instant crypto payouts'
+    default: ''
   },
   imageUrl: {
     type: String,

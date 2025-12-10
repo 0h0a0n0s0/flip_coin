@@ -1,7 +1,7 @@
 <template>
   <el-dialog
     v-model="dialogVisible"
-    title="個人中心"
+    :title="t('personal_center.title')"
     width="480px"
     :close-on-click-modal="true"
     @close="handleClose"
@@ -9,62 +9,62 @@
   >
     <el-tabs v-model="activeTab">
       <!-- Info Tab -->
-      <el-tab-pane label="基本资讯" name="info">
+      <el-tab-pane :label="t('personal_center.info')" name="info">
         <div class="info-content">
           <ul class="info-list">
-            <li><span>用户 ID:</span> <strong>{{ currentUser?.id }}</strong></li>
-            <li><span>用户帐号:</span> <strong>{{ currentUser?.username }}</strong></li>
-            <li><span>用户等级:</span> <strong>{{ currentUser?.level || 'N/A' }}</strong></li>
-            <li><span>最高連胜:</span> <strong>{{ currentUser?.max_streak || 0 }}</strong></li>
-            <li><span>我的邀请码:</span> <strong>{{ currentUser?.invite_code }}</strong></li>
-            <li><span>推薦人邀请码:</span> <strong>{{ currentUser?.referrer_code || 'N/A' }}</strong></li>
+            <li><span>{{ t('personal_center.user_id') }}:</span> <strong>{{ currentUser?.id }}</strong></li>
+            <li><span>{{ t('personal_center.username') }}:</span> <strong>{{ currentUser?.username }}</strong></li>
+            <li><span>{{ t('personal_center.user_level') }}:</span> <strong>{{ currentUser?.level || 'N/A' }}</strong></li>
+            <li><span>{{ t('personal_center.max_streak') }}:</span> <strong>{{ currentUser?.max_streak || 0 }}</strong></li>
+            <li><span>{{ t('personal_center.invite_code') }}:</span> <strong>{{ currentUser?.invite_code }}</strong></li>
+            <li><span>{{ t('personal_center.referrer_code') }}:</span> <strong>{{ currentUser?.referrer_code || 'N/A' }}</strong></li>
           </ul>
 
           <div class="form-section">
-            <h4>修改昵称</h4>
+            <h4>{{ t('personal_center.change_nickname') }}</h4>
             <div class="form-group">
               <el-input
                 v-model="nickname"
-                placeholder="输入新的昵称 (50字内)"
+                :placeholder="t('personal_center.nickname_placeholder')"
                 class="nickname-input"
               />
               <el-button @click="handleSaveNickname" :loading="loading">
-                储存
+                {{ t('personal_center.save') }}
               </el-button>
             </div>
           </div>
 
           <div v-if="!currentUser?.referrer_code" class="form-section">
-            <h4>绑定推薦人</h4>
+            <h4>{{ t('personal_center.bind_referrer') }}</h4>
             <div class="form-group">
               <el-input
                 v-model="referrerCode"
-                placeholder="输入推薦人的邀请码 (绑定後無法修改)"
+                :placeholder="t('personal_center.referrer_placeholder')"
               />
               <el-button @click="handleBindReferrer" :loading="loading">
-                绑定
+                {{ t('personal_center.bind') }}
               </el-button>
             </div>
           </div>
 
           <div class="form-section">
-            <h4>安全设置</h4>
+            <h4>{{ t('personal_center.security_settings') }}</h4>
             <div class="password-status">
-              <span>提款密码: </span>
-              <strong>{{ currentUser?.has_withdrawal_password ? '已设置' : '未设置' }}</strong>
+              <span>{{ t('personal_center.withdrawal_password') }}: </span>
+              <strong>{{ currentUser?.has_withdrawal_password ? t('personal_center.already_set') : t('personal_center.not_set') }}</strong>
               <el-button
                 v-if="!currentUser?.has_withdrawal_password"
                 @click="showSetPwdModal = true"
                 size="small"
               >
-                设置
+                {{ t('personal_center.set') }}
               </el-button>
               <el-button
                 v-else
                 @click="showChangePwdModal = true"
                 size="small"
               >
-                修改
+                {{ t('personal_center.change') }}
               </el-button>
             </div>
           </div>
@@ -72,11 +72,11 @@
       </el-tab-pane>
 
       <!-- Deposit Tab -->
-      <el-tab-pane label="充值 (USDT)" name="deposit">
+      <el-tab-pane :label="t('personal_center.deposit')" name="deposit">
         <div class="deposit-content">
-          <h4>TRC20 充值地址 (僅限 USDT)</h4>
+          <h4>{{ t('personal_center.tron_deposit_address') }}</h4>
           <el-alert type="warning" :closable="false" class="deposit-warning">
-            <strong>警告：</strong> 请勿充值除 TRC20-USDT 以外的任何资产，否則将导致丢失。
+            <strong>{{ t('common.error') }}：</strong> {{ t('personal_center.deposit_warning') }}
           </el-alert>
           <div class="address-group">
             <el-input
@@ -84,12 +84,12 @@
               readonly
               class="address-input"
             />
-            <el-button @click="handleCopyTron">复制</el-button>
+            <el-button @click="handleCopyTron">{{ t('wallet.copy') }}</el-button>
           </div>
 
-          <h4 style="margin-top: var(--space-5);">EVM 充值地址 (僅限 USDT)</h4>
+          <h4 style="margin-top: var(--space-5);">{{ t('personal_center.evm_deposit_address') }}</h4>
           <el-alert type="warning" :closable="false" class="deposit-warning">
-            <strong>警告：</strong> 僅支持 BSC / ETH / Polygon 网路的 USDT。
+            <strong>{{ t('common.error') }}：</strong> {{ t('personal_center.evm_deposit_warning') }}
           </el-alert>
           <div class="address-group">
             <el-input
@@ -97,55 +97,52 @@
               readonly
               class="address-input"
             />
-            <el-button @click="handleCopyEvm">复制</el-button>
+            <el-button @click="handleCopyEvm">{{ t('wallet.copy') }}</el-button>
           </div>
 
-          <div class="deposit-tip">
-            * 充值到帐时间约 1-3 分钟。<br>
-            * 最小充值金额：1 USDT。
-          </div>
+          <div class="deposit-tip" v-html="t('personal_center.deposit_tip')"></div>
 
-          <h4 style="margin-top: var(--space-6);">充值记录</h4>
+          <h4 style="margin-top: var(--space-6);">{{ t('personal_center.deposit_history') }}</h4>
           <ul v-if="depositHistory.length > 0" class="history-list">
             <li v-for="(item, index) in depositHistory" :key="index">
               <span class="amount">{{ item.amount }} USDT ({{ item.chain }})</span>
-              <span>时间: {{ formatTime(item.created_at) }}</span>
-              <span class="status-completed">狀态: 已到帐</span>
+              <span>{{ t('personal_center.time') }}: {{ formatTime(item.created_at) }}</span>
+              <span class="status-completed">{{ t('personal_center.status') }}: {{ t('personal_center.status_arrived') }}</span>
             </li>
           </ul>
-          <div v-else class="empty">暂無充值记录</div>
+          <div v-else class="empty">{{ t('personal_center.no_deposit_history') }}</div>
         </div>
       </el-tab-pane>
 
       <!-- Withdraw Tab -->
-      <el-tab-pane label="提款 (USDT)" name="withdraw">
+      <el-tab-pane :label="t('personal_center.withdraw')" name="withdraw">
         <div class="withdraw-content">
-          <h4>提交提款请求</h4>
+          <h4>{{ t('personal_center.submit_withdraw') }}</h4>
           <el-select v-model="withdrawChain" class="chain-select">
-            <el-option label="TRC20 (TRON)" value="TRC20" />
-            <el-option label="BSC (BEP20)" value="BSC" />
-            <el-option label="ETH (ERC20)" value="ETH" />
-            <el-option label="SOL (Solana)" value="SOL" />
-            <el-option label="Polygon" value="POLYGON" />
+            <el-option :label="t('wallet.chain_tron')" value="TRC20" />
+            <el-option :label="t('wallet.chain_bsc')" value="BSC" />
+            <el-option :label="t('wallet.chain_eth')" value="ETH" />
+            <el-option :label="t('wallet.chain_sol')" value="SOL" />
+            <el-option :label="t('wallet.chain_polygon')" value="POLYGON" />
           </el-select>
 
           <el-input
             v-model="withdrawAddress"
-            placeholder="请输入对应链的 USDT 地址"
+            :placeholder="t('wallet.enter_withdraw_address')"
             class="withdraw-input"
           />
 
           <el-input
             v-model.number="withdrawAmount"
             type="number"
-            placeholder="最小提款 10 USDT"
+            :placeholder="t('wallet.min_withdraw')"
             class="withdraw-input"
           />
 
           <el-input
             v-model="withdrawPassword"
             type="password"
-            placeholder="请输入您的提款密码"
+            :placeholder="t('wallet.withdraw_password_placeholder')"
             class="withdraw-input"
           />
 
@@ -155,27 +152,27 @@
             :loading="loading"
             class="withdraw-button"
           >
-            确认提款
+            {{ t('personal_center.confirm_withdraw') }}
           </el-button>
 
-          <h4 style="margin-top: var(--space-6);">提款记录</h4>
+          <h4 style="margin-top: var(--space-6);">{{ t('personal_center.withdraw_history') }}</h4>
           <ul v-if="withdrawalHistory.length > 0" class="history-list">
             <li v-for="(item, index) in withdrawalHistory" :key="index">
               <span class="amount">{{ item.amount }} USDT ({{ item.chain_type }})</span>
-              <span>地址: {{ item.address_masked || item.address }}</span>
-              <span>时间: {{ formatTime(item.request_time) }}</span>
+              <span>{{ t('personal_center.address') }}: {{ item.address_masked || item.address }}</span>
+              <span>{{ t('personal_center.time') }}: {{ formatTime(item.request_time) }}</span>
               <span :class="['status', `status-${item.status}`]">
-                狀态: {{ getWithdrawStatusText(item.status) }}
+                {{ t('personal_center.status') }}: {{ getWithdrawStatusText(item.status) }}
               </span>
             </li>
           </ul>
-          <div v-else class="empty">暂無提款记录</div>
+          <div v-else class="empty">{{ t('personal_center.no_withdraw_history') }}</div>
         </div>
       </el-tab-pane>
     </el-tabs>
 
     <template #footer>
-      <el-button @click="handleClose">关闭</el-button>
+      <el-button @click="handleClose">{{ t('common.close') }}</el-button>
     </template>
 
     <!-- Password Modals -->
@@ -192,10 +189,13 @@
 
 <script setup>
 import { ref, computed, watch } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { useWallet } from '@/composables/useWallet.js'
 import { getCurrentUser } from '@/store/index.js'
 import SetPasswordModal from './SetPasswordModal.vue'
 import ChangePasswordModal from './ChangePasswordModal.vue'
+
+const { t } = useI18n()
 
 const props = defineProps({
   modelValue: Boolean
@@ -261,10 +261,10 @@ function formatTime(timeString) {
 
 function getWithdrawStatusText(status) {
   const statusMap = {
-    pending: '待審核',
-    processing: '出款中',
-    completed: '出款完成',
-    rejected: '已拒绝'
+    pending: t('personal_center.status_pending'),
+    processing: t('personal_center.status_processing'),
+    completed: t('personal_center.status_completed'),
+    rejected: t('personal_center.status_rejected')
   }
   return statusMap[status] || status
 }
@@ -350,6 +350,25 @@ function handleClose() {
 
 .personal-center-modal :deep(.el-form-item__label) {
   color: rgb(var(--foreground));
+  min-width: 120px; /* 固定标签宽度，适应中英文 */
+  white-space: nowrap;
+}
+
+.personal-center-modal :deep(.el-button) {
+  min-width: 80px; /* 固定按钮最小宽度 */
+  white-space: nowrap; /* 防止按钮文字换行 */
+}
+
+.personal-center-modal :deep(.el-tab-pane) {
+  color: rgb(var(--foreground));
+}
+
+.personal-center-modal :deep(.el-input) {
+  width: 100%; /* 输入框保持全宽 */
+}
+
+.personal-center-modal :deep(.el-select) {
+  width: 100%; /* 下拉框保持全宽 */
 }
 
 .info-content,

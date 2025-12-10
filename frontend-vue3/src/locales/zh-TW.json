@@ -1,0 +1,26 @@
+{
+  "common": {
+    "loading": "載入中...",
+    "error": "錯誤",
+    "success": "成功",
+    "confirm": "確認",
+    "cancel": "取消",
+    "save": "儲存",
+    "edit": "編輯",
+    "delete": "刪除",
+    "search": "搜尋",
+    "submit": "提交",
+    "close": "關閉"
+  },
+  "home": {
+    "title": "歡迎",
+    "welcome_bonus": "歡迎獎金"
+  },
+  "game": {
+    "play": "遊戲",
+    "bet": "投注",
+    "win": "獲勝",
+    "lose": "失敗"
+  }
+}
+

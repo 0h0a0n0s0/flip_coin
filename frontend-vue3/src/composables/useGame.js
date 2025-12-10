@@ -2,6 +2,7 @@
 // 從 modules/game.js 遷移
 
 import { ref } from 'vue'
+import { useI18n } from 'vue-i18n'
 import * as api from '@/api/index.js'
 import { getToken, getCurrentUser, setBettingState, getBettingState } from '@/store/index.js'
 import { notifySuccess, notifyError, notifyWarning } from '@/utils/notify.js'
@@ -9,34 +10,35 @@ import { notifySuccess, notifyError, notifyWarning } from '@/utils/notify.js'
 export function useGame() {
   const betting = ref(false)
   const coinResult = ref(null) // 'head' or 'tail'
+  const { t } = useI18n()
 
   /**
    * 处理确认下注
    */
   async function handleConfirmBet(choice, amount) {
     if (getBettingState()) {
-      notifyError('正在处理上一笔下注，请稍候...')
+      notifyError(t('notifications.bet_processing'))
       return
     }
 
     const currentUser = getCurrentUser()
 
     if (!choice) {
-      notifyError('请选择正面或反面')
+      notifyError(t('notifications.bet_choice_required'))
       return
     }
     if (isNaN(amount) || amount <= 0) {
-      notifyError('请输入有效的下注金额')
+      notifyError(t('notifications.bet_amount_required'))
       return
     }
     if (currentUser && amount > parseFloat(currentUser.balance)) {
-      notifyError('余额不足')
+      notifyError(t('notifications.bet_insufficient_balance'))
       return
     }
 
     setBettingState(true)
     betting.value = true
-    notifySuccess('注单已提交，正在等待链上开奖...')
+    notifySuccess(t('notifications.bet_success'))
 
     try {
       const token = getToken()
@@ -52,9 +54,9 @@ export function useGame() {
       }
       
       if (settledBet.status === 'won') {
-        notifySuccess(`恭喜中奖！`)
+        notifySuccess(t('notifications.bet_won'))
       } else if (settledBet.status === 'lost') {
-        notifyError('可惜，未中奖')
+        notifyError(t('notifications.bet_lost'))
       }
       
       // 显示硬币结果（检查 tx_hash 是否存在）
@@ -77,7 +79,7 @@ export function useGame() {
       if (error.status === 400) {
         // 客户端错误（参数错误、余额不足等）
         if (errorMessage.includes('余额不足') || errorMessage.includes('Insufficient balance')) {
-          notifyError('余额不足，请先充值')
+          notifyError(t('notifications.bet_insufficient_funds'))
         } else if (errorMessage.includes('链上交易失败') || errorMessage.includes('On-chain transaction failed')) {
           // 检查是否是余额不足导致的链上交易失败
           // 如果是余额不足，不应该显示错误，因为注单已经被标记为pending_tx
@@ -86,21 +88,21 @@ export function useGame() {
             // 但如果进入了，说明可能是其他原因，不显示错误
             return // 静默处理，不显示错误
           }
-          notifyWarning('链上交易失败，资金已自动退回，请稍后重试')
+          notifyWarning(t('notifications.bet_transaction_failed'))
         } else if (errorMessage.includes('帐号已被禁用') || errorMessage.includes('Account disabled')) {
-          notifyError('账户已被禁用，请联系客服')
+          notifyError(t('notifications.bet_account_disabled'))
         } else {
-          notifyWarning(`下注失败：${errorMessage}`)
+          notifyWarning(t('notifications.bet_failed') + ': ' + errorMessage)
         }
       } else if (error.status === 401) {
         // 认证错误
-        notifyError('登录已过期，请重新登录')
+        notifyError(t('notifications.bet_login_expired'))
       } else if (error.status === 503) {
         // 服务不可用
-        notifyError('投注服务暂未就绪，请稍后重试')
+        notifyError(t('notifications.bet_service_not_ready'))
       } else {
         // 其他错误（网络错误、服务器错误等）
-        notifyError(`下注失败：${errorMessage}`)
+        notifyError(t('notifications.bet_failed') + ': ' + errorMessage)
       }
       
       throw error

@@ -6,7 +6,8 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "i18n:scan": "node --experimental-modules src/scripts/i18n-scanner.js"
   },
   "dependencies": {
     "@element-plus/icons-vue": "^2.3.2",
@@ -15,6 +16,7 @@
     "notyf": "^3.10.0",
     "socket.io-client": "^4.7.2",
     "vue": "^3.2.13",
+    "vue-i18n": "^9.9.1",
     "vue-router": "^4.0.3"
   },
   "devDependencies": {

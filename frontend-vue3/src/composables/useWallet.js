@@ -2,6 +2,7 @@
 // 從 modules/wallet.js 遷移
 
 import { ref } from 'vue'
+import { useI18n } from 'vue-i18n'
 import * as api from '@/api/index.js'
 import { getToken, getCurrentUser, setCurrentUser } from '@/store/index.js'
 import { notifySuccess, notifyError, notifyWarning } from '@/utils/notify.js'
@@ -10,21 +11,22 @@ export function useWallet() {
   const loading = ref(false)
   const depositHistory = ref([])
   const withdrawalHistory = ref([])
+  const { t } = useI18n()
 
   /**
    * 复制地址到剪贴板
    */
   async function copyAddress(address) {
     if (!navigator.clipboard) {
-      notifyError('您的浏览器不支持复制功能')
+      notifyError(t('notifications.copy_not_supported'))
       return false
     }
     try {
       await navigator.clipboard.writeText(address)
-      notifySuccess('地址已复制')
+      notifySuccess(t('notifications.copy_success'))
       return true
     } catch (err) {
-      notifyError('复制失败')
+      notifyError(t('notifications.copy_failed'))
       console.error('Failed to copy text: ', err)
       return false
     }
@@ -73,12 +75,12 @@ export function useWallet() {
    */
   async function handleSaveNickname(newNickname) {
     if (newNickname.length > 50) {
-      notifyError('昵称长度不能超过 50 個字元')
+      notifyError(t('notifications.nickname_too_long'))
       return false
     }
     const currentUser = getCurrentUser()
     if (!newNickname || newNickname === (currentUser?.nickname || '')) {
-      notifyWarning('昵称未变更')
+      notifyWarning(t('notifications.nickname_unchanged'))
       return false
     }
 
@@ -87,10 +89,10 @@ export function useWallet() {
       const token = getToken()
       const updatedUser = await api.updateNickname(token, newNickname)
       setCurrentUser(updatedUser)
-      notifySuccess('昵称更新成功！')
+      notifySuccess(t('notifications.nickname_save_success'))
       return true
     } catch (error) {
-      notifyError(`更新失败：${error.message}`)
+      notifyError(t('notifications.update_failed') + ': ' + (error.message || ''))
       return false
     } finally {
       loading.value = false
@@ -102,12 +104,12 @@ export function useWallet() {
    */
   async function handleBindReferrer(referrerCode) {
     if (!referrerCode) {
-      notifyError('请输入推薦码')
+      notifyError(t('notifications.referrer_code_required'))
       return false
     }
     const currentUser = getCurrentUser()
     if (referrerCode === currentUser?.invite_code) {
-      notifyError('不能绑定自己的邀请码')
+      notifyError(t('notifications.referrer_self_bind'))
       return false
     }
 
@@ -116,10 +118,10 @@ export function useWallet() {
       const token = getToken()
       const updatedUser = await api.bindReferrer(token, referrerCode)
       setCurrentUser(updatedUser)
-      notifySuccess('推薦人绑定成功！')
+      notifySuccess(t('notifications.referrer_bind_success'))
       return true
     } catch (error) {
-      notifyWarning(`绑定失败：${error.message}`)
+      notifyWarning(t('notifications.referrer_bind_failed') + ': ' + (error.message || ''))
       return false
     } finally {
       loading.value = false
@@ -131,11 +133,11 @@ export function useWallet() {
    */
   async function handleSubmitSetPwd(loginPassword, newPassword, confirmPassword) {
     if (newPassword !== confirmPassword) {
-      notifyError('两次输入的新密码不一致')
+      notifyError(t('notifications.password_mismatch'))
       return false
     }
     if (!loginPassword || newPassword.length < 6) {
-      notifyError('请输入登入密码，且新密码至少 6 位')
+      notifyError(t('notifications.password_login_required'))
       return false
     }
 
@@ -143,7 +145,7 @@ export function useWallet() {
     try {
       const token = getToken()
       await api.setWithdrawalPassword(token, loginPassword, newPassword)
-      notifySuccess('提款密码设置成功！')
+      notifySuccess(t('notifications.password_set_success'))
       
       // 手动更新本地状态
       const currentUser = getCurrentUser()
@@ -152,7 +154,7 @@ export function useWallet() {
       }
       return true
     } catch (error) {
-      notifyError(`设置失败：${error.message}`)
+      notifyError(t('notifications.update_failed') + ': ' + (error.message || ''))
       return false
     } finally {
       loading.value = false
@@ -164,11 +166,11 @@ export function useWallet() {
    */
   async function handleSubmitChangePwd(oldPassword, newPassword, confirmPassword) {
     if (newPassword !== confirmPassword) {
-      notifyError('两次输入的新密码不一致')
+      notifyError(t('notifications.password_mismatch'))
       return false
     }
     if (!oldPassword || newPassword.length < 6) {
-      notifyError('请输入旧密码，且新密码至少 6 位')
+      notifyError(t('notifications.password_old_required'))
       return false
     }
 
@@ -176,10 +178,10 @@ export function useWallet() {
     try {
       const token = getToken()
       await api.updateWithdrawalPassword(token, oldPassword, newPassword)
-      notifySuccess('提款密码修改成功！')
+      notifySuccess(t('notifications.password_change_success'))
       return true
     } catch (error) {
-      notifyError(`修改失败：${error.message}`)
+      notifyError(t('notifications.update_failed') + ': ' + (error.message || ''))
       return false
     } finally {
       loading.value = false
@@ -191,7 +193,7 @@ export function useWallet() {
    */
   async function handleSubmitWithdrawal(chainType, address, amount, withdrawalPassword) {
     if (!chainType || !address || !amount || amount <= 0 || !withdrawalPassword) {
-      notifyError('请填寫所有提款栏位')
+      notifyError(t('notifications.withdraw_fields_required'))
       return false
     }
     
@@ -205,13 +207,13 @@ export function useWallet() {
         withdrawal_password: withdrawalPassword
       }
       const result = await api.requestWithdrawal(token, data)
-      notifySuccess(result.message || '提款请求已提交！')
+      notifySuccess(result.message || t('notifications.withdraw_success'))
       
       // 刷新历史
       await fetchWithdrawalHistory()
       return true
     } catch (error) {
-      notifyError(`提交失败：${error.message}`)
+      notifyError(t('notifications.withdraw_failed') + ': ' + (error.message || ''))
       return false
     } finally {
       loading.value = false

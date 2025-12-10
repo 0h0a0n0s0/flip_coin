@@ -2,34 +2,36 @@
 // 從 modules/auth.js 遷移
 
 import { ref } from 'vue'
+import { useI18n } from 'vue-i18n'
 import * as api from '@/api/index.js'
 import { setToken, setCurrentUser, clearState, getToken, getCurrentUser } from '@/store/index.js'
 import { notifySuccess, notifyError, notifyWarning } from '@/utils/notify.js'
 
 export function useAuth() {
   const loading = ref(false)
+  const { t } = useI18n()
 
   /**
    * 处理用户注册
    */
   async function handleRegister(username, password, confirmPassword) {
     if (password !== confirmPassword) {
-      notifyError('两次输入的密码不一致')
+      notifyError(t('notifications.register_failed') + ': ' + t('auth.confirm_password_placeholder'))
       return false
     }
     if (username.length < 3 || username.length > 20) {
-      notifyError('帐号长度必须在 3-20 字元之间')
+      notifyError(t('auth.username_register_placeholder'))
       return false
     }
     if (password.length < 6) {
-      notifyError('密码长度至少需要 6 位')
+      notifyError(t('auth.password_register_placeholder'))
       return false
     }
 
     loading.value = true
     try {
       const { user, token } = await api.register(username, password)
-      notifySuccess('注册成功！已自动登入。')
+      notifySuccess(t('notifications.register_success'))
       
       setToken(token)
       setCurrentUser(user)
@@ -39,7 +41,7 @@ export function useAuth() {
       if (error.status === 400) {
         notifyWarning(error.message)
       } else {
-        notifyError(`注册失败：${error.message}`)
+        notifyError(t('notifications.register_failed') + ': ' + (error.message || ''))
       }
       return false
     } finally {
@@ -52,14 +54,14 @@ export function useAuth() {
    */
   async function handleLogin(username, password) {
     if (!username || !password) {
-      notifyError('请输入帐号和密码')
+      notifyError(t('auth.username_placeholder') + ' / ' + t('auth.password_placeholder'))
       return false
     }
     
     loading.value = true
     try {
       const { user, token } = await api.login(username, password)
-      notifySuccess('登入成功！')
+      notifySuccess(t('notifications.login_success'))
       
       setToken(token)
       setCurrentUser(user)
@@ -69,7 +71,7 @@ export function useAuth() {
       if (error.status === 401) {
         notifyWarning(error.message)
       } else {
-        notifyError(`登入失败：${error.message}`)
+        notifyError(t('notifications.login_failed') + ': ' + (error.message || ''))
       }
       return false
     } finally {
@@ -82,7 +84,7 @@ export function useAuth() {
    */
   function handleLogout() {
     clearState()
-    notifySuccess('您已成功登出。')
+    notifySuccess(t('notifications.logout_success'))
   }
 
   /**

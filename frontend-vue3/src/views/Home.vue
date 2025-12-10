@@ -6,9 +6,9 @@
       <!-- Banner 区域 - 外层占满整行，内层 .banner-inner 负责对齐 -->
     <div class="banner-section">
       <Banner
-        title="Win Big with Crypto Fairness"
-        subtitle="Transparent blockchain gaming • Instant crypto payouts"
-          :is-sidebar-collapsed="isSidebarCollapsed.value"
+        :title="t('home.banner_title')"
+        :subtitle="t('home.banner_subtitle')"
+        :is-sidebar-collapsed="isSidebarCollapsed.value"
       />
     </div>
 
@@ -26,10 +26,12 @@
 
 <script setup>
 import { inject } from 'vue'
+import { useI18n } from 'vue-i18n'
 import Banner from '@/components/common/Banner.vue'
 import TrendingGamesGrid from '@/components/common/TrendingGamesGrid.vue'
 import SmallWinnerTicker from '@/components/common/SmallWinnerTicker.vue'
 
+const { t } = useI18n()
 const isSidebarCollapsed = inject('isSidebarCollapsed', { value: false })
 </script>
 

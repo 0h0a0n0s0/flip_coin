@@ -9,7 +9,7 @@
         <button
           @click="handleToggleSidebar"
           class="collapse-toggle-btn"
-          :title="isSidebarCollapsed ? '展开菜单' : '收缩菜单'"
+          :title="isSidebarCollapsed ? t('sidebar.expand_menu') : t('sidebar.collapse_menu')"
         >
           <el-icon class="collapse-icon">
             <ArrowRight v-if="isSidebarCollapsed" />
@@ -37,7 +37,7 @@
         <button
           @click="handleToggleSidebar"
           class="collapse-toggle-btn"
-          :title="isSidebarCollapsed ? '展开菜单' : '收缩菜单'"
+          :title="isSidebarCollapsed ? t('sidebar.expand_menu') : t('sidebar.collapse_menu')"
         >
           <el-icon class="collapse-icon">
             <ArrowRight v-if="isSidebarCollapsed" />
@@ -61,7 +61,8 @@
 </template>
 
 <script setup>
-import { ref, watch } from 'vue'
+import { ref, watch, computed } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { useRouter, useRoute } from 'vue-router'
 import {
   HomeFilled,
@@ -74,6 +75,8 @@ import {
   ArrowLeft,
   ArrowRight
 } from '@element-plus/icons-vue'
+
+const { t } = useI18n()
 
 const props = defineProps({
   modelValue: {
@@ -112,22 +115,23 @@ watch(() => route.path, (newPath) => {
   emit('update:modelValue', activeCategory.value)
 }, { immediate: true })
 
-const categories = [
-  { id: 'home', label: 'Home', icon: HomeFilled, route: '/' },
-  { id: 'hash-game', label: 'Hash Game', icon: Lock, route: '/hash' },
-  { id: 'sports', label: 'Sports', icon: Trophy, route: '/sports' },
-  { id: 'live-casino', label: 'Live Casino', icon: VideoPlay, route: '/live-casino' },
-  { id: 'pokers', label: 'Pokers', icon: Grid, route: '/pokers' },
-  { id: 'slot', label: 'Slot', icon: Coin, route: '/slot' },
-  { id: 'arcade', label: '街机', icon: Monitor, route: '/arcade' }
-]
+const categories = computed(() => [
+  { id: 'home', label: t('navigation.home'), icon: HomeFilled, route: '/' },
+  { id: 'hash-game', label: t('navigation.hash_game'), icon: Lock, route: '/hash' },
+  { id: 'sports', label: t('navigation.sports'), icon: Trophy, route: '/sports' },
+  { id: 'live-casino', label: t('navigation.live_casino'), icon: VideoPlay, route: '/live-casino' },
+  { id: 'pokers', label: t('navigation.pokers'), icon: Grid, route: '/pokers' },
+  { id: 'slot', label: t('navigation.slot'), icon: Coin, route: '/slot' },
+  { id: 'arcade', label: t('navigation.arcade'), icon: Monitor, route: '/arcade' }
+])
 
 function handleCategoryClick(id) {
   activeCategory.value = id
   emit('update:modelValue', id)
   
-  const category = categories.find(cat => cat.id === id)
-  if (category) {
+  // categories 是 computed，需要使用 .value 获取值
+  const category = categories.value.find(cat => cat.id === id)
+  if (category && category.route) {
     router.push({ path: category.route })
   }
 }
@@ -263,6 +267,7 @@ function handleToggleSidebar() {
   gap: var(--space-2);
   padding: 0 var(--space-3);
   height: 40px; /* 固定高度 */
+  min-width: fit-content; /* 根据内容自适应，但保持最小宽度 */
   font-size: 16px; /* 固定字体大小 16px */
   font-weight: 500;
   transition: all 0.2s;
@@ -271,7 +276,7 @@ function handleToggleSidebar() {
   cursor: pointer;
   color: var(--text-muted);
   position: relative;
-  white-space: nowrap;
+  white-space: nowrap; /* 防止文字换行 */
   flex-shrink: 0; /* 防止被压缩 */
 }
 

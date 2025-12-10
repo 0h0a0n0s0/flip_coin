@@ -1,38 +1,38 @@
 <template>
   <el-dialog
     v-model="dialogVisible"
-    title="首次设置提款密码"
+    :title="t('password.set_title')"
     width="420px"
     @close="handleClose"
   >
     <el-form :model="form" label-width="140px">
-      <el-form-item label="登入密码">
+      <el-form-item :label="t('password.login_password')">
         <el-input
           v-model="form.loginPassword"
           type="password"
-          placeholder="请输入您的登入密码"
+          :placeholder="t('password.login_password_placeholder')"
         />
       </el-form-item>
-      <el-form-item label="新提款密码">
+      <el-form-item :label="t('password.new_password')">
         <el-input
           v-model="form.newPassword"
           type="password"
-          placeholder="请输入新提款密码 (至少 6 位)"
+          :placeholder="t('password.new_password_placeholder')"
         />
       </el-form-item>
-      <el-form-item label="确认新密码">
+      <el-form-item :label="t('password.confirm_new_password')">
         <el-input
           v-model="form.confirmPassword"
           type="password"
-          placeholder="请再次输入新提款密码"
+          :placeholder="t('password.confirm_new_password_placeholder')"
           @keyup.enter="handleSubmit"
         />
       </el-form-item>
     </el-form>
     <template #footer>
-      <el-button @click="handleClose">取消</el-button>
+      <el-button @click="handleClose">{{ t('common.cancel') }}</el-button>
       <el-button type="primary" @click="handleSubmit" :loading="loading">
-        确认设置
+        {{ t('password.confirm_set') }}
       </el-button>
     </template>
   </el-dialog>
@@ -40,7 +40,10 @@
 
 <script setup>
 import { ref, watch } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { useWallet } from '@/composables/useWallet.js'
+
+const { t } = useI18n()
 
 const props = defineProps({
   modelValue: Boolean
@@ -113,6 +116,13 @@ function handleClose() {
 
 :deep(.el-form-item__label) {
   color: rgb(var(--foreground));
+  min-width: 140px; /* 固定标签宽度，适应中英文 */
+  white-space: nowrap;
+}
+
+:deep(.el-button) {
+  min-width: 80px; /* 固定按钮最小宽度 */
+  white-space: nowrap; /* 防止按钮文字换行 */
 }
 </style>
 

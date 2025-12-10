@@ -1,6 +1,6 @@
 <template>
   <section class="history" v-if="isLoggedIn">
-    <h2>投注历史</h2>
+    <h2>{{ t('history.title') }}</h2>
     <ul v-if="displayedHistory.length > 0" class="history-list">
       <li
         v-for="(item, index) in displayedHistory"
@@ -8,8 +8,8 @@
         class="history-item"
       >
         <span class="time">[{{ formatTime(item.bet_time) }}]</span>
-        <span class="choice">选择: {{ item.choice === 'head' ? '正面' : '反面' }}</span>
-        <span class="amount">金额: {{ item.amount }} USDT</span>
+        <span class="choice">{{ t('history.choice') }}: {{ item.choice === 'head' ? t('game.head') : t('game.tail') }}</span>
+        <span class="amount">{{ t('history.amount') }}: {{ item.amount }} USDT</span>
         <span :class="['status', `status-${item.status}`]">
           {{ getStatusText(item.status) }}
         </span>
@@ -19,16 +19,16 @@
           target="_blank"
           class="tx-link"
         >
-          TX: {{ item.tx_hash.substring(0, 10) }}...
+          {{ t('history.tx_hash') }}: {{ item.tx_hash.substring(0, 10) }}...
         </a>
       </li>
     </ul>
-    <div v-else class="empty">登入後以查看历史记录</div>
+    <div v-else class="empty">{{ t('history.empty') }}</div>
     
     <!-- 查看更多按钮 -->
     <div v-if="hasMoreHistory" class="view-more">
       <button class="view-more-button" @click="handleViewMore">
-        查看更多 →
+        {{ t('history.view_more') }}
       </button>
     </div>
   </section>
@@ -36,9 +36,12 @@
 
 <script setup>
 import { ref, computed, onMounted, watch } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { useRouter, useRoute } from 'vue-router'
 import * as api from '@/api/index.js'
 import { getToken, getCurrentUser } from '@/store/index.js'
+
+const { t } = useI18n()
 
 const router = useRouter()
 const route = useRoute()
@@ -77,12 +80,12 @@ function formatTime(timeString) {
 
 function getStatusText(status) {
   const statusMap = {
-    won: '✅ 已中奖',
-    lost: '❌ 未中奖',
-    pending: '⌛️ 待开奖',
-    failed: '⚠️ 处理失败'
+    won: t('history.status_won'),
+    lost: t('history.status_lost'),
+    pending: t('history.status_pending'),
+    failed: t('history.status_failed')
   }
-  return statusMap[status] || '⌛️ 处理中'
+  return statusMap[status] || t('history.status_processing')
 }
 
 function getTxLink(txHash) {
@@ -235,6 +238,8 @@ defineExpose({
   padding: var(--space-2) var(--space-3);
   border-radius: var(--radius-sm);
   transition: all 0.2s;
+  white-space: nowrap; /* 防止文字换行 */
+  min-width: fit-content; /* 保持最小宽度 */
 }
 
 .view-more-button:hover {

@@ -35,31 +35,31 @@ const routes = [
         path: 'sports',
         name: 'Sports',
         component: GameListPage,
-        props: { category: 'sports', title: 'Sports' }
+        props: (route) => ({ category: 'sports', title: route.meta?.title || 'Sports' })
       },
       {
         path: 'live-casino',
         name: 'LiveCasino',
         component: GameListPage,
-        props: { category: 'live-casino', title: 'Live Casino' }
+        props: (route) => ({ category: 'live-casino', title: route.meta?.title || 'Live Casino' })
       },
       {
         path: 'pokers',
         name: 'Pokers',
         component: GameListPage,
-        props: { category: 'pokers', title: 'Pokers' }
+        props: (route) => ({ category: 'pokers', title: route.meta?.title || 'Pokers' })
       },
       {
         path: 'slot',
         name: 'Slot',
         component: GameListPage,
-        props: { category: 'slot', title: 'Slot' }
+        props: (route) => ({ category: 'slot', title: route.meta?.title || 'Slot' })
       },
       {
         path: 'arcade',
         name: 'Arcade',
         component: GameListPage,
-        props: { category: 'arcade', title: '街机' }
+        props: (route) => ({ category: 'arcade', title: route.meta?.title || 'Arcade' })
       }
     ]
   }

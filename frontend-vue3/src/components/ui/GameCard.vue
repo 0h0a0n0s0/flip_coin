@@ -14,15 +14,15 @@
       <div class="badges">
         <span v-if="game.hot" class="badge badge-hot">
           <Lightning class="badge-icon" />
-          HOT
+          {{ t('game_card.hot') }}
         </span>
-        <span v-if="game.new" class="badge badge-new">NEW</span>
+        <span v-if="game.new" class="badge badge-new">{{ t('game_card.new') }}</span>
       </div>
 
       <div v-if="isHovered" class="hover-overlay">
         <button class="play-button" @click.stop="handlePlay">
           <VideoPlay class="play-icon" />
-          Play
+          {{ t('game_card.play') }}
         </button>
       </div>
     </div>
@@ -48,10 +48,13 @@
 
 <script setup>
 import { ref, computed, onMounted } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { Lightning, VideoPlay, Star, Coin } from '@element-plus/icons-vue'
 import { useLanguage } from '@/composables/useLanguage.js'
 import { getPlatformName as getPlatformNameFromStore, setPlatformName } from '@/store/index.js'
 import { getPlatformName as fetchPlatformName } from '@/api/index.js'
+
+const { t } = useI18n()
 
 const props = defineProps({
   game: {

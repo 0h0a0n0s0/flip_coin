@@ -29,7 +29,7 @@
               @click="openWallet"
               class="deposit-btn"
             >
-              Deposit
+              {{ t('header.deposit') }}
             </el-button>
             <el-button
               circle
@@ -46,14 +46,14 @@
               class="login-btn-desktop"
             >
               <el-icon><UserFilled /></el-icon>
-              Login
+              {{ t('header.login') }}
             </el-button>
             <el-button
               type="primary"
               @click="openRegister"
               class="signup-btn"
             >
-              Sign Up
+              {{ t('header.sign_up') }}
             </el-button>
           </template>
         </div>
@@ -63,9 +63,12 @@
 
 <script setup>
 import { ref, computed, onMounted } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { Wallet, User, UserFilled } from '@element-plus/icons-vue'
 import { getCurrentUser, getToken } from '@/store/index.js'
 import * as api from '@/api/index.js'
+
+const { t } = useI18n()
 
 const props = defineProps({
   onWalletClick: Function,
@@ -113,6 +116,47 @@ onMounted(async () => {
   }
 })
 </script>
+
+<style scoped>
+/* 全局样式覆盖 - 针对 Deposit 按钮 */
+</style>
+
+<style>
+/* 非 scoped 样式，确保能覆盖 Element Plus 默认样式 */
+/* 使用最高优先级选择器覆盖所有可能的 Element Plus 样式 */
+.header-actions .deposit-btn.el-button.el-button--primary,
+.header-actions .deposit-btn.el-button.el-button--primary.el-button,
+.header-actions .deposit-btn.el-button.el-button--primary .el-button__wrapper,
+.header-actions .el-button.deposit-btn.el-button--primary,
+button.deposit-btn.el-button.el-button--primary,
+button.el-button.el-button--primary.deposit-btn {
+  width: 82.97px !important;
+  height: 32px !important;
+  min-width: 82.97px !important;
+  max-width: 82.97px !important;
+  padding-left: 0 !important;
+  padding-right: 0 !important;
+  padding-top: 0 !important;
+  padding-bottom: 0 !important;
+  box-sizing: border-box !important;
+  line-height: 1 !important;
+  margin: 0 !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+}
+
+.header-actions .deposit-btn.el-button.el-button--primary span,
+.header-actions .deposit-btn.el-button.el-button--primary .el-button__wrapper span,
+button.deposit-btn.el-button.el-button--primary span {
+  display: block;
+  width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-align: center;
+}
+</style>
 
 <style scoped>
 .header {
@@ -198,27 +242,52 @@ onMounted(async () => {
   }
 }
 
-.deposit-btn :deep(.el-button) {
-  height: 32px;
-  padding: 0 var(--space-4);
-  font-size: 12px;
-  font-weight: 600;
-  background-color: rgb(var(--primary));
-  border-color: rgb(var(--primary));
-  color: rgb(var(--primary-foreground));
-  border-radius: var(--radius-lg);
+/* 强制固定 Deposit 按钮尺寸 - 使用更高优先级的选择器 */
+.deposit-btn.el-button,
+.deposit-btn :deep(.el-button),
+.deposit-btn :deep(.el-button__wrapper),
+.header-actions .deposit-btn,
+.header-actions .deposit-btn.el-button {
+  width: 82.97px !important; /* 固定宽度，强制应用 */
+  height: 32px !important; /* 固定高度，强制应用 */
+  min-width: 82.97px !important; /* 确保最小宽度也是固定值 */
+  max-width: 82.97px !important; /* 确保最大宽度也是固定值 */
+  padding: 0 !important; /* 移除内边距，确保精确尺寸 */
+  font-size: 12px !important;
+  font-weight: 600 !important;
+  background-color: rgb(var(--primary)) !important;
+  border-color: rgb(var(--primary)) !important;
+  color: rgb(var(--primary-foreground)) !important;
+  border-radius: var(--radius-lg) !important;
+  white-space: nowrap !important; /* 防止文字换行 */
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  overflow: hidden !important; /* 如果文字过长则隐藏 */
+  text-overflow: ellipsis !important; /* 文字过长显示省略号 */
+  box-sizing: border-box !important; /* 确保边框计算在内 */
+  line-height: 1 !important; /* 防止行高影响高度 */
+  margin: 0 !important; /* 移除外边距 */
 }
 
-.deposit-btn :deep(.el-button:hover) {
-  background-color: rgb(var(--primary) / 0.9);
-  border-color: rgb(var(--primary) / 0.9);
+.deposit-btn.el-button:hover,
+.deposit-btn :deep(.el-button:hover),
+.header-actions .deposit-btn:hover {
+  width: 82.97px !important; /* hover 时也保持固定宽度 */
+  height: 32px !important; /* hover 时也保持固定高度 */
+  min-width: 82.97px !important;
+  max-width: 82.97px !important;
+  background-color: rgb(var(--primary) / 0.9) !important;
+  border-color: rgb(var(--primary) / 0.9) !important;
 }
 
 .login-btn-desktop {
   display: none;
   height: 32px;
+  min-width: 70px; /* 固定最小宽度 */
   padding: 0 var(--space-3);
   font-size: 13px;
+  white-space: nowrap; /* 防止文字换行 */
 }
 
 @media (min-width: 768px) {
@@ -229,9 +298,11 @@ onMounted(async () => {
 
 .signup-btn {
   height: 32px;
+  min-width: 90px; /* 固定最小宽度，适应 "Sign Up" */
   padding: 0 var(--space-4);
   font-size: 12px;
   font-weight: 600;
+  white-space: nowrap; /* 防止文字换行 */
 }
 
 .user-btn {

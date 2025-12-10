@@ -4,13 +4,13 @@
       <h2>{{ gameName }}</h2>
       <div class="streak-info" v-if="currentUser">
         <span v-if="currentStreak > 0" class="streak-positive">
-          🔥 連胜 {{ currentStreak }} 场
+          🔥 {{ t('game.streak_positive') }} {{ currentStreak }} {{ t('game.field') }}
         </span>
         <span v-else-if="currentStreak < 0" class="streak-negative">
-          🥶 連败 {{ Math.abs(currentStreak) }} 场
+          🥶 {{ t('game.streak_negative') }} {{ Math.abs(currentStreak) }} {{ t('game.field') }}
         </span>
         <span v-if="maxStreak > 0" class="max-streak">
-          最高連胜: {{ maxStreak }}
+          {{ t('game.max_streak') }}: {{ maxStreak }}
         </span>
       </div>
     </div>
@@ -32,8 +32,8 @@
     <div class="bet-controls">
       <div class="choice-group">
         <el-radio-group v-model="selectedChoice">
-          <el-radio label="head">正面</el-radio>
-          <el-radio label="tail">反面</el-radio>
+          <el-radio label="head">{{ t('game.head') }}</el-radio>
+          <el-radio label="tail">{{ t('game.tail') }}</el-radio>
         </el-radio-group>
       </div>
 
@@ -41,7 +41,7 @@
         <el-input
           v-model.number="betAmount"
           type="number"
-          placeholder="下注金额 (USDT)"
+          :placeholder="t('game.bet_amount')"
           step="0.01"
           :min="0.01"
         />
@@ -54,7 +54,7 @@
         :disabled="!canBet"
         class="bet-button"
       >
-        {{ betting ? '下注中...' : '确认下注' }}
+        {{ betting ? t('game.betting') : t('game.confirm_bet') }}
       </el-button>
     </div>
   </section>
@@ -62,11 +62,14 @@
 
 <script setup>
 import { ref, computed, onMounted, watch } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { useGame } from '@/composables/useGame.js'
 import { getCurrentUser, getGamesCache, setGamesCache } from '@/store/index.js'
 import { notifyError } from '@/utils/notify.js'
 import { getGames } from '@/api/index.js'
 import { useLanguage } from '@/composables/useLanguage.js'
+
+const { t } = useI18n()
 
 const props = defineProps({
   onBetSuccess: Function
@@ -172,7 +175,7 @@ async function handleBet() {
         return
       }
       if (!error.message.includes('下注失败')) {
-        notifyError(`投注处理失败：${error.message}`)
+        notifyError(t('notifications.bet_failed') + ': ' + (error.message || ''))
       }
     }
   }
@@ -313,6 +316,16 @@ async function handleBet() {
   height: 40px;
   font-size: 16px;
   font-weight: 600;
+}
+
+.bet-button :deep(.el-button) {
+  min-width: 120px; /* 固定按钮最小宽度，适应 "确认下注" / "Confirm Bet" */
+  white-space: nowrap; /* 防止按钮文字换行 */
+}
+
+.choice-group :deep(.el-radio) {
+  min-width: 80px; /* 固定单选按钮最小宽度 */
+  white-space: nowrap; /* 防止文字换行 */
 }
 
 @media (max-width: 767px) {

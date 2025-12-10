@@ -2,12 +2,14 @@
 // 從 modules/socket.js 遷移
 
 import { onUnmounted } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { io } from 'socket.io-client'
 import { getToken, getCurrentUser, setCurrentUser, setSocket, getSocket, getBettingState, clearState } from '@/store/index.js'
 import { notifySuccess, notifyError } from '@/utils/notify.js'
 
 export function useSocket() {
   let socket = null
+  const { t } = useI18n()
 
   /**
    * 初始化 Socket.IO 连接
@@ -34,7 +36,7 @@ export function useSocket() {
       if (err.message === 'Authentication error: Invalid token' || 
           err.message === 'Authentication error: User not found or disabled.') {
         clearState()
-        notifyError('連线已过期，请重新登入。')
+        notifyError(t('notifications.bet_login_expired'))
         // 触发页面刷新或重定向到登录
         if (typeof window !== 'undefined') {
           window.location.reload()
@@ -58,7 +60,7 @@ export function useSocket() {
         
         // 只有在非下注状态 且 余额真的变动时 才弹出提示
         if (!getBettingState() && oldBalance !== fullUser.balance) {
-          notifySuccess(`帐户已更新！新余额: ${parseFloat(fullUser.balance).toFixed(2)} USDT`)
+          notifySuccess(t('notifications.bet_success') + ` (${t('wallet.available_balance')}: ${parseFloat(fullUser.balance).toFixed(2)} USDT)`)
         }
         
         if (callbacks.onUserUpdated) {

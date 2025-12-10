@@ -52,8 +52,7 @@
     <el-container>
       <el-aside :width="isCollapsed ? '64px' : '200px'" class="layout-aside" :class="{ 'is-collapsed': isCollapsed }">
         <el-menu
-          :collapse-transition="false"
-          :default-active="activeMenu"
+          :collapse-transition="false"  :default-active="activeMenu"
           class="el-menu-vertical-demo"
           :router="true"
           :unique-opened="true" 
@@ -673,100 +672,7 @@ export default {
 .el-menu-vertical-demo {
   border-right: none;
   background: transparent !important;
-  transition: all 0.3s ease;
-}
-
-/* 折疊狀態下的菜單樣式 */
-.layout-aside.is-collapsed .el-menu-item {
-  padding: 0 !important;
-  display: flex !important;
-  justify-content: center !important;
-  align-items: center !important;
-  text-align: center;
-  margin: 4px 0 !important;
-  width: 64px !important;
-  height: 48px;
-}
-
-.layout-aside.is-collapsed .el-sub-menu__title {
-  padding: 0 !important;
-  display: flex !important;
-  justify-content: center !important;
-  align-items: center !important;
-  text-align: center;
-  margin: 4px 0 !important;
-  width: 64px !important;
-  height: 48px;
-}
-
-/* 確保圖標本身居中且統一大小 */
-.layout-aside.is-collapsed .el-menu-item .el-icon,
-.layout-aside.is-collapsed .el-sub-menu__title .el-icon {
-  margin: 0 !important;
-  padding: 0 !important;
-  width: 20px !important;
-  height: 20px !important;
-  font-size: 20px !important;
-  display: inline-flex !important;
-  align-items: center !important;
-  justify-content: center !important;
-}
-
-/* 隱藏文字 */
-.layout-aside.is-collapsed .el-menu-item span,
-.layout-aside.is-collapsed .el-sub-menu__title span {
-  display: none !important;
-}
-
-/* 隱藏箭頭 */
-.layout-aside.is-collapsed .el-sub-menu__icon-arrow {
-  display: none !important;
-}
-
-/* 確保所有圖標容器都居中且寬度一致 */
-.layout-aside.is-collapsed .el-menu-item,
-.layout-aside.is-collapsed .el-sub-menu__title {
-  width: 64px !important;
-  margin-left: 0 !important;
-  margin-right: 0 !important;
-  padding-left: 0 !important;
-  padding-right: 0 !important;
-}
-
-/* 移除可能的偽元素 */
-.layout-aside.is-collapsed .el-menu-item::after,
-.layout-aside.is-collapsed .el-sub-menu__title::after {
-  display: none !important;
-}
-
-/* 確保子菜單標題內的內容也居中 */
-.layout-aside.is-collapsed .el-sub-menu__title > * {
-  display: flex !important;
-  justify-content: center !important;
-  align-items: center !important;
-  margin: 0 !important;
-}
-
-/* 使用深度選擇器確保樣式正確應用 */
-.layout-aside.is-collapsed :deep(.el-sub-menu__title) {
-  padding: 0 !important;
-  display: flex !important;
-  justify-content: center !important;
-  align-items: center !important;
-  width: 64px !important;
-  margin: 4px 0 !important;
-}
-
-.layout-aside.is-collapsed :deep(.el-sub-menu__title .el-icon) {
-  margin: 0 !important;
-  padding: 0 !important;
-  width: 20px !important;
-  height: 20px !important;
-  font-size: 20px !important;
-}
-
-.layout-aside.is-collapsed :deep(.el-sub-menu__title span) {
-  display: none !important;
+  /* transition 已移至全局样式，避免冲突 */
 }
 
 .el-menu-item,
@@ -776,37 +682,6 @@ export default {
   border-radius: 8px;
   margin: 4px 12px;
   width: calc(100% - 24px);
-}
-
-/* 父菜單標題使用 flex 布局，設為相對定位以便箭頭絕對定位 */
-.el-sub-menu :deep(.el-sub-menu__title) {
-  display: flex !important;
-  align-items: center !important;
-  position: relative !important;
-  padding-right: 28px !important;
-}
-
-/* 父菜單標題左側內容區域（圖標和文字） */
-.el-sub-menu :deep(.el-sub-menu__title) > .el-icon:not(.el-sub-menu__icon-arrow) {
-  margin-right: 8px !important;
-  flex-shrink: 0 !important;
-}
-
-.el-sub-menu :deep(.el-sub-menu__title) > span {
-  flex: 0 1 auto !important;
-  margin-right: 0 !important;
-}
-
-/* 父菜單箭頭圖標（右側） - 使用絕對定位強制放在右側 */
-.el-sub-menu :deep(.el-sub-menu__icon-arrow) {
-  position: absolute !important;
-  right: 12px !important;
-  top: 50% !important;
-  transform: translateY(-50%) !important;
-  margin: 0 !important;
-  padding: 0 !important;
-  flex-shrink: 0 !important;
-  display: block !important;
 }
 
 .el-menu-item:hover,
@@ -947,140 +822,193 @@ export default {
 </style>
 
 <style>
-/* 全局樣式：優化折疊狀態下的菜單彈出樣式 */
-.el-sub-menu__popper {
-  background: linear-gradient(180deg, #1a4d00 0%, #237804 100%) !important;
-  border: none !important;
-  border-radius: 8px !important;
-  box-shadow: 2px 4px 12px rgba(0, 0, 0, 0.2) !important;
-  padding: 0 !important;
-  min-width: 200px !important;
-}
+  /* =================================================================
+     PART 1: 侧边栏主体 - 防抖动 + 垂直对齐核心
+     ================================================================= */
+  
+  /* 1. 锁定选单容器宽度 */
+  .el-menu-vertical-demo:not(.el-menu--collapse) {
+    width: 200px;
+    min-height: 400px;
+  }
+  
+  /* 2. 侧边栏所有项 - 基础重置 (防抖动) */
+  .layout-aside .el-menu-item, 
+  .layout-aside .el-sub-menu__title {
+    /* 仅允许颜色过渡 */
+    transition: background-color 0.3s, color 0.3s !important;
+    white-space: nowrap !important;
+    overflow: hidden !important;
+    text-overflow: clip !important;
+    margin: 0 !important;
+    border-radius: 0 !important;
+    /* 默认高度 */
+    height: 50px !important;
+    line-height: 50px !important;
+  }
+  
+  /* --- 🎯 核心修改：文字左侧切齐逻辑 --- */
+  
+  /* 3. 展开状态：父级菜单 (有图标) */
+  /* 20px (左间距) + 24px (图标) + 12px (间距) = 文字从 56px 处开始 */
+  .layout-aside:not(.is-collapsed) .el-sub-menu__title,
+  .layout-aside:not(.is-collapsed) > .el-menu-item {
+    padding-left: 20px !important;
+  }
+  
+  /* 4. 展开状态：子级菜单 (无图标) */
+  /* 强行设定 padding-left 为 56px，让文字直接对齐父级文字 */
+  .layout-aside:not(.is-collapsed) .el-menu--inline .el-menu-item {
+    padding-left: 56px !important; 
+  }
+  
+  /* ----------------------------------- */
+  
+  /* 5. 左侧图标 - 钉死位置与尺寸 */
+  .layout-aside .el-menu-item .el-icon,
+  .layout-aside .el-sub-menu__title .el-icon:not(.el-sub-menu__icon-arrow) {
+    width: 24px !important;
+    min-width: 24px !important;
+    height: 24px !important;
+    display: inline-flex !important;
+    justify-content: center !important;
+    align-items: center !important;
+    margin-right: 12px !important; /* 图标与文字间距 */
+    font-size: 18px !important;
+    vertical-align: middle !important;
+    transition: none !important; 
+  }
+  
+  /* 6. 折叠状态 - 强制居中对齐 */
+  .layout-aside.is-collapsed .el-menu-item,
+  .layout-aside.is-collapsed .el-sub-menu__title {
+    padding: 0 !important;
+    margin: 0 !important; 
+    width: 100% !important;
+    justify-content: center !important; 
+  }
+  .layout-aside.is-collapsed .el-menu-item .el-icon,
+  .layout-aside.is-collapsed .el-sub-menu__title .el-icon:not(.el-sub-menu__icon-arrow) {
+    margin-right: 0 !important; /* 折叠时不需要右边距 */
+  }
+  
+  /* 7. 右侧箭头 - 绝对定位防挤压 */
+  .layout-aside .el-sub-menu__title .el-sub-menu__icon-arrow {
+    position: absolute !important;
+    right: 16px !important;
+    top: 50% !important;
+    margin: 0 !important;
+    width: auto !important;
+    height: auto !important;
+    transform: translateY(-50%) rotate(0deg); 
+    transition: transform 0.3s !important;
+  }
+  
+  /* 8. 箭头展开旋转 */
+  .layout-aside .el-sub-menu.is-opened > .el-sub-menu__title .el-sub-menu__icon-arrow {
+    transform: translateY(-50%) rotate(180deg) !important;
+  }
+  
+  /* 9. 折叠时隐藏杂项 */
+  .layout-aside.is-collapsed .el-sub-menu__title .el-sub-menu__icon-arrow,
+  .layout-aside.is-collapsed .el-sub-menu__title span,
+  .layout-aside.is-collapsed .el-menu-item span {
+    display: none !important;
+    opacity: 0 !important;
+  }
+  
+  /* 10. 确保父容器相对定位 */
+  .layout-aside .el-sub-menu__title {
+    position: relative !important;
+    padding-right: 40px !important;
+  }
+  
+  /* =================================================================
+   PART 2: 彈出菜單 - 滿版無縫樣式 (Full-Width Seamless)
+   ================================================================= */
 
-/* 彈出菜單容器 */
-.el-sub-menu__popper .el-menu {
-  background: transparent !important;
-  border: none !important;
-  padding: 0 !important;
-}
+  /* 1. 外框容器 - 移除所有內距 */
+  .el-sub-menu__popper {
+    background: linear-gradient(180deg, #1a4d00 0%, #237804 100%) !important;
+    border: none !important;
+    border-radius: 8px !important;
+    box-shadow: 2px 4px 12px rgba(0, 0, 0, 0.2) !important;
+    /* 關鍵：容器本身不留白 */
+    padding: 0 !important; 
+    overflow: hidden !important; 
+  }
 
-/* 父菜單標題樣式（更深的背景以區分） */
-.el-sub-menu__popper .menu-parent-title {
-  padding: 10px 20px !important;
-  color: rgba(255, 255, 255, 0.95) !important;
-  font-weight: 600 !important;
-  font-size: 14px !important;
-  background: rgba(0, 0, 0, 0.3) !important;
-  margin: 0 !important;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.15) !important;
-  border-radius: 8px 8px 0 0 !important;
-}
+  /* 2. 內部列表容器 - 清除 Element 預設 Padding */
+  /* 注意：這裡同時選取 .el-menu 和 .el-menu--popup 以防萬一 */
+  .el-sub-menu__popper .el-menu,
+  .el-sub-menu__popper .el-menu--popup,
+  .el-sub-menu__popper .el-menu--inline {
+    padding: 0 !important;
+    margin: 0 !important;
+    background-color: transparent !important;
+    border: none !important;
+    width: 100% !important; /* 確保列表容器填滿外框 */
+  }
 
-/* 子菜單容器樣式（與展開狀態保持一致 - 較淺的背景） */
-.el-sub-menu__popper .el-menu--inline {
-  background: rgba(0, 0, 0, 0.2) !important;
-  padding: 8px 0 !important;
-  margin-top: 0 !important;
-}
+  /* 3. 菜單項目 - 強制滿版直角 */
+  .el-sub-menu__popper .el-menu-item,
+  .el-sub-menu__popper .el-sub-menu__title {
+    background-color: transparent !important;
+    color: rgba(255, 255, 255, 0.85) !important;
+    
+    /* 關鍵：移除邊距，寬度 100% 填滿容器 */
+    margin: 0 !important;       
+    border-radius: 0 !important;    
+    width: 100% !important;
+    box-sizing: border-box !important; /* 確保 padding 不會撐爆寬度 */
+    
+    height: 40px !important;
+    line-height: 40px !important;
+  }
 
-/* 子菜單項樣式（與展開狀態相同的背景色差異 - 透明背景在深色容器上） */
-.el-sub-menu__popper .el-menu--inline .el-menu-item {
-  background-color: transparent !important;
-  color: rgba(255, 255, 255, 0.85) !important;
-  padding: 10px 20px 10px 48px !important;
-  margin: 2px 12px !important;
-  border-radius: 6px !important;
-  transition: all 0.2s ease !important;
-}
+  /* 4. 懸停效果 - 滿版填充 */
+  .el-sub-menu__popper .el-menu-item:hover,
+  .el-sub-menu__popper .el-sub-menu__title:hover {
+    background-color: rgba(255, 255, 255, 0.15) !important;
+    color: #fff !important;
+  }
 
-.el-sub-menu__popper .el-menu--inline .el-menu-item:hover {
-  background-color: rgba(255, 255, 255, 0.08) !important;
-  color: #fff !important;
-}
+  /* 5. 激活狀態 - 滿版填充 */
+  .el-sub-menu__popper .el-menu-item.is-active {
+    background-color: rgba(255, 255, 255, 0.2) !important;
+    color: #fff !important;
+    font-weight: 600;
+  }
 
-.el-sub-menu__popper .el-menu--inline .el-menu-item.is-active {
-  background-color: rgba(255, 255, 255, 0.15) !important;
-  color: #fff !important;
-  font-weight: 500 !important;
-}
+  /* 6. 父標題特殊處理 (如果有) */
+  .el-sub-menu__popper .menu-parent-title {
+    margin: 0 !important;
+    border-radius: 0 !important;
+    background: rgba(0, 0, 0, 0.2) !important;
+    width: 100% !important;
+  }
 
-/* 確保父菜單標題和子菜單容器之間有明顯的視覺區分 */
-.el-sub-menu__popper .menu-parent-title + .el-menu--inline {
-  margin-top: 0 !important;
-}
+  /* --- 强制左侧菜单项目满宽 (200px) --- */
+  /* 1. 针对所有左侧菜单项 (包括子菜单标题) */
+  .layout-container .el-aside .el-menu-item,
+  .layout-container .el-aside .el-sub-menu__title {
+    /* 核心：移除左右边距，宽度设为 100% */
+    margin: 0 !important;
+    width: 100% !important;
+    border-radius: 0 !important; /* 移除圆角，变回直角 */
+    box-sizing: border-box !important; /* 确保 padding 不会撑大宽度 */
+  }
 
-/* --- 侧边栏菜单样式修正 (强制覆盖) --- */
+  /* 2. 修正选中和悬停状态的背景色范围 */
+  .layout-container .el-aside .el-menu-item.is-active,
+  .layout-container .el-aside .el-menu-item:hover,
+  .layout-container .el-aside .el-sub-menu__title:hover {
+    width: 100% !important;
+    border-radius: 0 !important;
+  }
 
-/* 1. 修复左侧图标容器 */
-.layout-aside .el-menu-item .el-icon,
-.layout-aside .el-sub-menu__title .el-icon:not(.el-sub-menu__icon-arrow) {
-  width: 24px !important;
-  height: 24px !important;
-  display: inline-flex !important;
-  justify-content: center !important;
-  align-items: center !important;
-  margin-right: 12px !important;
-  font-size: 18px !important;
-  flex-shrink: 0 !important;
-  vertical-align: middle !important;
-  transition: all 0.3s; /* 增加图标过渡 */
-}
-
-/* 2. 修复右侧展开箭头 (默认向下) */
-.layout-aside .el-sub-menu__title .el-sub-menu__icon-arrow {
-  position: absolute !important;
-  right: 16px !important;
-  top: 50% !important;
-  margin: 0 !important;
-  width: auto !important;
-  height: auto !important;
-  display: block !important;
-  font-size: 12px !important;
-  /* 关键：保持垂直居中，同时设置初始角度为 0 */
-  transform: translateY(-50%) rotate(0deg) !important;
-  transition: transform 0.3s ease-in-out !important; /* 强制添加平滑旋转动画 */
-}
-
-/* 3. 修复右侧展开箭头 (展开状态 - 向上) */
-/* 当菜单展开时 (父级 li 有 is-opened class)，旋转 180 度 */
-.layout-aside .el-sub-menu.is-opened > .el-sub-menu__title .el-sub-menu__icon-arrow {
-  transform: translateY(-50%) rotate(180deg) !important;
-}
-
-/* 4. 防止文字换行导致的布局抖动 */
-.layout-aside .el-menu-item, 
-.layout-aside .el-sub-menu__title {
-  white-space: nowrap !important; /* 禁止文字换行 */
-}
-
-/* 5. 确保父容器相对定位 */
-.layout-aside .el-sub-menu__title {
-  position: relative !important;
-  padding-right: 40px !important;
-  display: flex !important;
-  align-items: center !important;
-}
-
-/* --- 防抖動專用樣式 --- */
-
-/* 1. 確保選單在容器內保持固定寬度，只由外層 aside 切割顯示 */
-.el-menu-vertical-demo:not(.el-menu--collapse) {
-  width: 200px;
-  min-height: 400px;
-}
-
-/* 2. 強制所有文字不換行，避免寬度變化時高度跳動 */
-.layout-aside .el-menu-item, 
-.layout-aside .el-sub-menu__title,
-.layout-aside .el-sub-menu__title span {
-  white-space: nowrap !important;
-  overflow: hidden !important;
-}
-
-/* 3. 在折疊瞬間立即隱藏箭頭與文字 */
-.layout-aside.is-collapsed .el-sub-menu__title span,
-.layout-aside.is-collapsed .el-sub-menu__icon-arrow {
-  display: none !important;
-  opacity: 0;
-}
-</style>
+  /* 3. (可选) 如果不需要右侧的边框线，可以隐藏 */
+  .layout-container .el-aside .el-menu {
+    border-right: none !important;
+  }
+  </style>

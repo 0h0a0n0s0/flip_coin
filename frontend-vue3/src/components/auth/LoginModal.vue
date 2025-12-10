@@ -1,33 +1,33 @@
 <template>
   <el-dialog
     v-model="dialogVisible"
-    title="登入"
+    :title="t('auth.login')"
     width="420px"
     :close-on-click-modal="true"
     @close="handleClose"
   >
     <el-form :model="form" label-width="80px">
-      <el-form-item label="帐号">
+      <el-form-item :label="t('auth.username')">
         <el-input
           v-model="form.username"
-          placeholder="请输入帐号"
+          :placeholder="t('auth.username_placeholder')"
           autocomplete="username"
         />
       </el-form-item>
-      <el-form-item label="密码">
+      <el-form-item :label="t('auth.password')">
         <el-input
           v-model="form.password"
           type="password"
-          placeholder="请输入密码"
+          :placeholder="t('auth.password_placeholder')"
           autocomplete="current-password"
           @keyup.enter="handleLogin"
         />
       </el-form-item>
     </el-form>
     <template #footer>
-      <el-button @click="handleClose">取消</el-button>
+      <el-button @click="handleClose">{{ t('common.cancel') }}</el-button>
       <el-button type="primary" @click="handleLogin" :loading="loading">
-        登入
+        {{ t('auth.login') }}
       </el-button>
     </template>
   </el-dialog>
@@ -35,9 +35,12 @@
 
 <script setup>
 import { ref, watch } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { useAuth } from '@/composables/useAuth.js'
 import { useSocket } from '@/composables/useSocket.js'
 import { getToken } from '@/store/index.js'
+
+const { t } = useI18n()
 
 const props = defineProps({
   modelValue: Boolean
@@ -109,6 +112,13 @@ function handleClose() {
 
 :deep(.el-form-item__label) {
   color: rgb(var(--foreground));
+  min-width: 80px; /* 固定标签宽度，适应中英文 */
+  white-space: nowrap;
+}
+
+:deep(.el-button) {
+  min-width: 80px; /* 固定按钮最小宽度 */
+  white-space: nowrap; /* 防止按钮文字换行 */
 }
 </style>
 
