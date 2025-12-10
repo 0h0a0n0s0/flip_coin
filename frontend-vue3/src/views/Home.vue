@@ -4,21 +4,21 @@
     <!-- 统一的内容包装器 - 包含 Banner 和内容区，实现 BetFury 风格的响应式行为 -->
     <div class="content-wrapper">
       <!-- Banner 区域 - 外层占满整行，内层 .banner-inner 负责对齐 -->
-      <div class="banner-section">
-        <Banner
-          title="Win Big with Crypto Fairness"
-          subtitle="Transparent blockchain gaming • Instant crypto payouts"
+    <div class="banner-section">
+      <Banner
+        title="Win Big with Crypto Fairness"
+        subtitle="Transparent blockchain gaming • Instant crypto payouts"
           :is-sidebar-collapsed="isSidebarCollapsed.value"
-        />
-      </div>
+      />
+    </div>
 
-      <!-- 内容容器 - 游戏列表、最近赢得等 -->
-      <div class="content-section">
-        <!-- Trending Games -->
-        <TrendingGamesGrid />
+    <!-- 内容容器 - 游戏列表、最近赢得等 -->
+    <div class="content-section">
+      <!-- Trending Games -->
+      <TrendingGamesGrid />
 
-        <!-- Latest Wins Ticker -->
-        <SmallWinnerTicker />
+      <!-- Latest Wins Ticker -->
+      <SmallWinnerTicker />
       </div>
     </div>
   </div>

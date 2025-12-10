@@ -1,7 +1,7 @@
 <template>
   <section class="flip-coin-game">
     <div class="game-header">
-      <h2>Flip Coin</h2>
+      <h2>{{ gameName }}</h2>
       <div class="streak-info" v-if="currentUser">
         <span v-if="currentStreak > 0" class="streak-positive">
           🔥 連胜 {{ currentStreak }} 场
@@ -61,10 +61,12 @@
 </template>
 
 <script setup>
-import { ref, computed } from 'vue'
+import { ref, computed, onMounted, watch } from 'vue'
 import { useGame } from '@/composables/useGame.js'
-import { getCurrentUser } from '@/store/index.js'
+import { getCurrentUser, getGamesCache, setGamesCache } from '@/store/index.js'
 import { notifyError } from '@/utils/notify.js'
+import { getGames } from '@/api/index.js'
+import { useLanguage } from '@/composables/useLanguage.js'
 
 const props = defineProps({
   onBetSuccess: Function
@@ -73,12 +75,72 @@ const props = defineProps({
 const emit = defineEmits(['bet-success'])
 
 const { betting, coinResult, handleConfirmBet } = useGame()
+const { language, getGameName } = useLanguage()
 const selectedChoice = ref('head')
 const betAmount = ref('')
 
 const currentUser = computed(() => getCurrentUser())
 const currentStreak = computed(() => currentUser.value?.current_streak || 0)
 const maxStreak = computed(() => currentUser.value?.max_streak || 0)
+
+// 游戏信息
+const gameInfo = ref(null)
+const isLoadingGameInfo = ref(true)
+
+const gameName = computed(() => {
+  // 读取 language.value 以确保响应式追踪
+  // 当 language 变化时，这个 computed 会重新计算
+  const currentLang = language.value
+  if (gameInfo.value) {
+    // 根据当前语言显示名称：
+    // - 中文环境（zh-CN）：显示 name_zh（游戏名字）
+    // - 英文环境（en-US）：显示 name_en（英文名字）
+    return getGameName(gameInfo.value)
+  }
+  // 如果正在加载，返回空字符串（避免显示预设值）
+  if (isLoadingGameInfo.value) {
+    return ''
+  }
+  // 只有在加载完成且没有找到游戏信息时，才返回默认名称
+  return 'Flip Coin'
+})
+
+// 获取游戏信息
+async function fetchGameInfo() {
+  isLoadingGameInfo.value = true
+  try {
+    // 先尝试从缓存中获取游戏列表
+    let games = getGamesCache()
+    
+    // 如果缓存中没有，则从 API 获取
+    if (!games) {
+      games = await getGames()
+      // 更新缓存
+      setGamesCache(games)
+    }
+    
+    // 查找 Flip Coin 游戏（优先使用 game_code，如果没有则使用名称匹配）
+    const flipCoin = games.find(g => g.game_code === 'flip-coin' || g.name_zh === 'Flip Coin' || g.name_en === 'FlipCoin')
+    if (flipCoin) {
+      gameInfo.value = flipCoin
+    }
+  } catch (error) {
+    console.error('Failed to fetch game info:', error)
+  } finally {
+    isLoadingGameInfo.value = false
+  }
+}
+
+// 监听语言变化，确保游戏名称更新
+// gameName computed 会自动响应 language 的变化
+watch(language, (newLang) => {
+  console.log('[FlipCoinGame] Language changed to:', newLang)
+  // computed 会自动重新计算，这里只是用于调试
+})
+
+// 在 setup 中立即开始获取游戏信息，而不是等到 onMounted
+// 这样可以尽快获取数据，减少预设值显示的时间
+  fetchGameInfo()
 
 const canBet = computed(() => {
   return selectedChoice.value && betAmount.value > 0 && !betting.value && currentUser.value
@@ -100,8 +162,18 @@ async function handleBet() {
     console.error('Bet failed:', error)
     // 后备错误处理：如果 useGame 中的错误处理没有正常工作，这里确保用户能看到错误
     // 注意：useGame 中已经会显示错误通知，这里主要是作为最后的保障
-    if (error && error.message && !error.message.includes('下注失败')) {
-      notifyError(`投注处理失败：${error.message}`)
+    // 但是，如果是余额不足导致的pending_tx状态，不应该显示错误
+    if (error && error.message) {
+      // 检查是否是余额不足相关错误，如果是则不显示错误
+      if (error.message.includes('INSUFFICIENT_BALANCE') || 
+          error.message.includes('余额不足') ||
+          error.message.includes('pending_tx')) {
+        // 余额不足的情况已经在后端处理为pending_tx，不显示错误
+        return
+      }
+      if (!error.message.includes('下注失败')) {
+        notifyError(`投注处理失败：${error.message}`)
+      }
     }
   }
 }

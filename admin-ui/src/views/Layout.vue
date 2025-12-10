@@ -19,6 +19,13 @@
       </div>
       <div class="header-right">
         <span class="user-info">(用户: {{ displayName }})</span>
+        <!-- 波场异常通知图标 -->
+        <div class="tron-notification-icon" @click="showTronNotificationDialog = true" v-if="$permissions.has('wallets', 'read')">
+          <el-icon :size="24" class="tron-icon">
+            <Connection />
+          </el-icon>
+          <span class="notification-badge" v-if="tronNotificationCount > 0">{{ tronNotificationCount > 99 ? '99+' : tronNotificationCount }}</span>
+        </div>
         <el-dropdown @command="handleCommand" trigger="click">
           <el-avatar :size="40" class="user-avatar">
             {{ (displayName || 'A').charAt(0).toUpperCase() }}
@@ -67,6 +74,11 @@
             <el-menu-item index="/users/deposit-addresses" v-if="$permissions.has('users_addresses', 'read')">用户充值地址</el-menu-item>
             <el-menu-item index="/users/login-query" v-if="$permissions.has('users', 'read')">登录查询</el-menu-item>
             <el-menu-item index="/risk/same-ip" v-if="$permissions.has('users', 'update_status')">同IP风控监控</el-menu-item>
+          </el-sub-menu>
+          
+          <el-sub-menu index="game-management" v-if="$permissions.has('settings_game', 'read')" data-parent-name="游戏管理">
+            <template #title><el-icon><Coin /></el-icon><span>游戏管理</span></template>
+            <el-menu-item index="/games/management" v-if="$permissions.has('settings_game', 'read')">自营游戏管理</el-menu-item>
           </el-sub-menu>
           
           <el-sub-menu index="bet-management" v-if="$permissions.has('bets', 'read')" data-parent-name="投注管理">
@@ -143,22 +155,30 @@
       v-model="showGoogleAuthDialog"
       @updated="handleGoogleAuthUpdated"
     />
+    
+    <!-- 波场异常通知弹窗 -->
+    <TronNotificationDialog 
+      v-model="showTronNotificationDialog"
+      @updated="loadTronNotificationCount"
+    />
   </el-container>
 </template>
 
 <script>
 import { jwtDecode } from 'jwt-decode';
 // (★★★ 新增 Money Icon ★★★)
-import { DataLine, User, Coin, PieChart, Setting, Lock, Money, Right, DArrowLeft, DArrowRight } from '@element-plus/icons-vue' 
+import { DataLine, User, Coin, PieChart, Setting, Lock, Money, Right, DArrowLeft, DArrowRight, Connection } from '@element-plus/icons-vue' 
 import { ElMessage } from 'element-plus';
 import ProfileDialog from '@/components/ProfileDialog.vue';
 import GoogleAuthDialog from '@/components/GoogleAuthDialog.vue';
+import TronNotificationDialog from '@/components/TronNotificationDialog.vue';
 
 export default {
   name: 'LayoutView',
   components: {
     ProfileDialog,
     GoogleAuthDialog,
+    TronNotificationDialog,
     DataLine, 
     User, 
     Coin, 
@@ -168,7 +188,8 @@ export default {
     Money, 
     Right,
     DArrowLeft,
-    DArrowRight
+    DArrowRight,
+    Connection
   },
   data() {
     return {
@@ -181,7 +202,9 @@ export default {
       showProfileDialog: false,
       showGoogleAuthDialog: false,
       hasGoogleAuth: false, // 是否已绑定谷歌验证
-      isCollapsed: false // 側邊欄是否折疊
+      isCollapsed: false, // 側邊欄是否折疊
+      showTronNotificationDialog: false, // 波场异常通知弹窗
+      tronNotificationCount: 0 // 未解决的异常通知数量
     };
   },
   computed: {
@@ -203,6 +226,14 @@ export default {
     // 延迟加载个人资料，确保token已设置
     this.$nextTick(() => {
       this.loadProfile();
+      // 如果有权限，加载波场通知数量
+      if (this.$permissions && this.$permissions.has('wallets', 'read')) {
+        this.loadTronNotificationCount();
+        // 每30秒刷新一次
+        setInterval(() => {
+          this.loadTronNotificationCount();
+        }, 30000);
+      }
     });
   },
   watch: {
@@ -473,6 +504,16 @@ export default {
       // 保存折疊狀態到 localStorage
       localStorage.setItem('sidebarCollapsed', this.isCollapsed);
       // ⚠️ 父菜單標題的 hover popup 功能暫時關閉，避免在某些瀏覽器安全沙箱中拋出 SES_UNCAUGHT_EXCEPTION
+    },
+    async loadTronNotificationCount() {
+      try {
+        const response = await this.$api.getTronNotificationsCount();
+        if (response.data && response.data.count !== undefined) {
+          this.tronNotificationCount = response.data.count;
+        }
+      } catch (error) {
+        console.error('Failed to load tron notification count:', error);
+      }
     }
   },
   mounted() {
@@ -574,6 +615,44 @@ export default {
 .user-avatar:hover {
   background: rgba(255, 255, 255, 0.3) !important;
   transform: scale(1.05);
+}
+
+/* 波场通知图标样式 */
+.tron-notification-icon {
+  position: relative;
+  cursor: pointer;
+  padding: 8px;
+  border-radius: 50%;
+  transition: all 0.2s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.tron-notification-icon:hover {
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.tron-icon {
+  color: #fff;
+}
+
+.notification-badge {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  background: #f56c6c;
+  color: #fff;
+  border-radius: 10px;
+  min-width: 18px;
+  height: 18px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  font-weight: 600;
+  padding: 0 4px;
+  border: 2px solid #135200;
 }
 
 /* 侧边栏样式 - 深绿色系 */
@@ -927,5 +1006,44 @@ export default {
 /* 確保父菜單標題和子菜單容器之間有明顯的視覺區分 */
 .el-sub-menu__popper .menu-parent-title + .el-menu--inline {
   margin-top: 0 !important;
+}
+
+/* --- 侧边栏菜单样式修正 (强制覆盖) --- */
+
+/* 1. 修复左侧图标容器 */
+/* 确保图标容器有固定宽度，并且 SVG 居中显示 */
+.layout-aside .el-menu-item .el-icon,
+.layout-aside .el-sub-menu__title .el-icon:not(.el-sub-menu__icon-arrow) {
+  width: 24px !important;       /* 限制图标容器宽度 */
+  height: 24px !important;
+  display: inline-flex !important;
+  justify-content: center !important;
+  align-items: center !important;
+  margin-right: 12px !important; /* 调整与文字的间距 */
+  font-size: 18px !important;    /* 确保 SVG 大小适中 */
+  flex-shrink: 0 !important;
+  vertical-align: middle !important;
+}
+
+/* 2. 修复右侧展开箭头 */
+/* 强制绝对定位到最右侧，防止出现在文字流中 */
+.layout-aside .el-sub-menu__title .el-sub-menu__icon-arrow {
+  position: absolute !important; /* 关键：脱离文档流 */
+  right: 16px !important;        /* 固定在右侧 */
+  top: 50% !important;
+  margin: 0 !important;
+  transform: translateY(-50%) !important; /* 垂直居中，保留旋转动画需配合 Element 逻辑 */
+  width: auto !important;
+  height: auto !important;
+  display: block !important;
+  font-size: 12px !important;
+}
+
+/* 3. 确保父容器是相对定位 (为绝对定位的箭头提供基准) */
+.layout-aside .el-sub-menu__title {
+  position: relative !important;
+  padding-right: 40px !important; /* 给右侧箭头预留空间 */
+  display: flex !important;
+  align-items: center !important;
 }
 </style>

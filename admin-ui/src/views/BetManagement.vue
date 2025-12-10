@@ -18,6 +18,7 @@
         <el-form-item label="注单状态">
           <el-select v-model="searchParams.status" placeholder="选择状态" clearable>
             <el-option label="处理中" value="pending" />
+            <el-option label="等待补开" value="pending_tx" />
             <el-option label="中奖" value="won" />
             <el-option label="未中奖" value="lost" />
             <el-option label="失败" value="failed" />
@@ -184,7 +185,10 @@ export default {
     
     formatStatus(status) {
       const map = {
-        'pending': '处理中', 'won': '中奖', 'lost': '未中奖',
+        'pending': '处理中', 
+        'pending_tx': '等待补开', 
+        'won': '中奖', 
+        'lost': '未中奖',
         'failed': '失败',
       };
       return map[status] || status;
@@ -192,7 +196,10 @@ export default {
     
     getStatusTagType(status) {
       const map = {
-        'pending': 'info', 'won': 'success', 'lost': 'danger',
+        'pending': 'info', 
+        'pending_tx': 'warning', 
+        'won': 'success', 
+        'lost': 'danger',
         'failed': 'danger',
       };
       return map[status] || 'default';

@@ -95,12 +95,14 @@ class BetQueueService {
                 throw new Error("余额不足 (Insufficient balance)");
             }
 
-            // 1b. 扣款
+            // 1b. 扣款并获取更新后的用户信息
             const updateResult = await client.query(
-                "UPDATE users SET balance = balance - $1 WHERE id = $2 RETURNING balance",
+                `UPDATE users SET balance = balance - $1 WHERE id = $2 
+                 RETURNING id, user_id, username, balance, current_streak, max_streak, status, nickname, level, referrer_code`,
                 [amount, user.id]
             );
-            const newBalance = parseFloat(updateResult.rows[0].balance);
+            const updatedUser = updateResult.rows[0];
+            const newBalance = parseFloat(updatedUser.balance);
             
             // 1c. 寫入 Pending 注单 (★★★ v9.2 新增：记录投注IP ★★★)
             const betResult = await client.query(
@@ -130,7 +132,12 @@ class BetQueueService {
             client.release(); // (释放 TX 1)
             
             console.log(`[v7 Bet] User ${userId} bet ${betId} (Pending). Balance deducted.`);
+            
+            // 通知前端注单更新和用户信息更新（包含余额）
             this._notifySocketBetUpdate(userId, betResult.rows[0]);
+            // 发送更新后的用户信息，确保右上角余额同步更新
+            delete updatedUser.password_hash;
+            this._notifySocketUserInfo(userId, updatedUser);
 
         } catch (error) {
             if (client) {
@@ -147,10 +154,45 @@ class BetQueueService {
             txHash = await this.gameOpener.triggerBetTransaction();
         } catch (onChainError) {
             const errorMessage = onChainError.message || 'Unknown on-chain transaction error';
-            console.error(`[v7 Bet] On-Chain TX failed for bet ${betId}. Error: ${errorMessage}. Refunding...`);
-            await this._refundBet(betId, userId, amount, 'failed', errorMessage);
-            // 抛出更详细的错误信息
-            throw new Error(`链上交易失败: ${errorMessage}`);
+            
+            // 检查是否是余额不足错误
+            if (errorMessage.includes('INSUFFICIENT_BALANCE') || errorMessage.includes('余额不足')) {
+                console.warn(`[v7 Bet] On-Chain TX failed for bet ${betId} due to insufficient balance. Marking as pending_tx...`);
+                
+                // 将注单标记为 pending_tx（待处理交易），不退款
+                try {
+                    await db.query(
+                        "UPDATE bets SET status = 'pending_tx' WHERE id = $1",
+                        [betId]
+                    );
+                    console.log(`[v7 Bet] Bet ${betId} marked as pending_tx. Will be processed when wallet balance is sufficient.`);
+                    
+                    // 通知前端注单已提交（pending状态）
+                    this._notifySocketBetUpdate(userId, { 
+                        id: betId, 
+                        status: 'pending_tx',
+                        message: '注单已提交，等待链上开奖...'
+                    });
+                    
+                    // 返回 pending 状态的注单，让前端显示正常提示
+                    const pendingBet = await db.query(
+                        "SELECT * FROM bets WHERE id = $1",
+                        [betId]
+                    );
+                    return pendingBet.rows[0];
+                } catch (markError) {
+                    console.error(`[v7 Bet] Failed to mark bet ${betId} as pending_tx:`, markError);
+                    // 如果标记失败，仍然退款
+                    await this._refundBet(betId, userId, amount, 'failed', errorMessage);
+                    throw new Error(`链上交易失败: ${errorMessage}`);
+                }
+            } else {
+                // 其他错误，正常退款
+                console.error(`[v7 Bet] On-Chain TX failed for bet ${betId}. Error: ${errorMessage}. Refunding...`);
+                await this._refundBet(betId, userId, amount, 'failed', errorMessage);
+                // 抛出更详细的错误信息
+                throw new Error(`链上交易失败: ${errorMessage}`);
+            }
         }
 
         // --- 3. 交易 2：结算 & 派奖 ---
@@ -161,8 +203,10 @@ class BetQueueService {
             const status = didWin ? 'won' : 'lost';
 
             // 3b. 获取派彩
-            // (★★★ v8.9 修正：确保 this.settingsCache 是最新的 ★★★)
-            const multiplier = parseInt(getSettingsCache()['PAYOUT_MULTIPLIER']?.value || 2, 10);
+            // (优先从 games 表获取派奖倍数)
+            const { getGamePayoutMultiplier } = require('../utils/gameUtils.js');
+            // 使用 game_code 获取赔率，FlipCoin 对应的 game_code 是 'flip-coin'
+            const multiplier = await getGamePayoutMultiplier('flip-coin');
             const payoutAmount = didWin ? (amount * multiplier) : 0;
             
             client = await db.pool.connect();

@@ -573,4 +573,4 @@ Please confirm whether to override the constitution for this specific change.
 皆须以本文件为最高准则。
 如无特别说明，任何人不得单方面修改或忽略本宪法条文。
 
-> 若未来确需修改本宪法，必须经由使用者（项目拥有者）明确同意，并更新版本号至 `CHANGELOG.md`。
+> 若未来确需修改本宪法，必须经由使用者（项目拥有者）明确同意，并更新版本号至 `CHANGELOG.md`。ㄑ

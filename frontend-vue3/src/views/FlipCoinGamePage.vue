@@ -3,7 +3,7 @@
     <div class="game-layout">
       <!-- 左侧：游戏主区域 -->
       <div class="game-main">
-        <FlipCoinGame @bet-success="handleBetSuccess" />
+    <FlipCoinGame @bet-success="handleBetSuccess" />
       </div>
 
       <!-- 右侧：信息面板 -->

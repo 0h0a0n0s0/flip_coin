@@ -10,7 +10,7 @@
       </button>
     </div>
 
-    <div class="games-grid">
+    <div class="games-grid" v-loading="loading">
       <GameCard
         v-for="game in games"
         :key="game.id"
@@ -23,35 +23,102 @@
 </template>
 
 <script setup>
-import { ref } from 'vue'
+import { ref, onMounted, computed, watch } from 'vue'
 import { useRouter } from 'vue-router'
+import { getGames } from '@/api/index.js'
+import { getGamesCache, setGamesCache } from '@/store/index.js'
+import { useLanguage } from '@/composables/useLanguage.js'
 import GameCard from '@/components/ui/GameCard.vue'
 
 const router = useRouter()
+const { language, getGameName } = useLanguage()
 
-const games = ref([
-  {
+const gamesData = ref([]) // 存储原始游戏数据
+const loading = ref(false)
+
+// 根据当前语言计算游戏名称（响应式）
+// 注意：需要依赖 language 来确保语言切换时重新计算
+const games = computed(() => {
+  // 读取 language.value 以确保响应式追踪
+  // 当 language 变化时，这个 computed 会重新计算
+  const currentLang = language.value
+  return gamesData.value.map(game => ({
+    ...game,
+    // 根据当前语言显示名称：
+    // - 中文环境（zh-CN）：显示 name_zh（游戏名字）
+    // - 英文环境（en-US）：显示 name_en（英文名字）
+    name: getGameName(game)
+  }))
+})
+
+// 从 API 获取游戏列表
+async function fetchGames() {
+  loading.value = true
+  try {
+    // 先尝试从缓存中获取游戏列表
+    let gamesList = getGamesCache()
+    
+    // 如果缓存中没有，则从 API 获取
+    if (!gamesList) {
+      gamesList = await getGames()
+      // 更新缓存
+      setGamesCache(gamesList)
+    }
+    
+    // 存储原始游戏数据
+    gamesData.value = gamesList.map(game => ({
+      id: game.id,
+      game_code: game.game_code,
+      name_zh: game.name_zh,
+      name_en: game.name_en,
+      provider: game.provider || '自营',
+      thumbnail: null,
+      icon: null,
+      hot: game.game_status === '热门',
+      new: game.game_status === '新游戏',
+      recommended: game.game_status === '推荐',
+      rating: 4.8,
+      volume: '$124K',
+      status: game.status
+    }))
+  } catch (error) {
+    console.error('Failed to fetch games:', error)
+    // 如果 API 失败，使用默认的 Flip Coin
+    gamesData.value = [{
     id: 'flip-coin',
-    name: 'Flip Coin',
-    provider: 'FairHash',
+      game_code: 'flip-coin',
+      name_zh: 'Flip Coin',
+      name_en: 'FlipCoin',
+      provider: '自营',
     thumbnail: null,
     icon: null,
     hot: true,
     new: false,
     rating: 4.8,
     volume: '$124K'
+    }]
+  } finally {
+    loading.value = false
   }
-])
+}
 
 function handlePlay(game) {
-  if (game.id === 'flip-coin') {
+  // 根据游戏代码判断路由
+  if (game.game_code === 'flip-coin') {
     router.push({ path: '/hash/flip-coin' })
+  } else if (game.game_code) {
+    // 如果有其他游戏代码，可以根据代码路由
+    router.push({ path: `/hash/${game.game_code}` })
   }
 }
 
 function handleGameClick(game) {
   handlePlay(game)
 }
+
+onMounted(() => {
+  fetchGames()
+})
 </script>
 
 <style scoped>

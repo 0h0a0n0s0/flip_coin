@@ -140,16 +140,50 @@ export function getUserInfo(token) {
 }
 
 /**
- * 获取平台名称 - 公开API，不需要token
+ * 获取游戏列表 - 公开API，不需要token
  */
+export async function getGames() {
+  const response = await request('/games?status=enabled', {
+    method: 'GET'
+  })
+  
+  // 適配標準 API 返回格式 { success: true, data: [...] }
+  if (response && typeof response === 'object' && response.success && Array.isArray(response.data)) {
+    return response.data
+  }
+  
+  // 向後兼容：如果返回的是數組（舊格式），直接返回
+  if (Array.isArray(response)) {
+    return response
+  }
+  
+  // 如果格式不符合預期，返回空數組
+  console.warn('[API] Unexpected games API response format:', response)
+  return []
+}
+
 export async function getPlatformName() {
     try {
-        return await request('/platform-name', {
+        const response = await request('/platform-name', {
             method: 'GET'
         });
+        
+        // 適配標準 API 返回格式 { success: true, data: { platform_name: ... } }
+        if (response && typeof response === 'object' && response.success && response.data) {
+            return response.data.platform_name || 'FlipCoin'
+        }
+        
+        // 向後兼容：如果返回的是舊格式 { platform_name: ... }
+        if (response && typeof response === 'object' && response.platform_name) {
+            return response.platform_name
+        }
+        
+        // 如果格式不符合預期，返回默認值
+        console.warn('[API] Unexpected platform-name API response format:', response)
+        return 'FlipCoin'
     } catch (error) {
         console.error('Failed to fetch platform name:', error);
-        return { platform_name: 'FlipCoin' };
+        return 'FlipCoin';
     }
 }
 

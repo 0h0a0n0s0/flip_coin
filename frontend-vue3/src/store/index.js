@@ -7,7 +7,10 @@ const state = reactive({
   jwtToken: null,
   currentUser: null,
   socket: null,
-  isBetting: false
+  isBetting: false,
+  gamesCache: null, // 遊戲列表緩存
+  gamesCacheTimestamp: null, // 緩存時間戳（用於判斷是否需要刷新）
+  platformName: null // 平台名稱緩存
 })
 
 /**
@@ -72,6 +75,43 @@ export function setBettingState(bettingState) {
 }
 
 /**
+ * 获取游戏列表缓存
+ */
+export function getGamesCache() {
+  return state.gamesCache
+}
+
+/**
+ * 设置游戏列表缓存
+ */
+export function setGamesCache(games) {
+  state.gamesCache = games
+  state.gamesCacheTimestamp = Date.now()
+}
+
+/**
+ * 清除游戏列表缓存
+ */
+export function clearGamesCache() {
+  state.gamesCache = null
+  state.gamesCacheTimestamp = null
+}
+
+/**
+ * 获取平台名称缓存
+ */
+export function getPlatformName() {
+  return state.platformName
+}
+
+/**
+ * 设置平台名称缓存
+ */
+export function setPlatformName(name) {
+  state.platformName = name
+}
+
+/**
  * 清除所有状态（登出时使用）
  */
 export function clearState() {
@@ -83,6 +123,8 @@ export function clearState() {
     state.socket = null
   }
   localStorage.removeItem('jwt_token')
+  clearGamesCache()
+  setPlatformName(null)
 }
 
 /**

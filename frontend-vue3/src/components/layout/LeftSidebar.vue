@@ -34,6 +34,9 @@
           <span v-if="!isCollapsed" class="menu-label">{{ item.label }}</span>
         </button>
       </nav>
+      
+      <!-- Language Switcher -->
+      <LanguageSwitcher :is-collapsed="isCollapsed" />
     </div>
   </aside>
 
@@ -60,6 +63,11 @@
           <span class="menu-label">{{ item.label }}</span>
         </button>
       </nav>
+      
+      <!-- Language Switcher (Mobile) -->
+      <div class="mobile-language-switcher">
+        <LanguageSwitcher :is-collapsed="false" />
+      </div>
     </div>
   </el-drawer>
 </template>
@@ -81,6 +89,7 @@ import {
   Link,
   Lock
 } from '@element-plus/icons-vue'
+import LanguageSwitcher from '@/components/common/LanguageSwitcher.vue'
 
 const props = defineProps({
   activeCategory: {
@@ -178,6 +187,7 @@ defineExpose({
   display: flex;
   flex-direction: column;
   gap: var(--space-2);
+  height: 100%;
 }
 
 /* Collapse Button 已移至 TopCategoryNav，此处样式已移除 */
@@ -312,6 +322,12 @@ defineExpose({
 .drawer-header h3 {
   font-size: 14px;
   color: var(--foreground);
+}
+
+.mobile-language-switcher {
+  margin-top: auto;
+  padding-top: var(--space-2);
+  border-top: 1px solid var(--border);
 }
 </style>
 

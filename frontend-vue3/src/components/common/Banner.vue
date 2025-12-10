@@ -9,9 +9,9 @@
       <div class="banner-overlay">
         <!-- 真正的内容容器，用于对齐 -->
         <div class="banner-inner" :class="{ 'sidebar-collapsed': isSidebarCollapsed }">
-          <div class="banner-content">
-            <h1 class="banner-title">{{ title }}</h1>
-            <p class="banner-subtitle">{{ subtitle }}</p>
+        <div class="banner-content">
+          <h1 class="banner-title">{{ title }}</h1>
+          <p class="banner-subtitle">{{ subtitle }}</p>
           </div>
         </div>
       </div>

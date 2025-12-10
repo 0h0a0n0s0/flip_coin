@@ -29,9 +29,9 @@
 
     <div class="game-card-info">
       <div class="game-title-row">
-        <h3 class="game-title">{{ game.name }}</h3>
+        <h3 class="game-title">{{ displayName }}</h3>
       </div>
-      <p class="game-provider">{{ game.provider || 'FairHash' }}</p>
+      <p class="game-provider">{{ displayProvider }}</p>
       
       <div class="game-stats">
         <div v-if="game.rating" class="stat-rating">
@@ -47,8 +47,11 @@
 </template>
 
 <script setup>
-import { ref, computed } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { Lightning, VideoPlay, Star, Coin } from '@element-plus/icons-vue'
+import { useLanguage } from '@/composables/useLanguage.js'
+import { getPlatformName as getPlatformNameFromStore, setPlatformName } from '@/store/index.js'
+import { getPlatformName as fetchPlatformName } from '@/api/index.js'
 
 const props = defineProps({
   game: {
@@ -63,7 +66,43 @@ const props = defineProps({
 
 const emit = defineEmits(['click', 'play'])
 
+const { getGameName } = useLanguage()
 const isHovered = ref(false)
+const platformName = ref(null)
+
+// 根据当前语言获取游戏名称（响应式）
+const displayName = computed(() => {
+  return getGameName(props.game)
+})
+
+// 获取平台名称（用于显示 game-provider）
+const displayProvider = computed(() => {
+  // 优先使用平台名称，如果没有则使用游戏自带的 provider，最后使用默认值
+  return platformName.value || props.game.provider || 'FairHash'
+})
+
+// 加载平台名称
+async function loadPlatformName() {
+  // 先尝试从缓存获取
+  const cached = getPlatformNameFromStore()
+  if (cached) {
+    platformName.value = cached
+    return
+  }
+  
+  // 如果缓存中没有，从 API 获取
+  try {
+    const name = await fetchPlatformName()
+    platformName.value = name
+    setPlatformName(name)
+  } catch (error) {
+    console.error('Failed to load platform name:', error)
+  }
+}
+
+onMounted(() => {
+  loadPlatformName()
+})
 
 const gameIcon = computed(() => {
   if (props.game.icon) return props.game.icon

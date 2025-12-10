@@ -1466,10 +1466,10 @@ router.put('/settings/:key', authMiddleware, checkPermission('settings_game', 'u
     if (value === undefined || value === null) { return res.status(400).json({ error: 'Value is required.' }); }
 
     let validatedValue = value.toString(); // 预设
-    // (验证)
+    // (验证) - 注意：PAYOUT_MULTIPLIER 已遷移到遊戲管理，此驗證保留以防直接調用 API
     if (key === 'PAYOUT_MULTIPLIER') {
-        const numValue = parseInt(value, 10);
-        if (isNaN(numValue) || numValue <= 0) { return res.status(400).json({ error: 'PAYOUT_MULTIPLIER must be a positive integer.' }); }
+        const numValue = parseFloat(value);
+        if (isNaN(numValue) || numValue <= 0) { return res.status(400).json({ error: 'PAYOUT_MULTIPLIER must be a positive number.' }); }
     }
     // (★★★ 验证 AUTO_WITHDRAW_THRESHOLD ★★★)
     if (key === 'AUTO_WITHDRAW_THRESHOLD') {
@@ -3507,6 +3507,341 @@ router.get('/login-query/same-device-id/:userId', authMiddleware, checkPermissio
         res.status(200).json({ list: result.rows });
     } catch (error) {
         console.error('[Login Query] Error fetching same device ID:', error);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+/**
+ * @description 获取波场异常通知列表
+ * @route GET /api/admin/tron-notifications
+ */
+router.get('/tron-notifications', authMiddleware, checkPermission('wallets', 'read'), async (req, res) => {
+    try {
+        const { resolved, limit = 50 } = req.query;
+        
+        let query = 'SELECT * FROM tron_notifications';
+        const params = [];
+        let paramIndex = 1;
+        
+        if (resolved !== undefined && resolved !== '') {
+            query += ' WHERE resolved = $' + paramIndex;
+            params.push(resolved === 'true');
+            paramIndex++;
+        }
+        
+        query += ' ORDER BY created_at DESC LIMIT $' + paramIndex;
+        params.push(parseInt(limit, 10));
+        
+        const result = await db.query(query, params);
+        
+        res.status(200).json({ 
+            success: true,
+            data: result.rows 
+        });
+    } catch (error) {
+        console.error('[Admin Tron Notifications] Error:', error);
+        console.error('[Admin Tron Notifications] Error details:', error.stack);
+        res.status(500).json({ error: 'Internal server error', details: error.message });
+    }
+});
+
+/**
+ * @description 获取未解决的波场异常通知数量
+ * @route GET /api/admin/tron-notifications/count
+ */
+router.get('/tron-notifications/count', authMiddleware, checkPermission('wallets', 'read'), async (req, res) => {
+    try {
+        const result = await db.query(
+            'SELECT COUNT(*) as count FROM tron_notifications WHERE resolved = false',
+            []
+        );
+        
+        const count = result.rows && result.rows[0] ? parseInt(result.rows[0].count, 10) : 0;
+        
+        res.status(200).json({ 
+            success: true,
+            data: { count: count }
+        });
+    } catch (error) {
+        console.error('[Admin Tron Notifications Count] Error:', error);
+        console.error('[Admin Tron Notifications Count] Error details:', error.stack);
+        res.status(500).json({ error: 'Internal server error', details: error.message });
+    }
+});
+
+/**
+ * @description 标记异常通知为已解决
+ * @route POST /api/admin/tron-notifications/:id/resolve
+ */
+router.post('/tron-notifications/:id/resolve', authMiddleware, checkPermission('wallets', 'cud'), async (req, res) => {
+    try {
+        const { id } = req.params;
+        
+        const result = await db.query(
+            'UPDATE tron_notifications SET resolved = true, resolved_at = NOW() WHERE id = $1 RETURNING id',
+            [id]
+        );
+        
+        if (result.rows.length === 0) {
+            return res.status(404).json({ error: '通知不存在' });
+        }
+        
+        res.status(200).json({ 
+            success: true,
+            message: '通知已标记为已解决'
+        });
+    } catch (error) {
+        console.error('[Admin Tron Notifications Resolve] Error:', error);
+        console.error('[Admin Tron Notifications Resolve] Error details:', error.stack);
+        res.status(500).json({ error: 'Internal server error', details: error.message });
+    }
+});
+
+/**
+ * @description 获取游戏列表
+ * @route GET /api/admin/games
+ */
+router.get('/games', authMiddleware, checkPermission('settings_game', 'read'), async (req, res) => {
+    try {
+        const { provider, status, page = 1, limit = 20 } = req.query;
+        
+        // 构建 WHERE 条件
+        let whereClause = 'WHERE 1=1';
+        const params = [];
+        let paramIndex = 1;
+        
+        if (provider) {
+            whereClause += ` AND provider = $${paramIndex}`;
+            params.push(provider);
+            paramIndex++;
+        }
+        
+        if (status) {
+            whereClause += ` AND status = $${paramIndex}`;
+            params.push(status);
+            paramIndex++;
+        }
+        
+        // 获取总数（不包含 ORDER BY）
+        const countQuery = `SELECT COUNT(*) as total FROM games ${whereClause}`;
+        const countResult = await db.query(countQuery, params);
+        const total = parseInt(countResult.rows[0].total, 10);
+        
+        // 获取数据（包含 ORDER BY 和分页）
+        const dataQuery = `SELECT * FROM games ${whereClause} ORDER BY sort_order ASC, id ASC LIMIT $${paramIndex} OFFSET $${paramIndex + 1}`;
+        const dataParams = [...params, parseInt(limit, 10), (parseInt(page, 10) - 1) * parseInt(limit, 10)];
+        const result = await db.query(dataQuery, dataParams);
+        
+        res.status(200).json({
+            success: true,
+            data: {
+                list: result.rows,
+                total: total,
+                page: parseInt(page, 10),
+                limit: parseInt(limit, 10)
+            }
+        });
+    } catch (error) {
+        console.error('[Admin Games] Error:', error);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+/**
+ * @description 获取单个游戏详情
+ * @route GET /api/admin/games/:id
+ */
+router.get('/games/:id', authMiddleware, checkPermission('settings_game', 'read'), async (req, res) => {
+    try {
+        const { id } = req.params;
+        const result = await db.query('SELECT * FROM games WHERE id = $1', [id]);
+        
+        if (result.rows.length === 0) {
+            return res.status(404).json({ error: '游戏不存在' });
+        }
+        
+        res.status(200).json({
+            success: true,
+            data: result.rows[0]
+        });
+    } catch (error) {
+        console.error('[Admin Games] Error:', error);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+/**
+ * @description 创建游戏
+ * @route POST /api/admin/games
+ */
+router.post('/games', authMiddleware, checkPermission('settings_game', 'update'), async (req, res) => {
+    try {
+        const { provider, provider_params, game_code, name_zh, name_en, game_status, status, sort_order, payout_multiplier } = req.body;
+        
+        if (!name_zh) {
+            return res.status(400).json({ error: '游戏名字（中文）不能为空' });
+        }
+        
+        if (!payout_multiplier || isNaN(payout_multiplier) || payout_multiplier <= 0) {
+            return res.status(400).json({ error: '派奖倍数必须大于0' });
+        }
+        
+        const result = await db.query(
+            `INSERT INTO games (provider, provider_params, game_code, name_zh, name_en, game_status, status, sort_order, payout_multiplier, created_at, updated_at)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NOW(), NOW())
+             RETURNING *`,
+            [
+                provider || '自营',
+                provider_params || null,
+                game_code || null,
+                name_zh,
+                name_en || null,
+                game_status || null,
+                status || 'enabled',
+                sort_order || 0,
+                parseFloat(payout_multiplier)
+            ]
+        );
+        
+        res.status(201).json({
+            success: true,
+            data: result.rows[0]
+        });
+    } catch (error) {
+        console.error('[Admin Games] Error:', error);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+/**
+ * @description 更新游戏
+ * @route PUT /api/admin/games/:id
+ */
+router.put('/games/:id', authMiddleware, checkPermission('settings_game', 'update'), async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { provider, provider_params, game_code, name_zh, name_en, game_status, status, sort_order, payout_multiplier } = req.body;
+        
+        // 检查游戏是否存在
+        const existing = await db.query('SELECT * FROM games WHERE id = $1', [id]);
+        if (existing.rows.length === 0) {
+            return res.status(404).json({ error: '游戏不存在' });
+        }
+        
+        // 构建更新字段
+        const updates = [];
+        const params = [];
+        let paramIndex = 1;
+        
+        if (provider !== undefined) {
+            updates.push(`provider = $${paramIndex}`);
+            params.push(provider);
+            paramIndex++;
+        }
+        if (provider_params !== undefined) {
+            updates.push(`provider_params = $${paramIndex}`);
+            params.push(provider_params);
+            paramIndex++;
+        }
+        if (name_zh !== undefined) {
+            updates.push(`name_zh = $${paramIndex}`);
+            params.push(name_zh);
+            paramIndex++;
+        }
+        if (name_en !== undefined) {
+            updates.push(`name_en = $${paramIndex}`);
+            params.push(name_en);
+            paramIndex++;
+        }
+        if (game_status !== undefined) {
+            updates.push(`game_status = $${paramIndex}`);
+            params.push(game_status);
+            paramIndex++;
+        }
+        if (status !== undefined) {
+            updates.push(`status = $${paramIndex}`);
+            params.push(status);
+            paramIndex++;
+        }
+        if (sort_order !== undefined) {
+            updates.push(`sort_order = $${paramIndex}`);
+            params.push(parseInt(sort_order, 10));
+            paramIndex++;
+        }
+        if (payout_multiplier !== undefined) {
+            if (isNaN(payout_multiplier) || payout_multiplier <= 0) {
+                return res.status(400).json({ error: '派奖倍数必须大于0' });
+            }
+            updates.push(`payout_multiplier = $${paramIndex}`);
+            params.push(parseFloat(payout_multiplier));
+            paramIndex++;
+        }
+        
+        if (updates.length === 0) {
+            return res.status(400).json({ error: '没有要更新的字段' });
+        }
+        
+        updates.push(`updated_at = NOW()`);
+        params.push(id);
+        
+        const result = await db.query(
+            `UPDATE games SET ${updates.join(', ')} WHERE id = $${paramIndex} RETURNING *`,
+            params
+        );
+        
+        res.status(200).json({
+            success: true,
+            data: result.rows[0]
+        });
+    } catch (error) {
+        console.error('[Admin Games] Error:', error);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+/**
+ * @description 删除游戏
+ * @route DELETE /api/admin/games/:id
+ */
+router.delete('/games/:id', authMiddleware, checkPermission('settings_game', 'update'), async (req, res) => {
+    try {
+        const { id } = req.params;
+        
+        const result = await db.query('DELETE FROM games WHERE id = $1 RETURNING id', [id]);
+        
+        if (result.rows.length === 0) {
+            return res.status(404).json({ error: '游戏不存在' });
+        }
+        
+        res.status(200).json({
+            success: true,
+            message: '游戏已删除'
+        });
+    } catch (error) {
+        console.error('[Admin Games] Error:', error);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+/**
+ * @description 获取游戏派奖倍数（用于前端游戏逻辑）
+ * @route GET /api/admin/games/:id/payout-multiplier
+ */
+router.get('/games/:id/payout-multiplier', authMiddleware, checkPermission('settings_game', 'read'), async (req, res) => {
+    try {
+        const { id } = req.params;
+        const result = await db.query('SELECT payout_multiplier FROM games WHERE id = $1', [id]);
+        
+        if (result.rows.length === 0) {
+            return res.status(404).json({ error: '游戏不存在' });
+        }
+        
+        res.status(200).json({
+            success: true,
+            data: { payout_multiplier: result.rows[0].payout_multiplier }
+        });
+    } catch (error) {
+        console.error('[Admin Games] Error:', error);
         res.status(500).json({ error: 'Internal server error' });
     }
 });

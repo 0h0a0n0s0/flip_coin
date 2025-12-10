@@ -8,20 +8,7 @@
         
         <el-tab-pane label="遊戏参数" name="Game">
           <el-form v-if="formGroups.Game" ref="gameFormRef" :model="formGroups.Game" label-width="200px" class="settings-form">
-            <el-form-item
-              label="派奖倍数"
-              prop="PAYOUT_MULTIPLIER.value"
-              :rules="[{ required: true, message: '派奖倍数不能为空' }, { validator: validateInteger, trigger: 'blur' }]"
-            >
-              <el-input v-model="formGroups.Game.PAYOUT_MULTIPLIER.value" style="width: 200px;" placeholder="请输入正整数">
-                <template #append>倍</template>
-              </el-input>
-              <div class="form-tip">{{ formGroups.Game.PAYOUT_MULTIPLIER.description }}</div>
-            </el-form-item>
-            
-            <el-form-item>
-              <el-button type="primary" @click="handleSubmit('Game')" :loading="submitLoading">储存遊戏参数</el-button>
-            </el-form-item>
+            <el-empty description="遊戏参数已遷移到遊戲管理頁面"></el-empty>
           </el-form>
           <el-empty v-else description="無遊戏参数"></el-empty>
         </el-tab-pane>
@@ -109,6 +96,38 @@
            <el-empty v-else description="無其他参数"></el-empty>
         </el-tab-pane>
 
+        <el-tab-pane label="多语系" name="I18n">
+          <el-form v-if="formGroups.I18n" ref="i18nFormRef" :model="formGroups.I18n" label-width="200px" class="settings-form">
+            <el-form-item
+              label="默认语言"
+              prop="DEFAULT_LANGUAGE.value"
+              :rules="[{ required: true, message: '默认语言不能为空' }]"
+            >
+              <el-select v-model="formGroups.I18n.DEFAULT_LANGUAGE.value" style="width: 200px;">
+                <el-option label="简体中文 (zh-CN)" value="zh-CN" />
+                <el-option label="English (en-US)" value="en-US" />
+              </el-select>
+              <div class="form-tip">{{ formGroups.I18n.DEFAULT_LANGUAGE.description }}</div>
+            </el-form-item>
+            
+            <el-form-item
+              label="支持的语言"
+              prop="SUPPORTED_LANGUAGES.value"
+            >
+              <el-checkbox-group v-model="supportedLanguagesList">
+                <el-checkbox label="zh-CN">简体中文</el-checkbox>
+                <el-checkbox label="en-US">English</el-checkbox>
+              </el-checkbox-group>
+              <div class="form-tip">{{ formGroups.I18n.SUPPORTED_LANGUAGES.description }}</div>
+            </el-form-item>
+            
+            <el-form-item>
+              <el-button type="primary" @click="handleSubmitI18n" :loading="submitLoading">储存多语系参数</el-button>
+            </el-form-item>
+          </el-form>
+          <el-empty v-else description="無多语系参数"></el-empty>
+        </el-tab-pane>
+
       </el-tabs>
     </el-card>
   </div>
@@ -131,8 +150,10 @@ export default {
                Game: null,
                Finance: null,
                RiskControl: null,
-               General: null
+               General: null,
+               I18n: null
            },
+           supportedLanguagesList: ['zh-CN', 'en-US'], // 支持的语言列表
            
            // (保留原始 API 回传，用于比对)
            originalSettings: {}, 
@@ -173,12 +194,25 @@ export default {
                 // (赋值给表单)
                 this.formGroups = settingsByCategory;
 
+                // 处理多语系配置
+                if (this.formGroups.I18n && this.formGroups.I18n.SUPPORTED_LANGUAGES) {
+                    const supportedLangs = this.formGroups.I18n.SUPPORTED_LANGUAGES.value;
+                    if (supportedLangs) {
+                        try {
+                            this.supportedLanguagesList = JSON.parse(supportedLangs);
+                        } catch (e) {
+                            this.supportedLanguagesList = ['zh-CN', 'en-US'];
+                        }
+                    }
+                }
+
                 // (检查预设 tab 是否有内容)
                 if (!this.formGroups[this.activeTab]) {
                     // 如果 'Game' 没内容，切换到 'Finance'
                     if (this.formGroups.Finance) this.activeTab = 'Finance';
                     else if (this.formGroups.RiskControl) this.activeTab = 'RiskControl';
                     else if (this.formGroups.General) this.activeTab = 'General';
+                    else if (this.formGroups.I18n) this.activeTab = 'I18n';
                 }
 
             } catch (error) {
@@ -245,6 +279,57 @@ export default {
                } else { 
                  ElMessage.error('表单验证失败');
                  return false; 
+               }
+           });
+       },
+       
+       // 多语系参数提交
+       async handleSubmitI18n() {
+           const formEl = this.$refs.i18nFormRef;
+           if (!formEl) return;
+           
+           await formEl.validate(async (valid) => {
+               if (valid) {
+                   this.submitLoading = true;
+                   const settingsToUpdate = this.formGroups.I18n;
+                   const originalGroupSettings = this.originalSettings.I18n || {};
+                   
+                   try {
+                       const updatePromises = [];
+                       
+                       // 更新 DEFAULT_LANGUAGE
+                       if (settingsToUpdate.DEFAULT_LANGUAGE.value !== originalGroupSettings.DEFAULT_LANGUAGE?.value) {
+                           updatePromises.push(
+                               this.$api.updateSetting('DEFAULT_LANGUAGE', settingsToUpdate.DEFAULT_LANGUAGE.value)
+                           );
+                       }
+                       
+                       // 更新 SUPPORTED_LANGUAGES（转换为 JSON 字符串）
+                       const supportedLangsStr = JSON.stringify(this.supportedLanguagesList);
+                       if (supportedLangsStr !== originalGroupSettings.SUPPORTED_LANGUAGES?.value) {
+                           updatePromises.push(
+                               this.$api.updateSetting('SUPPORTED_LANGUAGES', supportedLangsStr)
+                           );
+                       }
+                       
+                       if (updatePromises.length === 0) {
+                           ElMessage.info('设定未变动');
+                           this.submitLoading = false;
+                           return;
+                       }
+                       
+                       await Promise.all(updatePromises);
+                       ElMessage.success('多语系参数储存成功');
+                       
+                       // 重新载入设定
+                       await this.fetchSettings();
+                       
+                   } catch (error) {
+                       console.error('Failed to update I18n settings:', error);
+                       ElMessage.error('储存多语系参数失败');
+                   } finally {
+                       this.submitLoading = false;
+                   }
                }
            });
        }

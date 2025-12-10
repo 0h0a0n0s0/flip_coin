@@ -286,6 +286,12 @@ VALUES ('AUTO_WITHDRAW_THRESHOLD', '10', '自動出款門檻 (小於等於此金
 INSERT INTO system_settings (key, value, description, category) 
 VALUES ('MAX_SAME_IP_USERS', '5', '同IP允許的最大用戶數，超過則觸發風控封鎖', 'RiskControl');
 
+INSERT INTO system_settings (key, value, description, category) 
+VALUES ('DEFAULT_LANGUAGE', 'zh-CN', '默认语言 (zh-CN: 简体中文, en-US: English)', 'I18n');
+
+INSERT INTO system_settings (key, value, description, category) 
+VALUES ('SUPPORTED_LANGUAGES', '["zh-CN","en-US"]', '支持的语言列表 (JSON 数组)', 'I18n');
+
 -- 4. 插入本地 IP 到白名單（仅允许本机和同一 WiFi 内网访问）
 INSERT INTO admin_ip_whitelist (ip_range, description) VALUES ('127.0.0.1/32', 'Localhost Access');
 INSERT INTO admin_ip_whitelist (ip_range, description) VALUES ('::1/128', 'Localhost IPv6 Access');
@@ -419,3 +425,59 @@ CREATE INDEX idx_user_login_logs_user_id ON user_login_logs(user_id);
 CREATE INDEX idx_user_login_logs_login_ip ON user_login_logs(login_ip);
 CREATE INDEX idx_user_login_logs_login_at ON user_login_logs(login_at);
 CREATE INDEX idx_user_login_logs_device_id ON user_login_logs(device_id);
+
+-- ----------------------------
+-- 建立 tron_notifications (波场异常通知表)
+-- ----------------------------
+CREATE TABLE tron_notifications (
+    id SERIAL PRIMARY KEY,
+    type VARCHAR(50) NOT NULL, -- 通知类型，如 'low_balance'
+    address VARCHAR(50), -- 相关地址（可选）
+    message TEXT NOT NULL, -- 通知消息（中文明文）
+    resolved BOOLEAN NOT NULL DEFAULT false, -- 是否已解决
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    resolved_at TIMESTAMP WITH TIME ZONE
+);
+CREATE INDEX idx_tron_notifications_resolved ON tron_notifications(resolved);
+CREATE INDEX idx_tron_notifications_type ON tron_notifications(type);
+CREATE INDEX idx_tron_notifications_created_at ON tron_notifications(created_at DESC);
+
+-- ----------------------------
+-- 建立 games (游戏管理表)
+-- ----------------------------
+CREATE TABLE games (
+    id SERIAL PRIMARY KEY,
+    provider VARCHAR(50) NOT NULL DEFAULT '自营', -- 游戏厂商：自营、或三方厂商名
+    provider_params TEXT, -- 游戏参数：自营留空，或三方厂商参数（JSON格式）
+    name_zh VARCHAR(100) NOT NULL, -- 游戏名字（中文）
+    name_en VARCHAR(100), -- 英文名字（用于多语系）
+    game_code VARCHAR(50), -- 游戏代码（用于路由匹配，如 'flip-coin'）
+    game_status VARCHAR(20), -- 游戏状态：热门、新游戏、推荐、无等标签
+    status VARCHAR(10) NOT NULL DEFAULT 'enabled', -- 状态：enabled（开启）、disabled（关闭）
+    sort_order INT NOT NULL DEFAULT 0, -- 排序
+    payout_multiplier INT NOT NULL DEFAULT 2, -- 派奖倍数
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX idx_games_provider ON games(provider);
+CREATE INDEX idx_games_status ON games(status);
+CREATE INDEX idx_games_sort_order ON games(sort_order);
+
+-- 插入初始游戏数据：Flip Coin
+-- 使用 system_settings 中的 PAYOUT_MULTIPLIER 值，如果不存在则使用默认值 2
+INSERT INTO games (provider, provider_params, name_zh, name_en, game_code, game_status, status, sort_order, payout_multiplier, created_at, updated_at)
+SELECT 
+    '自营' as provider,
+    NULL as provider_params,
+    'Flip Coin' as name_zh,
+    'FlipCoin' as name_en,
+    'flip-coin' as game_code,
+    '热门' as game_status,
+    'enabled' as status,
+    1 as sort_order,
+    COALESCE(
+        (SELECT CAST(value AS INTEGER) FROM system_settings WHERE key = 'PAYOUT_MULTIPLIER' LIMIT 1),
+        2
+    ) as payout_multiplier,
+    NOW() as created_at,
+    NOW() as updated_at;

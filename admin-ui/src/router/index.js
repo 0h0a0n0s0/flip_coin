@@ -27,6 +27,7 @@ import IpWhitelist from '../views/admin/IpWhitelist.vue'
 import AuditLogs from '../views/admin/AuditLogs.vue'
 import CollectionLogs from '../views/CollectionLogs.vue'
 import LoginQuery from '../views/LoginQuery.vue'
+import GameManagement from '../views/games/GameManagement.vue'
 
 const routes = [
   { path: '/login', name: 'Login', component: Login },
@@ -40,6 +41,7 @@ const routes = [
       { path: 'users', name: 'UserManagement', component: UserManagement, meta: { requiresAuth: true, permission: 'users:read', title: '用户列表' } },
       { path: 'users/deposit-addresses', name: 'UserDepositAddresses', component: UserDepositAddresses, meta: { requiresAuth: true, permission: 'users_addresses:read', title: '用户充值地址' } },
       { path: 'users/login-query', name: 'LoginQuery', component: LoginQuery, meta: { requiresAuth: true, permission: 'users:read', title: '登录查询' } },
+      { path: 'games/management', name: 'GameManagement', component: GameManagement, meta: { requiresAuth: true, permission: 'settings_game:read', title: '自营游戏管理' } },
       { path: 'bets', name: 'BetManagement', component: BetManagement, meta: { requiresAuth: true, permission: 'bets:read', title: '注单列表' } },
       { path: 'reports', name: 'ReportManagement', component: ReportManagement, meta: { requiresAuth: true, permission: 'reports:read', title: '盈虧报表' } },
       { path: 'collection-logs', name: 'CollectionLogs', component: CollectionLogs, meta: { requiresAuth: true, permission: 'reports:read', title: '归集记录' } },

@@ -29,6 +29,8 @@ const { getBetQueueInstance } = require('./services/BetQueueService.js');
 const { getPayoutServiceInstance } = require('./services/PayoutService.js'); // (★★★ v8.1 新增 ★★★)
 const settingsCacheModule = require('./services/settingsCache.js'); // (★★★ v8.1 导入 ★★★)
 const { setRiskControlSockets, enforceSameIpRiskControl } = require('./services/riskControlService');
+const { getPendingBetProcessorInstance } = require('./services/PendingBetProcessor.js');
+const { getWalletBalanceMonitorInstance } = require('./services/WalletBalanceMonitor.js');
 const { sendError } = require('./utils/safeResponse');
 const { maskAddress, maskTxHash } = require('./utils/maskUtils');
 const { logBalanceChange, CHANGE_TYPES } = require('./utils/balanceChangeLogger');
@@ -359,16 +361,49 @@ function v1ApiRouter(router, passport) {
     }
     
     // ( GET /api/v1/platform-name ) - 公開API，獲取平台名稱
+    // ( /api/v1/games ) 获取游戏列表（前台使用）
+    router.get('/api/v1/games', async (req, res) => {
+        try {
+            const { status = 'enabled' } = req.query;
+            
+            const result = await db.query(
+                `SELECT id, provider, name_zh, name_en, game_code, game_status, status, sort_order 
+                 FROM games 
+                 WHERE status = $1 
+                 ORDER BY sort_order ASC, id ASC`,
+                [status]
+            );
+            
+            res.status(200).json({
+                success: true,
+                data: result.rows
+            });
+        } catch (error) {
+            console.error('[API v1] Error fetching games:', error);
+            return sendError(res, 500, '获取游戏列表失败。');
+        }
+    });
+
     router.get('/api/v1/platform-name', async (req, res) => {
         try {
             const result = await db.query(
                 "SELECT value FROM system_settings WHERE key = 'PLATFORM_NAME' LIMIT 1"
             );
             const platformName = result.rows[0]?.value || 'FlipCoin';
-            res.status(200).json({ platform_name: platformName });
+            res.status(200).json({
+                success: true,
+                data: {
+                    platform_name: platformName
+                }
+            });
         } catch (error) {
             console.error('[API v1] Error fetching platform name:', error);
-            res.status(200).json({ platform_name: 'FlipCoin' }); // 默认值
+            res.status(200).json({
+                success: true,
+                data: {
+                    platform_name: 'FlipCoin' // 默认值
+                }
+            });
         }
     });
     
@@ -593,6 +628,14 @@ function v1ApiRouter(router, passport) {
         if (isNaN(betAmount) || betAmount <= 0) {
              return sendError(res, 400, '投注金额无效。');
         }
+        
+        // 检查游戏是否开启
+        const { isGameEnabled } = require('./utils/gameUtils.js');
+        const gameEnabled = await isGameEnabled('FlipCoin');
+        if (!gameEnabled) {
+            return sendError(res, 403, '游戏尚未开放，敬请期待！');
+        }
+        
         if (!betQueueService) {
              return sendError(res, 503, '投注服务暂未就绪，请稍后重试。');
         }
@@ -912,7 +955,25 @@ httpServer.listen(PORT, async () => {
          console.error("[v7] Error initializing TronListener:", listenerError);
     }
     
-    // 4. 启动 Collection Service (每日执行一次)
+    // 4. 启动待处理注单处理器
+    try {
+        const pendingBetProcessor = getPendingBetProcessorInstance(io, connectedUsers);
+        pendingBetProcessor.start();
+        console.log("✅ [PendingBetProcessor] Started.");
+    } catch (error) {
+        console.error("[PendingBetProcessor] Error starting:", error);
+    }
+
+    // 5. 启动钱包余额监控
+    try {
+        const walletBalanceMonitor = getWalletBalanceMonitorInstance();
+        walletBalanceMonitor.start();
+        console.log("✅ [WalletBalanceMonitor] Started.");
+    } catch (error) {
+        console.error("[WalletBalanceMonitor] Error starting:", error);
+    }
+
+    // 6. 启动 Collection Service (每日执行一次)
     if (tronCollectionService) {
         // 计算到明天凌晨的时间
         const now = new Date();

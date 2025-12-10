@@ -465,3 +465,72 @@ export function unbindGoogleAuth(data) {
         data: data,
     });
 }
+
+// --- Tron Notifications ---
+export function getTronNotifications(params) {
+    return request({
+        url: '/api/admin/tron-notifications',
+        method: 'get',
+        params: params,
+    });
+}
+
+export function getTronNotificationsCount() {
+    return request({
+        url: '/api/admin/tron-notifications/count',
+        method: 'get',
+    });
+}
+
+export function resolveTronNotification(id) {
+    return request({
+        url: `/api/admin/tron-notifications/${id}/resolve`,
+        method: 'post',
+    });
+}
+
+// --- Game Management ---
+export function getGames(params) {
+    return request({
+        url: '/api/admin/games',
+        method: 'get',
+        params: params,
+    });
+}
+
+export function getGame(id) {
+    return request({
+        url: `/api/admin/games/${id}`,
+        method: 'get',
+    });
+}
+
+export function createGame(data) {
+    return request({
+        url: '/api/admin/games',
+        method: 'post',
+        data: data,
+    });
+}
+
+export function updateGame(id, data) {
+    return request({
+        url: `/api/admin/games/${id}`,
+        method: 'put',
+        data: data,
+    });
+}
+
+export function deleteGame(id) {
+    return request({
+        url: `/api/admin/games/${id}`,
+        method: 'delete',
+    });
+}
+
+export function getGamePayoutMultiplier(id) {
+    return request({
+        url: `/api/admin/games/${id}/payout-multiplier`,
+        method: 'get',
+    });
+}
