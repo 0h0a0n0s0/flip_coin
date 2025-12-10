@@ -52,6 +52,7 @@
     <el-container>
       <el-aside :width="isCollapsed ? '64px' : '200px'" class="layout-aside" :class="{ 'is-collapsed': isCollapsed }">
         <el-menu
+          :collapse-transition="false"
           :default-active="activeMenu"
           class="el-menu-vertical-demo"
           :router="true"
@@ -1011,38 +1012,51 @@ export default {
 /* --- 侧边栏菜单样式修正 (强制覆盖) --- */
 
 /* 1. 修复左侧图标容器 */
-/* 确保图标容器有固定宽度，并且 SVG 居中显示 */
 .layout-aside .el-menu-item .el-icon,
 .layout-aside .el-sub-menu__title .el-icon:not(.el-sub-menu__icon-arrow) {
-  width: 24px !important;       /* 限制图标容器宽度 */
+  width: 24px !important;
   height: 24px !important;
   display: inline-flex !important;
   justify-content: center !important;
   align-items: center !important;
-  margin-right: 12px !important; /* 调整与文字的间距 */
-  font-size: 18px !important;    /* 确保 SVG 大小适中 */
+  margin-right: 12px !important;
+  font-size: 18px !important;
   flex-shrink: 0 !important;
   vertical-align: middle !important;
+  transition: all 0.3s; /* 增加图标过渡 */
 }
 
-/* 2. 修复右侧展开箭头 */
-/* 强制绝对定位到最右侧，防止出现在文字流中 */
+/* 2. 修复右侧展开箭头 (默认向下) */
 .layout-aside .el-sub-menu__title .el-sub-menu__icon-arrow {
-  position: absolute !important; /* 关键：脱离文档流 */
-  right: 16px !important;        /* 固定在右侧 */
+  position: absolute !important;
+  right: 16px !important;
   top: 50% !important;
   margin: 0 !important;
-  transform: translateY(-50%) !important; /* 垂直居中，保留旋转动画需配合 Element 逻辑 */
   width: auto !important;
   height: auto !important;
   display: block !important;
   font-size: 12px !important;
+  /* 关键：保持垂直居中，同时设置初始角度为 0 */
+  transform: translateY(-50%) rotate(0deg) !important;
+  transition: transform 0.3s ease-in-out !important; /* 强制添加平滑旋转动画 */
 }
 
-/* 3. 确保父容器是相对定位 (为绝对定位的箭头提供基准) */
+/* 3. 修复右侧展开箭头 (展开状态 - 向上) */
+/* 当菜单展开时 (父级 li 有 is-opened class)，旋转 180 度 */
+.layout-aside .el-sub-menu.is-opened > .el-sub-menu__title .el-sub-menu__icon-arrow {
+  transform: translateY(-50%) rotate(180deg) !important;
+}
+
+/* 4. 防止文字换行导致的布局抖动 */
+.layout-aside .el-menu-item, 
+.layout-aside .el-sub-menu__title {
+  white-space: nowrap !important; /* 禁止文字换行 */
+}
+
+/* 5. 确保父容器相对定位 */
 .layout-aside .el-sub-menu__title {
   position: relative !important;
-  padding-right: 40px !important; /* 给右侧箭头预留空间 */
+  padding-right: 40px !important;
   display: flex !important;
   align-items: center !important;
 }
