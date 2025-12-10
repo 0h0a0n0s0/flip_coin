@@ -1,4 +1,4 @@
--- 檔案: init.sql (★★★ v7.4 最終修復版 ★★★)
+-- init.sql
 
 -- (刪除舊表)
 DROP TABLE IF EXISTS users CASCADE;

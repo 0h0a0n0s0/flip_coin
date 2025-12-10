@@ -37,7 +37,11 @@
     "streak_positive": "連胜",
     "streak_negative": "連败",
     "max_streak": "最高連胜",
-    "field": "场"
+    "field": "场",
+    "mode_normal": "原始模式",
+    "mode_streak": "连胜模式",
+    "current_odds": "当前赔率",
+    "streak_odds_desc": "{streak}胜赔率"
   },
   "game_list": {
     "no_games": "目前没有游戏",

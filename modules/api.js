@@ -83,41 +83,34 @@ async function request(endpoint, options = {}) {
             try {
                 data = await response.json();
             } catch (e) {
-                // (如果 response.ok 为 false 且 body 为空，.json() 会失败)
+                // 如果 response.ok 为 false 且 body 为空，.json() 会失败
                 data = null; 
             }
         }
 
         // 3. 检查回应狀态
         if (!response.ok) {
-            // (我们有 HTTP 错误 4xx 或 5xx)
+            // 我们有 HTTP 错误 4xx 或 5xx
             const errorMessage = data?.error || `Request failed with status ${response.status}`;
             
             // 建立一個包含 status 的自定义错误
             const error = new Error(errorMessage);
-            error.status = response.status; // (★★★ 关键：将 status 附加到错误物件)
+            error.status = response.status;
             error.data = data; 
-            throw error; // (此 throw 将被下面的 catch 捕获)
+            throw error;
         }
 
-        // 4. 成功 (response.ok)
+        // 4. 成功
         return data || response.text(); // 返回 JSON 数据或文本
 
     } catch (error) {
-        // 5. 统一处理所有错误 (网路错误 或 上面拋出的 HTTP 错误)
-        
+        // 5. 统一处理所有错误
         // 区分 4xx 和 5xx 错误
-        if (error.status >= 400 && error.status < 500) {
-            // 4xx 错误 (例如：400 帐号重复, 401 未登入, 403 被禁止)
-            // 這是可预期的业务逻辑错误，使用 console.warn
-            // console.warn(`[API Validation] ${endpoint} (${error.status}): ${error.message}`);
-        } else {
-            // 5xx 错误 (伺服器内部错误) 或 网路错误 (fetch 失败, error.status 为 undefined)
-            // 這是系统级错误，使用 console.error
+        if (error.status >= 500 || !error.status) {
+            // 5xx 错误或网路错误，记录到控制台
             console.error(`[API Error] ${endpoint}:`, error.message);
         }
 
-        // 将带有 status 的错误抛出给调用者
         throw error; 
     }
 }

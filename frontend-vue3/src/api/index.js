@@ -207,11 +207,11 @@ export function getLeaderboard() {
 /**
  * 提交下注
  */
-export function placeBet(token, choice, amount) {
+export function placeBet(token, choice, amount, gameMode = 'normal') {
     return request('/bets', {
         method: 'POST',
         token: token,
-        body: JSON.stringify({ choice, amount }),
+        body: JSON.stringify({ choice, amount, gameMode }),
     });
 }
 

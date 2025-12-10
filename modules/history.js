@@ -4,7 +4,6 @@ import { getHistory } from './api.js';
 
 export async function renderHistory(token) {
     if (!token) {
-        console.log('No token provided, skipping history render.');
         document.getElementById('historyList').innerHTML = '<li>登入後以查看历史记录</li>';
         return;
     }
@@ -15,7 +14,7 @@ export async function renderHistory(token) {
     }
 
     try {
-        const history = await getHistory(token); // (★★★ 修改：传入 token ★★★)
+        const history = await getHistory(token);
         
         if (history.length === 0) {
             historyListEl.innerHTML = '<li>暂无投注记录</li>';
@@ -43,6 +42,5 @@ export async function renderHistory(token) {
         });
     } catch (error) {
         historyListEl.innerHTML = '<li>Failed to load history.</li>';
-        console.error('Failed to render history:', error);
     }
 }

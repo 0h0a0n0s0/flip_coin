@@ -227,7 +227,8 @@ export default {
       if (row.status === 'won') {
         try {
             const betAmount = parseFloat(row.amount);
-            const multiplier = parseInt(row.payout_multiplier, 10) || 2; 
+            // 使用 parseFloat 而不是 parseInt，以支持小数赔率（如 1.95）
+            const multiplier = parseFloat(row.payout_multiplier) || 2; 
             const prizeAmount = betAmount * multiplier; 
             return this.formatCurrency(prizeAmount);
         } catch(e) {

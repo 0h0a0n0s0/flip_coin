@@ -37,7 +37,11 @@
     "streak_positive": "Win Streak",
     "streak_negative": "Lose Streak",
     "max_streak": "Max Streak",
-    "field": ""
+    "field": "",
+    "mode_normal": "Normal Mode",
+    "mode_streak": "Streak Mode",
+    "current_odds": "Current Odds",
+    "streak_odds_desc": "{streak} Win Odds"
   },
   "game_list": {
     "no_games": "No games available",

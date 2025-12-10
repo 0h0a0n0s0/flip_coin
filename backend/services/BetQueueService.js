@@ -31,12 +31,13 @@ class BetQueueService {
      * @param {string} choice - 投注选择
      * @param {number} amount - 投注金额
      * @param {string} betIp - (可选) 投注IP地址
+     * @param {string} gameMode - (可选) 游戏模式 ('normal' 或 'streak')
      * @returns {Promise<object>} 结算後的 Bet 物件
      */
-    addBetToQueue(user, choice, amount, betIp = null) {
-        console.log(`[v7 Queue] Received bet from ${user.user_id} ($${amount} on ${choice}). Queue size: ${this.queue.length}`);
+    addBetToQueue(user, choice, amount, betIp = null, gameMode = 'normal') {
+        console.log(`[v7 Queue] Received bet from ${user.user_id} ($${amount} on ${choice}, mode: ${gameMode}). Queue size: ${this.queue.length}`);
         return new Promise((resolve, reject) => {
-            this.queue.push({ user, choice, amount, betIp, resolve, reject });
+            this.queue.push({ user, choice, amount, betIp, gameMode, resolve, reject });
             this._processQueue();
         });
     }
@@ -70,7 +71,7 @@ class BetQueueService {
     /**
      * (内部) 处理单個下注的完整生命週期
      */
-    async _handleBetLifecycle({ user, choice, amount, betIp }) {
+    async _handleBetLifecycle({ user, choice, amount, betIp, gameMode = 'normal' }) {
         const userId = user.user_id;
         let betId = null;
         let client;
@@ -203,14 +204,46 @@ class BetQueueService {
             const status = didWin ? 'won' : 'lost';
 
             // 3b. 获取派彩
-            // (优先从 games 表获取派奖倍数)
-            const { getGamePayoutMultiplier } = require('../utils/gameUtils.js');
-            // 使用 game_code 获取赔率，FlipCoin 对应的 game_code 是 'flip-coin'
-            const multiplier = await getGamePayoutMultiplier('flip-coin');
-            const payoutAmount = didWin ? (amount * multiplier) : 0;
-            
+            // (优先从 games 表获取派奖倍数，支持连胜模式)
+            // 注意：在结算时，需要获取投注时的连胜数（在扣款时已获取）
+            // 但由于扣款和结算是分开的事务，我们需要重新获取用户信息
             client = await db.pool.connect();
             await client.query('BEGIN');
+            
+            // 获取用户当前连胜数（投注时的连胜数，用于计算赔率）
+            let currentStreak = 0;
+            if (gameMode === 'streak') {
+                // 从数据库中获取投注时的用户信息（在扣款前保存的）
+                // 由于我们无法直接获取，我们需要在扣款时保存，或者从用户对象中获取
+                // 这里我们从用户对象中获取（在扣款时已更新）
+                const userResult = await client.query(
+                    'SELECT current_streak FROM users WHERE id = $1 FOR UPDATE',
+                    [user.id]
+                );
+                if (userResult.rows.length > 0) {
+                    // 注意：这里获取的是投注时的连胜数，但由于扣款时没有更新连胜数，所以是正确的
+                    // 如果用户之前有连胜，current_streak 是正数；如果是首次投注或之前输了，current_streak 是 0 或负数
+                    const streakBeforeBet = userResult.rows[0].current_streak || 0;
+                    // 如果是负数或0，表示首次投注或之前输了，使用0胜的赔率
+                    currentStreak = streakBeforeBet >= 0 ? streakBeforeBet : 0;
+                }
+            }
+            
+            const { getGamePayoutMultiplier } = require('../utils/gameUtils.js');
+            // 使用 game_code 获取赔率，FlipCoin 对应的 game_code 是 'flip-coin'
+            const multiplier = await getGamePayoutMultiplier('flip-coin', gameMode, currentStreak);
+            // 派奖金额 = 投注金额 * 赔率（包含本金）
+            // 确保 amount 和 multiplier 都是数字类型
+            const betAmount = parseFloat(amount);
+            const payoutMultiplier = parseFloat(multiplier);
+            const payoutAmount = didWin ? parseFloat((betAmount * payoutMultiplier).toFixed(2)) : 0;
+            
+            console.log(`[BetQueueService] Bet ${betId}: mode=${gameMode}, betAmount=${betAmount}, multiplier=${payoutMultiplier}, payoutAmount=${payoutAmount}, didWin=${didWin}`);
+            
+            // 验证派奖金额计算
+            if (didWin && payoutAmount !== betAmount * payoutMultiplier) {
+                console.error(`[BetQueueService] WARNING: Payout amount calculation mismatch! Expected: ${betAmount * payoutMultiplier}, Got: ${payoutAmount}`);
+            }
 
             // 3c. 更新注单
             const settledBetResult = await client.query(
@@ -221,18 +254,31 @@ class BetQueueService {
             );
             const settledBet = settledBetResult.rows[0];
 
-            // 3d. 更新余额 (如果赢了) 和 連胜
+            // 3d. 更新余额 (如果赢了) 和 連胜（仅在连胜模式下更新连胜次数）
             let updatedUser;
             if (didWin) {
-                const userResult = await client.query(
-                    `UPDATE users 
-                     SET balance = balance + $1,
-                         current_streak = CASE WHEN current_streak >= 0 THEN current_streak + 1 ELSE 1 END,
-                         max_streak = CASE WHEN (current_streak + 1) > max_streak THEN current_streak + 1 ELSE max_streak END
-                     WHERE id = $2 RETURNING *`,
-                    [payoutAmount, user.id]
-                );
-                updatedUser = userResult.rows[0];
+                // 根据游戏模式决定是否更新连胜次数
+                if (gameMode === 'streak') {
+                    // 连胜模式：更新连胜次数
+                    const userResult = await client.query(
+                        `UPDATE users 
+                         SET balance = balance + $1,
+                             current_streak = CASE WHEN current_streak >= 0 THEN current_streak + 1 ELSE 1 END,
+                             max_streak = CASE WHEN (current_streak + 1) > max_streak THEN current_streak + 1 ELSE max_streak END
+                         WHERE id = $2 RETURNING *`,
+                        [payoutAmount, user.id]
+                    );
+                    updatedUser = userResult.rows[0];
+                } else {
+                    // 原始模式：只更新余额，不更新连胜次数
+                    const userResult = await client.query(
+                        `UPDATE users 
+                         SET balance = balance + $1
+                         WHERE id = $2 RETURNING *`,
+                        [payoutAmount, user.id]
+                    );
+                    updatedUser = userResult.rows[0];
+                }
                 
                 // 记录账变（派奖）
                 try {
@@ -250,13 +296,24 @@ class BetQueueService {
                     // 不阻止主流程，只记录错误
                 }
             } else {
-                 const userResult = await client.query(
-                    `UPDATE users 
-                     SET current_streak = CASE WHEN current_streak <= 0 THEN current_streak - 1 ELSE -1 END
-                     WHERE id = $1 RETURNING *`,
-                    [user.id]
-                );
-                updatedUser = userResult.rows[0];
+                // 输了：根据游戏模式决定是否更新连胜次数
+                if (gameMode === 'streak') {
+                    // 连胜模式：更新连胜次数（重置为负数）
+                    const userResult = await client.query(
+                        `UPDATE users 
+                         SET current_streak = CASE WHEN current_streak <= 0 THEN current_streak - 1 ELSE -1 END
+                         WHERE id = $1 RETURNING *`,
+                        [user.id]
+                    );
+                    updatedUser = userResult.rows[0];
+                } else {
+                    // 原始模式：不更新连胜次数，只获取用户信息
+                    const userResult = await client.query(
+                        `SELECT * FROM users WHERE id = $1`,
+                        [user.id]
+                    );
+                    updatedUser = userResult.rows[0];
+                }
             }
 
             await client.query('COMMIT');

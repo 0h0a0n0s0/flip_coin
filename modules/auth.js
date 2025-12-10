@@ -93,7 +93,6 @@ export function handleLogout() {
 export async function autoLogin() {
     const savedToken = localStorage.getItem('jwt_token');
     if (savedToken) {
-        console.log('Found saved JWT, attempting to login...');
         setToken(savedToken);
         await fetchUserInfo(savedToken);
     } else {
@@ -112,7 +111,7 @@ export async function fetchUserInfo(token) {
         initializeSocket(token);
         await renderHistory(token);
     } catch (error) {
-        console.error('Auto-login failed:', error.message);
+        // Auto-login failed
         handleLogout();
     }
 }

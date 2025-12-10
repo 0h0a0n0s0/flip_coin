@@ -29,6 +29,23 @@
       </div>
     </div>
 
+    <!-- 模式切换 -->
+    <div class="mode-switch">
+      <el-radio-group v-model="gameMode" size="small">
+        <el-radio-button label="normal">{{ t('game.mode_normal') }}</el-radio-button>
+        <el-radio-button label="streak">{{ t('game.mode_streak') }}</el-radio-button>
+      </el-radio-group>
+    </div>
+
+    <!-- 当前赔率显示 -->
+    <div class="current-odds" v-if="currentMultiplier && gameInfo">
+      <div class="odds-label">{{ t('game.current_odds') }}</div>
+      <div class="odds-value">{{ currentMultiplier.toFixed(2) }}x</div>
+      <div class="odds-description" v-if="gameMode === 'streak'">
+        {{ t('game.streak_odds_desc', { streak: currentStreak >= 0 ? currentStreak : 0 }) }}
+      </div>
+    </div>
+
     <div class="bet-controls">
       <div class="choice-group">
         <el-radio-group v-model="selectedChoice">
@@ -81,6 +98,7 @@ const { betting, coinResult, handleConfirmBet } = useGame()
 const { language, getGameName } = useLanguage()
 const selectedChoice = ref('head')
 const betAmount = ref('')
+const gameMode = ref('normal') // 'normal' 或 'streak'
 
 const currentUser = computed(() => getCurrentUser())
 const currentStreak = computed(() => currentUser.value?.current_streak || 0)
@@ -89,6 +107,7 @@ const maxStreak = computed(() => currentUser.value?.max_streak || 0)
 // 游戏信息
 const gameInfo = ref(null)
 const isLoadingGameInfo = ref(true)
+const streakMultipliers = ref(null) // 连胜模式多赔率数据
 
 const gameName = computed(() => {
   // 读取 language.value 以确保响应式追踪
@@ -112,20 +131,41 @@ const gameName = computed(() => {
 async function fetchGameInfo() {
   isLoadingGameInfo.value = true
   try {
-    // 先尝试从缓存中获取游戏列表
-    let games = getGamesCache()
-    
-    // 如果缓存中没有，则从 API 获取
-    if (!games) {
-      games = await getGames()
-      // 更新缓存
-      setGamesCache(games)
-    }
+    // 强制从 API 获取最新数据（清除缓存以确保获取最新赔率）
+    const games = await getGames()
+    // 更新缓存
+    setGamesCache(games)
     
     // 查找 Flip Coin 游戏（优先使用 game_code，如果没有则使用名称匹配）
     const flipCoin = games.find(g => g.game_code === 'flip-coin' || g.name_zh === 'Flip Coin' || g.name_en === 'FlipCoin')
     if (flipCoin) {
-      gameInfo.value = flipCoin
+      console.log('[FlipCoinGame] Found game:', flipCoin)
+      
+      // 确保 payout_multiplier 是数字类型
+      const payoutMultiplier = parseFloat(flipCoin.payout_multiplier)
+      gameInfo.value = {
+        ...flipCoin,
+        payout_multiplier: isNaN(payoutMultiplier) ? 2.0 : payoutMultiplier
+      }
+      console.log('[FlipCoinGame] Set payout_multiplier:', gameInfo.value.payout_multiplier)
+      
+      // 解析 streak_multipliers
+      if (flipCoin.streak_multipliers) {
+        try {
+          streakMultipliers.value = typeof flipCoin.streak_multipliers === 'string'
+            ? JSON.parse(flipCoin.streak_multipliers)
+            : flipCoin.streak_multipliers
+          console.log('[FlipCoinGame] Parsed streak_multipliers:', streakMultipliers.value)
+        } catch (error) {
+          console.error('Failed to parse streak_multipliers:', error)
+          streakMultipliers.value = null
+        }
+      } else {
+        console.log('[FlipCoinGame] No streak_multipliers in game data')
+        streakMultipliers.value = null
+      }
+    } else {
+      console.warn('[FlipCoinGame] Game not found in list')
     }
   } catch (error) {
     console.error('Failed to fetch game info:', error)
@@ -149,6 +189,53 @@ const canBet = computed(() => {
   return selectedChoice.value && betAmount.value > 0 && !betting.value && currentUser.value
 })
 
+// 计算当前赔率
+const currentMultiplier = computed(() => {
+  if (!gameInfo.value) return null
+  
+  if (gameMode.value === 'normal') {
+    // 原始模式：使用固定的 payout_multiplier（从游戏信息中读取）
+    const multiplier = parseFloat(gameInfo.value.payout_multiplier)
+    if (isNaN(multiplier) || multiplier <= 0) {
+      console.warn('[FlipCoinGame] Invalid payout_multiplier:', gameInfo.value.payout_multiplier)
+      return null
+    }
+    return multiplier
+  } else {
+    // 连胜模式：根据当前连胜数查找对应赔率
+    if (!streakMultipliers.value || typeof streakMultipliers.value !== 'object') {
+      // 如果没有设定多赔率，返回 null（不显示）
+      console.warn('[FlipCoinGame] No streak_multipliers found')
+      return null
+    }
+    
+    // 当前连胜数（如果是负数或0，使用0胜的赔率）
+    // 注意：没投注时 currentStreak 可能是 0 或 undefined，应该显示 0胜的赔率
+    const streak = (currentStreak.value >= 0) ? currentStreak.value : 0
+    
+    // 查找对应连胜数的赔率，如果没有则使用最接近的较小值
+    let multiplier = null
+    for (let i = streak; i >= 0; i--) {
+      if (streakMultipliers.value[i.toString()]) {
+        multiplier = parseFloat(streakMultipliers.value[i.toString()])
+        break
+      }
+    }
+    
+    // 如果找不到，尝试使用0胜的赔率
+    if (multiplier === null && streakMultipliers.value['0']) {
+      multiplier = parseFloat(streakMultipliers.value['0'])
+    }
+    
+    // 如果还是找不到，返回 null（不显示）
+    if (multiplier === null || isNaN(multiplier) || multiplier <= 0) {
+      console.warn('[FlipCoinGame] No valid streak multiplier found for streak:', streak)
+      return null
+    }
+    return multiplier
+  }
+})
+
 async function handleBet() {
   if (!canBet.value) return
 
@@ -156,7 +243,8 @@ async function handleBet() {
   if (isNaN(amount) || amount <= 0) return
 
   try {
-    const result = await handleConfirmBet(selectedChoice.value, amount)
+    // 传递游戏模式到下注函数
+    const result = await handleConfirmBet(selectedChoice.value, amount, gameMode.value)
     if (result && props.onBetSuccess) {
       props.onBetSuccess(result)
     }

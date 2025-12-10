@@ -1,4 +1,4 @@
-// 档案: backend/routes/admin.js (★★★ v7.2 栏位修复版 ★★★)
+// backend/routes/admin.js
 
 const { ethers } = require('ethers');
 const express = require('express');
@@ -18,7 +18,7 @@ const { logBalanceChange, CHANGE_TYPES } = require('../utils/balanceChangeLogger
 const speakeasy = require('speakeasy');
 const QRCode = require('qrcode');
 
-// (★★★ v8.1 新增：用于存储 io 和 connectedUsers ★★★)
+// 用于存储 io 和 connectedUsers
 let io = null;
 let connectedUsers = null;
 
@@ -31,7 +31,7 @@ router.setIoAndConnectedUsers = (socketIO, users) => {
 };
 
 /**
- * @description 後台管理员登入 (★★★ 侦错日志已移除 ★★★)
+ * @description 後台管理员登入
  * @route POST /api/admin/login
  */
 router.post('/login', async (req, res) => {
@@ -54,12 +54,12 @@ router.post('/login', async (req, res) => {
             return res.status(401).json({ error: 'Invalid credentials.' });
         }
 
-        // (★★★ v2 新增：检查帐号狀态 ★★★)
+        // 检查帐号狀态
         if (user.status !== 'active') {
             return res.status(403).json({ error: 'Account is disabled.' });
         }
 
-        // (★★★ 新增：验证谷歌验证码 ★★★)
+        // 验证谷歌验证码
         if (user.google_auth_secret) {
             // 如果账号已绑定谷歌验证，必须提供验证码
             if (!googleAuthCode) {
@@ -86,7 +86,7 @@ router.post('/login', async (req, res) => {
         }
         // 如果账号未绑定谷歌验证，googleAuthCode可以留空，不做验证
 
-        // (★★★ 新增：記錄登錄IP ★★★)
+        // 記錄登錄IP
         try {
             const clientIp = getClientIp(req);
             if (clientIp) {
@@ -101,7 +101,7 @@ router.post('/login', async (req, res) => {
             // 不阻擋登錄，僅記錄錯誤
         }
 
-        // 3. 签发 JWT (★★★ v2 新增：加入 role ★★★)
+        // 3. 签发 JWT（包含 role）
         const token = jwt.sign(
             { 
                 id: user.id, 
@@ -535,14 +535,14 @@ router.get('/stats', authMiddleware, checkPermission('dashboard', 'read'), async
         const betCountResult = await db.query('SELECT COUNT(*) FROM bets');
         const totalBets = betCountResult.rows[0].count;
 
-        // (★★★ v6 修改：不再有 prize_pending ★★★)
+        // 不再有 prize_pending
         const pendingWithdrawalsResult = await db.query("SELECT COUNT(*) FROM platform_transactions WHERE type = 'withdraw' AND status = 'pending'");
         const pendingPayouts = pendingWithdrawalsResult.rows[0].count;
 
-        // (★★★ 新增：即时线上人数 ★★★)
+        // 即时线上人数
         const onlineUsers = connectedUsers ? Object.keys(connectedUsers).length : 0;
 
-        // (★★★ 新增：当日/当周/当月/上月投注量和盈亏统计 + 時間序列數據 ★★★)
+        // 当日/当周/当月/上月投注量和盈亏统计 + 時間序列數據
         const now = new Date();
         const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
         const weekStart = new Date(todayStart);
@@ -776,7 +776,7 @@ router.get('/stats', authMiddleware, checkPermission('dashboard', 'read'), async
 /**
  * @description 获取用户列表
  * @params query {
- * (★★★ 移除 walletAddress, 新增 username, balance ★★★)
+ * 移除 walletAddress, 新增 username, balance
  * }
  */
 router.get('/users', authMiddleware, checkPermission('users', 'read'), async (req, res) => {
@@ -858,7 +858,7 @@ router.get('/users', authMiddleware, checkPermission('users', 'read'), async (re
         res.status(200).json({ total: total, list });
     } catch (error) {
         // (★★★ 500 错误会在這里被捕获并记录 ★★★)
-        console.error('[Admin Users] Error fetching users (v7.2):', error);
+        console.error('[Admin Users] Error fetching users:', error);
         res.status(500).json({ error: 'Internal server error' });
     }
 });
@@ -990,7 +990,7 @@ router.put('/users/:id', authMiddleware, async (req, res, next) => {
 });
 
 
-// (★★★ 新增 GET /api/admin/users/by-referrer/:invite_code ★★★)
+// GET /api/admin/users/by-referrer/:invite_code
 /**
  * @description 根据邀请码查询推薦的用户列表
  * @route GET /api/admin/users/by-referrer/:invite_code
@@ -1000,7 +1000,7 @@ router.get('/users/by-referrer/:invite_code', authMiddleware, checkPermission('u
     const { invite_code } = req.params;
 
     try {
-        // (★★★ 移除 wallet_address ★★★)
+        // 移除 wallet_address
         const result = await db.query(
             'SELECT user_id, nickname, created_at FROM users WHERE referrer_code = $1 ORDER BY created_at DESC',
             [invite_code]
@@ -1014,7 +1014,7 @@ router.get('/users/by-referrer/:invite_code', authMiddleware, checkPermission('u
     }
 });
 
-// ★★★用户管理 - 更新用户狀态 (禁用投注) ★★★
+// 用户管理 - 更新用户狀态 (禁用投注)
 /**
  * @description 更新用户狀态 (例如 'active' 或 'banned')
  * @route PATCH /api/admin/users/:id/status
@@ -1304,7 +1304,7 @@ router.get('/wallets', authMiddleware, checkPermission('wallets', 'read'), async
         if (chain_type) { params.push(chain_type); whereClauses.push(`chain_type = $${paramIndex++}`); } 
         if (address) { params.push(address); whereClauses.push(`LOWER(address) = LOWER($${paramIndex++})`); }
         
-        // (★★★ 查询 platform_wallets ★★★)
+        // 查询 platform_wallets
         const whereSql = whereClauses.length > 0 ? `WHERE ${whereClauses.join(' AND ')}` : '';
         const countSql = `SELECT COUNT(*) FROM platform_wallets ${whereSql}`;
         const countResult = await db.query(countSql, params);
@@ -1314,7 +1314,7 @@ router.get('/wallets', authMiddleware, checkPermission('wallets', 'read'), async
             return res.status(200).json({ total: 0, list: [] });
         }
 
-        // (★★★ 查询 platform_wallets ★★★)
+        // 查询 platform_wallets
         const dataSql = `SELECT * FROM platform_wallets ${whereSql} ORDER BY created_at DESC LIMIT $${paramIndex++} OFFSET $${paramIndex++}`;
         const offset = (page - 1) * limit;
         params.push(limit); params.push(offset);
@@ -1327,7 +1327,7 @@ router.get('/wallets', authMiddleware, checkPermission('wallets', 'read'), async
         res.status(200).json({ total, list });
 
     } catch (error) {
-        console.error('[Admin Wallets] Error fetching wallets (v7):', error);
+        console.error('[Admin Wallets] Error fetching wallets:', error);
         res.status(500).json({ error: 'Internal server error' });
     }
 });
@@ -1336,18 +1336,18 @@ router.get('/wallets', authMiddleware, checkPermission('wallets', 'read'), async
  * @description 新增平台钱包 
  */
 router.post('/wallets', authMiddleware, checkPermission('wallets', 'cud'), async (req, res) => {
-    // (★★★ 获取新栏位 ★★★)
+    // 获取新栏位
     const { name, chain_type, address, is_gas_reserve, is_collection, is_opener_a, is_opener_b, is_active, is_payout } = req.body;
     if (!name || !chain_type || !address) {
         return res.status(400).json({ error: 'Name, chain_type, and address are required.' });
     }
 
     try {
-        // (★★★ 插入 platform_wallets ★★★)
+        // 插入 platform_wallets
         const result = await db.query(
             `INSERT INTO platform_wallets (name, chain_type, address, is_gas_reserve, is_collection, is_opener_a, is_opener_b, is_active, is_payout) 
              VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING *`,
-            [name, chain_type, address, !!is_gas_reserve, !!is_collection, !!is_opener_a, !!is_opener_b, !!is_active, !!is_payout] // (★★★ v8.1 修改 ★★★)
+            [name, chain_type, address, !!is_gas_reserve, !!is_collection, !!is_opener_a, !!is_opener_b, !!is_active, !!is_payout]
         );
         console.log(`[Admin Wallets] Wallet ${result.rows[0].id} created by ${req.user.username}`);
 
@@ -1375,7 +1375,7 @@ router.post('/wallets', authMiddleware, checkPermission('wallets', 'cud'), async
  */
 router.put('/wallets/:id', authMiddleware, checkPermission('wallets', 'cud'), async (req, res) => {
     const { id } = req.params;
-    // (★★★ 获取新栏位 ★★★)
+    // 获取新栏位
     const { name, chain_type, address, is_gas_reserve, is_collection, is_opener_a, is_opener_b, is_active, is_payout } = req.body;
     if (!name || !chain_type || !address) { return res.status(400).json({ error: 'Fields are required.' }); }
 
@@ -1408,12 +1408,12 @@ router.put('/wallets/:id', authMiddleware, checkPermission('wallets', 'cud'), as
         res.status(200).json(result.rows[0]);
     } catch (error) {
         if (error.code === '23505') { return res.status(409).json({ error: 'Wallet address already exists.' }); }
-        console.error(`[Admin Wallets] Error updating wallet ${id} (v7):`, error);
+        console.error(`[Admin Wallets] Error updating wallet ${id}:`, error);
         res.status(500).json({ error: 'Internal server error' });
     }
 });
 
-// (★★★ 刪除 platform_wallets ★★★)
+// 刪除 platform_wallets
 router.delete('/wallets/:id', authMiddleware, checkPermission('wallets', 'cud'), async (req, res) => {
     const { id } = req.params;
     try {
@@ -1471,20 +1471,20 @@ router.put('/settings/:key', authMiddleware, checkPermission('settings_game', 'u
         const numValue = parseFloat(value);
         if (isNaN(numValue) || numValue <= 0) { return res.status(400).json({ error: 'PAYOUT_MULTIPLIER must be a positive number.' }); }
     }
-    // (★★★ 验证 AUTO_WITHDRAW_THRESHOLD ★★★)
+    // 验证 AUTO_WITHDRAW_THRESHOLD
     if (key === 'AUTO_WITHDRAW_THRESHOLD') {
         const numValue = parseFloat(value);
         if (isNaN(numValue) || numValue < 0) { return res.status(400).json({ error: 'AUTO_WITHDRAW_THRESHOLD 必须是有效的数字 (例如 10)' }); }
         validatedValue = numValue.toString();
     }
-    // (★★★ 验证链开关 ★★★)
+    // 验证链开关
     if (key.startsWith('ALLOW_')) {
         if (value.toString() !== 'true' && value.toString() !== 'false') {
             return res.status(400).json({ error: 'Value must be true or false string.' });
         }
         validatedValue = value.toString();
     }
-    // (★★★ 验证平台名称 ★★★)
+    // 验证平台名称
     if (key === 'PLATFORM_NAME') {
         const name = value.toString().trim();
         if (!name || name.length === 0) {
@@ -1495,7 +1495,7 @@ router.put('/settings/:key', authMiddleware, checkPermission('settings_game', 'u
         }
         validatedValue = name;
     }
-    // (★★★ 验证多语系设置 ★★★)
+    // 验证多语系设置
     if (key === 'DEFAULT_LANGUAGE') {
         const lang = value.toString().trim();
         if (lang !== 'zh-CN' && lang !== 'en-US') {
@@ -3937,11 +3937,45 @@ router.put('/games/:id', authMiddleware, checkPermission('settings_game', 'updat
             paramIndex++;
         }
         if (payout_multiplier !== undefined) {
-            if (isNaN(payout_multiplier) || payout_multiplier <= 0) {
+            // 确保是数字类型
+            const multiplierValue = typeof payout_multiplier === 'string' 
+                ? parseFloat(payout_multiplier) 
+                : parseFloat(payout_multiplier);
+            
+            if (isNaN(multiplierValue) || multiplierValue <= 0) {
                 return res.status(400).json({ error: '派奖倍数必须大于0' });
             }
             updates.push(`payout_multiplier = $${paramIndex}`);
-            params.push(parseFloat(payout_multiplier));
+            params.push(multiplierValue);
+            paramIndex++;
+        }
+        if (req.body.streak_multipliers !== undefined) {
+            // 验证 JSON 格式
+            let streakMultipliers = null;
+            if (req.body.streak_multipliers) {
+                try {
+                    if (typeof req.body.streak_multipliers === 'string') {
+                        streakMultipliers = JSON.parse(req.body.streak_multipliers);
+                    } else {
+                        streakMultipliers = req.body.streak_multipliers;
+                    }
+                    // 验证格式：应该是对象，key 为数字字符串，value 为数字
+                    if (typeof streakMultipliers !== 'object' || Array.isArray(streakMultipliers)) {
+                        return res.status(400).json({ error: 'streak_multipliers 必须是对象格式' });
+                    }
+                    // 验证每个值都是正数
+                    for (const [key, value] of Object.entries(streakMultipliers)) {
+                        if (isNaN(parseInt(key, 10)) || isNaN(parseFloat(value)) || parseFloat(value) <= 0) {
+                            return res.status(400).json({ error: `streak_multipliers 中的 ${key} 胜赔率必须大于0` });
+                        }
+                    }
+                    streakMultipliers = JSON.stringify(streakMultipliers);
+                } catch (error) {
+                    return res.status(400).json({ error: 'streak_multipliers JSON 格式错误' });
+                }
+            }
+            updates.push(`streak_multipliers = $${paramIndex}`);
+            params.push(streakMultipliers);
             paramIndex++;
         }
         

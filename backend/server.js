@@ -1,4 +1,4 @@
-// 档案: backend/server.js (★★★ v8.1 自动出款修改版 ★★★)
+// backend/server.js
 
 require('dns').setDefaultResultOrder('ipv4first');
 
@@ -20,14 +20,14 @@ const jwt = require('jsonwebtoken');
 const { Strategy: JwtStrategy, ExtractJwt } = require('passport-jwt');
 const axios = require('axios');
 
-// (★★★ v8.1 导入服务 ★★★)
+// 导入服务
 const { getKmsInstance } = require('./services/KmsService.js');
 const TronListener = require('./services/TronListener.js');
 const { getTronCollectionInstance } = require('./services/TronCollectionService.js');
 const { getGameOpenerInstance } = require('./services/GameOpenerService.js');
 const { getBetQueueInstance } = require('./services/BetQueueService.js');
-const { getPayoutServiceInstance } = require('./services/PayoutService.js'); // (★★★ v8.1 新增 ★★★)
-const settingsCacheModule = require('./services/settingsCache.js'); // (★★★ v8.1 导入 ★★★)
+const { getPayoutServiceInstance } = require('./services/PayoutService.js');
+const settingsCacheModule = require('./services/settingsCache.js');
 const { setRiskControlSockets, enforceSameIpRiskControl } = require('./services/riskControlService');
 const { getPendingBetProcessorInstance } = require('./services/PendingBetProcessor.js');
 const { getWalletBalanceMonitorInstance } = require('./services/WalletBalanceMonitor.js');
@@ -69,7 +69,7 @@ try {
 }
 
 // (Payout Service)
-let payoutService; // (★★★ v8.1 新增：在 listen 时初始化 ★★★)
+let payoutService;
 
 // (BetQueue Service)
 let betQueueService;
@@ -80,7 +80,7 @@ const PORT = 3000;
 const httpServer = http.createServer(app);
 const io = new Server(httpServer, { cors: { origin: "*", methods: ["GET", "POST"] } });
 
-console.log(`✅ [v8.1] 中心化服务启动...`);
+console.log('✅ 中心化服务启动...');
 
 // --- 中间件设定 ---
 app.use(cors());
@@ -88,7 +88,7 @@ app.use(express.json());
 app.set('trust proxy', true);
 app.use(passport.initialize());
 
-// --- Passport.js 策略设定 (与 v8.9 相同，保持不变) ---
+// --- Passport.js 策略设定 ---
 // 策略 1：本地注册 (local-signup)
 passport.use('local-signup', new LocalStrategy({
     usernameField: 'username',
@@ -127,7 +127,7 @@ passport.use('local-signup', new LocalStrategy({
         const clientIp = getClientIp(req);
         const userAgent = req.headers['user-agent'] || null;
         
-        // (★★★ v9.2 新增：提取设备ID和注册IP相关信息 ★★★)
+        // 提取设备ID和注册IP相关信息
         const { extractDeviceId } = require('./utils/ipUtils');
         const deviceId = extractDeviceId(req);
         
@@ -147,8 +147,7 @@ passport.use('local-signup', new LocalStrategy({
         );
         await client.query('COMMIT'); 
         const newUser = newUserResult.rows[0];
-        console.log(`[v7 Auth] New user registered: ${username} (User ID: ${newUserId}, Path: ${deposit_path_index})`);
-        // (★★★ v9.1 修改：注册时不激活地址，只在归集时按需激活 ★★★)
+        // 注册时不激活地址，只在归集时按需激活
 
         // (Risk Control) 检查同 IP 是否超过阈值
         try {
@@ -163,7 +162,7 @@ passport.use('local-signup', new LocalStrategy({
 
         return done(null, newUser);
     } catch (error) {
-        console.error("[v7 signup] Transaction Error:", error);
+        console.error("[Signup] Transaction Error:", error);
         await client.query('ROLLBACK'); 
         return done(error);
     } finally {
@@ -171,7 +170,7 @@ passport.use('local-signup', new LocalStrategy({
     }
 }));
 
-// 策略 2：本地登入 (local-login) (不变)
+// 策略 2：本地登入 (local-login)
 passport.use('local-login', new LocalStrategy({
     usernameField: 'username',
     passwordField: 'password'
@@ -195,7 +194,7 @@ passport.use('local-login', new LocalStrategy({
     }
 }));
 
-// 策略 3：JWT 验证 (jwt) (不变)
+// 策略 3：JWT 验证 (jwt)
 passport.use('jwt', new JwtStrategy({
     jwtFromRequest: ExtractJwt.fromAuthHeaderAsBearerToken(),
     secretOrKey: process.env.JWT_SECRET
@@ -367,7 +366,8 @@ function v1ApiRouter(router, passport) {
             const { status = 'enabled' } = req.query;
             
             const result = await db.query(
-                `SELECT id, provider, name_zh, name_en, game_code, game_status, status, sort_order 
+                `SELECT id, provider, name_zh, name_en, game_code, game_status, status, sort_order, 
+                        payout_multiplier, streak_multipliers
                  FROM games 
                  WHERE status = $1 
                  ORDER BY sort_order ASC, id ASC`,
@@ -617,9 +617,9 @@ function v1ApiRouter(router, passport) {
         }
     });
 
-    // ( /api/v1/bets ) (不变)
+    // ( /api/v1/bets ) (支持游戏模式)
     router.post('/api/v1/bets', passport.authenticate('jwt', { session: false }), async (req, res) => {
-        const { choice, amount } = req.body;
+        const { choice, amount, gameMode = 'normal' } = req.body;
         const user = req.user; 
         if (choice !== 'head' && choice !== 'tail') {
             return sendError(res, 400, '投注选项无效。');
@@ -627,6 +627,11 @@ function v1ApiRouter(router, passport) {
         const betAmount = parseFloat(amount);
         if (isNaN(betAmount) || betAmount <= 0) {
              return sendError(res, 400, '投注金额无效。');
+        }
+        
+        // 验证 gameMode
+        if (gameMode !== 'normal' && gameMode !== 'streak') {
+            return sendError(res, 400, '游戏模式无效。');
         }
         
         // 检查游戏是否开启
@@ -643,7 +648,7 @@ function v1ApiRouter(router, passport) {
             // (★★★ v9.2 新增：获取投注IP并传递 ★★★)
             const { getClientIp } = require('./utils/ipUtils');
             const betIp = getClientIp(req);
-            const settledBet = await betQueueService.addBetToQueue(user, choice, betAmount, betIp);
+            const settledBet = await betQueueService.addBetToQueue(user, choice, betAmount, betIp, gameMode);
             res.status(200).json(settledBet);
         } catch (error) {
             console.error(`[v7 API] Bet failed for user ${user.user_id}:`, error.message);
@@ -862,24 +867,23 @@ function v1ApiRouter(router, passport) {
             // 9. (同步) 回应 HTTP 请求
             res.status(201).json({ message: responseMessage });
             
-            // 10. (★★★ 異步 ★★★)
-            // (在回应後，才真正执行链上出款)
+            // 10. 异步执行链上出款（在回应后）
             if (isAutoPayoutEligible) {
                 executeAutoPayout(withdrawalRequest).catch(err => {
-                    console.error(`[v8 Payout] Unhandled error in executeAutoPayout:`, err);
-                }); // (Fire-and-forget，但捕获未处理的错误)
+                    console.error('[Payout] Unhandled error in executeAutoPayout:', err);
+                });
             }
 
-        } catch (error) { // (捕捉 余额不足 / 密码错误 / DB 错误)
+        } catch (error) {
             await client.query('ROLLBACK');
-            console.error(`[API v1] Withdrawal request failed for ${user.user_id}:`, error);
+            console.error(`[API] Withdrawal request failed for ${user.user_id}:`, error);
             return sendError(res, 400, error.message || '提款失败。');
         } finally {
             client.release();
         }
     });
     
-    // ( GET /api/v1/users/withdrawals ) (不变)
+    // GET /api/v1/users/withdrawals
     router.get('/api/v1/users/withdrawals', passport.authenticate('jwt', { session: false }), async (req, res) => {
         try {
             const result = await db.query(

@@ -14,8 +14,11 @@ export function useGame() {
 
   /**
    * 处理确认下注
+   * @param {string} choice - 投注选择 ('head' 或 'tail')
+   * @param {number} amount - 投注金额
+   * @param {string} gameMode - 游戏模式 ('normal' 或 'streak')
    */
-  async function handleConfirmBet(choice, amount) {
+  async function handleConfirmBet(choice, amount, gameMode = 'normal') {
     if (getBettingState()) {
       notifyError(t('notifications.bet_processing'))
       return
@@ -42,7 +45,7 @@ export function useGame() {
 
     try {
       const token = getToken()
-      const settledBet = await api.placeBet(token, choice, amount)
+      const settledBet = await api.placeBet(token, choice, amount, gameMode)
       
       console.log('Bet settled:', settledBet)
       

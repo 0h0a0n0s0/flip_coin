@@ -6,17 +6,19 @@ const { getSettingsCache } = require('../services/settingsCache.js');
 /**
  * 获取游戏的派奖倍数
  * @param {string} gameCode - 游戏代码，如 'flip-coin'，如果未提供则使用 'FlipCoin' 作为后备
+ * @param {string} gameMode - 游戏模式 ('normal' 或 'streak')，默认为 'normal'
+ * @param {number} currentStreak - 当前连胜数（仅在 streak 模式下使用），默认为 0
  * @returns {Promise<number>} 派奖倍数
  */
-async function getGamePayoutMultiplier(gameCode = null) {
+async function getGamePayoutMultiplier(gameCode = null, gameMode = 'normal', currentStreak = 0) {
     try {
         // 优先从 games 表获取，使用 game_code 查询（最精确）
         let result;
         
         if (gameCode) {
-            // 优先使用 game_code 查询
+            // 优先使用 game_code 查询，同时获取 streak_multipliers
             result = await db.query(
-                `SELECT payout_multiplier FROM games 
+                `SELECT payout_multiplier, streak_multipliers FROM games 
                  WHERE game_code = $1 
                  AND status = 'enabled' 
                  LIMIT 1`,
@@ -28,7 +30,7 @@ async function getGamePayoutMultiplier(gameCode = null) {
         if (!result || result.rows.length === 0) {
             const gameType = gameCode || 'FlipCoin';
             result = await db.query(
-                `SELECT payout_multiplier FROM games 
+                `SELECT payout_multiplier, streak_multipliers FROM games 
                  WHERE (name_en = $1 OR name_zh = $2 OR game_code = $3) 
                  AND status = 'enabled' 
                  LIMIT 1`,
@@ -37,9 +39,47 @@ async function getGamePayoutMultiplier(gameCode = null) {
         }
         
         if (result.rows.length > 0) {
-            const multiplier = parseFloat(result.rows[0].payout_multiplier);
-            if (!isNaN(multiplier) && multiplier > 0) {
-                return multiplier;
+            const gameData = result.rows[0];
+            const baseMultiplier = parseFloat(gameData.payout_multiplier);
+            
+            // 如果是原始模式，直接返回基础赔率
+            if (gameMode === 'normal') {
+                if (!isNaN(baseMultiplier) && baseMultiplier > 0) {
+                    return baseMultiplier;
+                }
+            } else if (gameMode === 'streak') {
+                // 连胜模式：从 streak_multipliers 中查找对应连胜数的赔率
+                let streakMultipliers = null;
+                if (gameData.streak_multipliers) {
+                    try {
+                        streakMultipliers = typeof gameData.streak_multipliers === 'string'
+                            ? JSON.parse(gameData.streak_multipliers)
+                            : gameData.streak_multipliers;
+                    } catch (error) {
+                        console.error('[GameUtils] Failed to parse streak_multipliers:', error);
+                    }
+                }
+                
+                if (streakMultipliers && typeof streakMultipliers === 'object') {
+                    // 查找对应连胜数的赔率，如果没有则使用最接近的较小值
+                    let multiplier = null;
+                    for (let i = currentStreak; i >= 0; i--) {
+                        if (streakMultipliers[i.toString()]) {
+                            multiplier = parseFloat(streakMultipliers[i.toString()]);
+                            break;
+                        }
+                    }
+                    
+                    // 如果找到了，返回该赔率
+                    if (multiplier !== null && !isNaN(multiplier) && multiplier > 0) {
+                        return multiplier;
+                    }
+                }
+                
+                // 如果没有找到连胜赔率，回退到基础赔率
+                if (!isNaN(baseMultiplier) && baseMultiplier > 0) {
+                    return baseMultiplier;
+                }
             }
         }
         
@@ -51,7 +91,7 @@ async function getGamePayoutMultiplier(gameCode = null) {
         }
         
         // 最后的后备：抛出错误，不允许使用写死的默认值
-        throw new Error(`无法获取游戏赔率：game_code=${gameCode || '未指定'}`);
+        throw new Error(`无法获取游戏赔率：game_code=${gameCode || '未指定'}, mode=${gameMode}`);
     } catch (error) {
         console.error('[GameUtils] Error getting payout multiplier:', error);
         // 出错时抛出错误，不允许使用写死的默认值

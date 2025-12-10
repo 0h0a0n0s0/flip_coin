@@ -1,7 +1,7 @@
-# docker-compose.yml (修改)
+# docker-compose.yml
 
 services:
-  # 後端 API 服務 (v1)
+  # 後端 API 服務
   api:
     build: ./backend 
     container_name: flipcoin-api
@@ -20,7 +20,7 @@ services:
       - 8.8.8.8
       - 1.1.1.1  
     extra_hosts:
-      - "nile.getblock.io:52.20.141.144" # (GetBlock 的一個 IP，用作 DNS 輔助)
+      - "nile.getblock.io:52.20.141.144"
     depends_on:
       db:
         condition: service_healthy 
@@ -30,7 +30,7 @@ services:
       - DATABASE_URL=postgres://game_user:game_password@db:5432/flipcoin_db
     restart: unless-stopped
 
-  # 資料庫服務 (v1)
+  # 資料庫服務
   db:
     image: postgres:14-alpine 
     container_name: flipcoin-db
@@ -44,10 +44,7 @@ services:
       - postgres_data:/var/lib/postgresql/data 
       - ./init.sql:/docker-entrypoint-initdb.d/init.sql 
     healthcheck:
-      # 測試命令：
-      # 1. pg_isready 檢查服務是否啟動
-      # 2. (&&) psql 嘗試查詢 init.sql 中的 *最後一張表* (admin_ip_whitelist)
-      # 只有當這張表存在時 (init.sql 執行完畢)，檢查才會通過
+      # 測試命令：檢查服務是否啟動並確認表已建立
       test: ["CMD-SHELL", "pg_isready -U game_user -d flipcoin_db && psql -U game_user -d flipcoin_db -c 'SELECT 1 FROM admin_ip_whitelist'"]
       interval: 5s
       timeout: 5s
@@ -55,23 +52,21 @@ services:
       
     restart: unless-stopped
 
-  # (v2 修改) 後台前端 UI 服務
+  # 後台前端 UI 服務
   admin-ui:
     build: ./admin-ui 
     container_name: flipcoin-admin-ui
-    # (★★★ 刪除 ports ★★★)
-    # 移除 ports: - "8080:80"
-    # 因為 Nginx 將會代理它，它不需要對外開放
+    # 不直接暴露端口，由 Nginx 代理
     restart: unless-stopped
 
-  # (v3 新增) Vue 3 前端服務
+  # Vue 3 前端服務
   frontend-vue3:
     build: ./frontend-vue3
     container_name: flipcoin-frontend-vue3
     # 不直接暴露端口，由 nginx 代理
     restart: unless-stopped
 
-  # (v2 新增) Nginx 代理服務
+  # Nginx 代理服務
   nginx:
     build: ./nginx # 指向我們剛才建立的 nginx 資料夾
     container_name: flipcoin-proxy

@@ -7,12 +7,11 @@
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/notyf@3/notyf.min.css">
   <link rel="stylesheet" href="style.css">
   <script>
-    // (★★★ 在應用加載前獲取真實IP，確保所有API請求都能帶上IP header ★★★)
+    // 在應用加載前獲取真實IP，確保所有API請求都能帶上IP header
     (function() {
       // 檢查是否已有緩存的IP
       var cachedIp = sessionStorage.getItem('cached_real_ip');
       if (cachedIp) {
-        console.log('[Frontend] Using cached IP from sessionStorage:', cachedIp);
         return;
       }
 
@@ -24,14 +23,11 @@
         { url: 'https://ipapi.co/json/', key: 'ip' }
       ];
 
-      console.log('[Frontend] Starting IP detection...');
-      
       // 異步獲取IP（不阻塞頁面加載）
       (async function() {
         for (var i = 0; i < ipServices.length; i++) {
           var service = ipServices[i];
           try {
-            console.log('[Frontend] Trying IP service:', service.url);
             var controller = new AbortController();
             var timeoutId = setTimeout(function() { controller.abort(); }, 5000);
             
@@ -46,16 +42,14 @@
               var data = await response.json();
               var ip = data[service.key];
               if (ip && typeof ip === 'string') {
-                console.log('[Frontend] ✅ Detected IP:', ip);
                 sessionStorage.setItem('cached_real_ip', ip);
                 return;
               }
             }
           } catch (e) {
-            console.warn('[Frontend] Service failed:', service.url, e.message);
+            // 继续尝试下一个服务
           }
         }
-        console.error('[Frontend] ❌ All IP services failed!');
       })();
     })();
   </script>

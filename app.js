@@ -36,7 +36,6 @@ async function loadPlatformName() {
             headerTitle.textContent = platformName;
         }
     } catch (error) {
-        console.error('Failed to load platform name:', error);
         // 使用默认值
         document.title = 'FlipCoin';
         const headerTitle = document.querySelector('header h1');
@@ -50,7 +49,6 @@ async function loadPlatformName() {
  * 应用初始化
  */
 function initializeApp() {
-    console.log("✅ App initializing...");
     
     // 初始化 DOM 元素引用
     initializeDOMElements();
@@ -143,7 +141,6 @@ function waitForSocketIO() {
     if (typeof window.io !== 'undefined') {
         initializeApp();
     } else {
-        console.log("⏳ Waiting for Socket.io Client to load...");
         setTimeout(waitForSocketIO, 100);
     }
 }

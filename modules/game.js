@@ -49,8 +49,6 @@ export async function handleConfirmBet() {
         const token = getToken();
         const settledBet = await api.placeBet(token, choice, amount);
         
-        console.log('Bet settled:', settledBet);
-        
         // 余额更新将由 Socket.IO 的 'user_info_updated' 事件统一处理
 
         if (settledBet.status === 'won') {
@@ -63,8 +61,7 @@ export async function handleConfirmBet() {
         const outcome = (parseInt(settledBet.tx_hash.slice(-1), 16) % 2 === 0) ? 'head' : 'tail';
         showCoinResult(outcome);
 
-    } catch (error) {
-        console.warn('Bet failed:', error.message); 
+    } catch (error) { 
         
         if (error.status === 400 || error.status === 401) {
             notifyWarning(`下注失败：${error.message}`);

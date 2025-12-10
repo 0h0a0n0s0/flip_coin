@@ -24,7 +24,7 @@ export function initializeSocket(token) {
     });
 
     socket.on('connect', () => {
-        console.log('[Socket.io] Connected with token.');
+        // Socket connected
     });
     
     socket.on('connect_error', (err) => {
@@ -37,7 +37,6 @@ export function initializeSocket(token) {
     });
     
     socket.on('bet_updated', async (betData) => {
-        console.log('[Socket.io] Received bet update (for history):', betData);
         const token = getToken();
         if (token) {
             renderHistory(token);
@@ -62,7 +61,6 @@ export function initializeSocket(token) {
     });
 
     socket.on('user_info_updated', (fullUser) => {
-        console.log('[Socket.io] Received FULL user info update:', fullUser);
         const currentUser = getCurrentUser();
         if (currentUser && currentUser.id === fullUser.id) {
             const oldBalance = currentUser.balance;
@@ -77,13 +75,12 @@ export function initializeSocket(token) {
     });
     
     socket.on('leaderboard_updated', async (leaderboardData) => {
-        console.log('[Socket.io] Received leaderboard update:', leaderboardData);
         const { renderLeaderboardData } = await import('./leaderboard.js');
         renderLeaderboardData(leaderboardData);
     });
     
     socket.on('disconnect', () => {
-        console.log('[Socket.io] Disconnected.');
+        // Socket disconnected
     });
 
     setSocket(socket);
