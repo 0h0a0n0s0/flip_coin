@@ -1,6 +1,12 @@
 ---
 alwaysApply: true
 ---
+
+# ⚠️ 重要提示
+
+**这些规则在每次对话中自动生效，无需用户提醒。**
+**每次生成、修改代码前，必须自动检查这些规则。**
+
 ## 1. General Enforcement Principles
 
 Cursor must always:
