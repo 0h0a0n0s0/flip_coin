@@ -1,0 +1,10 @@
+{
+  "name": "@flipcoin/database",
+  "version": "1.0.0",
+  "description": "Database connection and migration utilities",
+  "main": "index.js",
+  "private": true,
+  "dependencies": {
+    "pg": "^8.16.3"
+  }
+}

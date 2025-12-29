@@ -1,0 +1,7 @@
+{
+  "name": "@flipcoin/service-wallet",
+  "version": "1.0.0",
+  "description": "Wallet service - HIGH SECURITY ZONE",
+  "private": true,
+  "dependencies": {}
+}

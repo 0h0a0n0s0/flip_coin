@@ -1,0 +1,7 @@
+{
+  "name": "@flipcoin/ui",
+  "version": "1.0.0",
+  "description": "Shared UI components and design system",
+  "private": true,
+  "dependencies": {}
+}

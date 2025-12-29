@@ -2,10 +2,10 @@
 alwaysApply: true
 ---
 
-# ⚠️ 重要提示
+# ⚠️ IMPORTANT NOTICE
 
-**这些规则在每次对话中自动生效，无需用户提醒。**
-**每次生成、修改代码前，必须自动检查这些规则。**
+**These rules are automatically applied in every conversation, no user reminder needed.**
+**Before generating or modifying any code, these rules must be automatically checked.**
 
 ## 1. General Enforcement Principles
 
@@ -35,6 +35,40 @@ Cursor Must Not:
 * Introduce tightly coupled logic across layers.
 * Mix UI logic with business logic.
 * Create large files without splitting them into modules.
+
+### 2.1 Monorepo Structure & Directory Authority
+
+Cursor Must enforce the following directory responsibilities:
+
+* **`apps/web`** (`@flipcoin/web`):
+    * **Target:** End-users (Players).
+    * **Access:** Public internet.
+    * **Constraints:** NO direct DB access. NO direct import of `services/wallet` code.
+
+* **`apps/admin`** (`@flipcoin/admin`):
+    * **Target:** Internal staff only.
+    * **Access:** Private network / VPN only.
+    * **Constraints:** Strict RBAC enforcement.
+
+* **`apps/backend-legacy`** (`@flipcoin/backend-legacy`):
+    * **Status:** Frozen monolith.
+    * **Constraints:** Maintenance only. No new core features (especially Wallet) allowed here.
+
+* **`services/wallet`** (`@flipcoin/service-wallet`):
+    * **Status:** 🛡️ HIGH SECURITY ZONE.
+    * **Constraints:** Logic must be physically isolated. Accessed ONLY via HTTP/gRPC API.
+
+* **`packages/`** (Shared Libraries):
+    * **Content:** Stateless code only (UI components, DB Schemas, Utilities).
+    * **Constraints:** Must not contain business logic bound to a specific app.
+
+### 2.2 Dependency Boundaries (Strict Enforcement)
+
+Cursor Must NOT allow:
+
+* Frontend apps (`web`, `admin`) importing directly from `@flipcoin/database`.
+* Frontend apps importing directly from `services/`.
+* Circular dependencies between `packages/*`.
 
 ## 3. Frontend Rules (Always Enforced)
 
@@ -153,6 +187,7 @@ Before generating code, Cursor must check:
 * RWD structure violations
 * Security violations (money, addresses, admin area)
 * Performance violations (monolithic file creation)
+* Monorepo boundary violations (e.g., Frontend importing DB, Frontend importing services directly)
 
 If any violation detected:
 → Stop generation
