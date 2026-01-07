@@ -51,7 +51,8 @@ class TronCollectionService {
 
         this.kmsService = getKmsInstance();
         this.collectionWallet = null; // 归集钱包（单一）
-        this.gasReserveWallet = null; // 用于启用/补 TRX 的钱包
+        // 注意：gasReserveWallet 功能已停用，系统不再自动激活用户地址
+        this.gasReserveWallet = null; // (已停用) 用于启用/补 TRX 的钱包
         
         this._loadPlatformWallets();
     }
@@ -96,8 +97,9 @@ class TronCollectionService {
     }
 
     /**
-     * @description 检查地址是否已激活
+     * @description 检查地址是否已激活 (已停用，保留用于兼容)
      * @returns {Promise<boolean>} true表示已激活，false表示未激活
+     * @deprecated 系统不再自动激活用户地址
      */
     async _isAddressActivated(address) {
         try {
@@ -122,7 +124,8 @@ class TronCollectionService {
     }
 
     /**
-     * @description 启用用户地址（转 1 TRX）
+     * @description 启用用户地址（转 1 TRX）(已停用，保留用于兼容)
+     * @deprecated 系统不再自动激活用户地址
      */
     async activateAddress(toAddress) {
         if (!this.gasReserveWallet) {
@@ -568,22 +571,7 @@ class TronCollectionService {
                 continue;
             }
             
-            // (★★★ v9.1 新增：检查地址是否已激活，未激活才激活 ★★★)
-            const isActivated = await this._isAddressActivated(user.tron_deposit_address);
-            if (!isActivated) {
-                console.log(`[Collection] Address ${user.tron_deposit_address} is not activated. Activating...`);
-                const activationResult = await this.activateAddress(user.tron_deposit_address);
-                if (!activationResult) {
-                    console.warn(`[Collection] Failed to activate address for user ${user.user_id}. Skipping.`);
-                    skippedCount++;
-                    lastProcessedUserId = user.user_id;
-                    continue;
-                }
-                // 等待激活交易确认
-                await new Promise(resolve => setTimeout(resolve, 5000));
-            } else {
-                console.log(`[Collection] Address ${user.tron_deposit_address} is already activated. Proceeding with collection.`);
-            }
+            // (注意：不再自动激活用户地址，用户需要自行激活或通过其他方式激活)
             
             // 检查能量是否足够（预估）
             const remainingEnergy = currentEnergy - actualEnergyUsed;

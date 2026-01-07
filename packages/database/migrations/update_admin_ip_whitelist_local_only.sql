@@ -1,8 +1,8 @@
 -- 更新管理员 IP 白名单：仅允许本机和同一 WiFi 内网访问
 -- 执行时间：当前
 
--- 删除旧的公网 IP 配置（如果存在）
-DELETE FROM admin_ip_whitelist WHERE ip_range = '125.229.37.48/32';
+-- 注意：不再删除 125.229.37.48/32，因为这是管理员指定的访问 IP
+-- DELETE FROM admin_ip_whitelist WHERE ip_range = '125.229.37.48/32';
 
 -- 确保本地访问配置存在
 INSERT INTO admin_ip_whitelist (ip_range, description) 

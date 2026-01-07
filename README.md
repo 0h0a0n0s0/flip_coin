@@ -6,42 +6,52 @@
 
 ```
 flip_coin/
-├── backend/                    # 后端服务 (Node.js + Express)
-│   ├── routes/                # API 路由
-│   │   └── admin.js           # 后台管理 API
-│   ├── middleware/            # 中间件
-│   │   ├── auth.js            # 身份验证
-│   │   ├── adminIpWhitelistMiddleware.js
-│   │   ├── checkPermissionMiddleware.js
-│   │   ├── ipBlockerMiddleware.js
-│   │   └── rateLimiter.js
-│   ├── services/              # 业务逻辑服务层
-│   │   ├── KmsService.js      # 密钥管理服务
-│   │   ├── TronListener.js    # TRON 链监听
-│   │   ├── TronCollectionService.js  # 归集服务
-│   │   ├── GameOpenerService.js      # 开奖服务
-│   │   ├── BetQueueService.js        # 投注队列
-│   │   ├── PayoutService.js          # 自动出款服务
-│   │   ├── PendingBetProcessor.js   # 待处理投注
-│   │   ├── WalletBalanceMonitor.js  # 钱包余额监控
-│   │   ├── riskControlService.js     # 风控服务
-│   │   ├── auditLogService.js        # 审计日志
-│   │   └── settingsCache.js          # 设置缓存
-│   ├── utils/                 # 工具函数
-│   │   ├── balanceChangeLogger.js
-│   │   ├── gameUtils.js
-│   │   ├── ipUtils.js
-│   │   ├── maskUtils.js
-│   │   └── safeResponse.js
-│   ├── validators/            # 输入验证
-│   │   └── authValidators.js
-│   ├── migrations/            # 数据库迁移脚本
-│   ├── scripts/               # 维护脚本
-│   ├── v1_frontend/          # 旧版前端（已弃用，保留用于兼容）
-│   ├── server.js              # 服务器入口
-│   └── db.js                  # 数据库连接
+├── apps/
+│   ├── web/                   # Vue 3 前端（新）(@flipcoin/web)
+│   ├── admin/                 # 后台管理前端 (@flipcoin/admin)
+│   └── backend-legacy/        # 后端服务 (Node.js + Express) (@flipcoin/backend-legacy)
+│       ├── routes/            # API 路由
+│       │   └── admin.js       # 后台管理 API
+│       ├── middleware/        # 中间件
+│       │   ├── auth.js        # 身份验证
+│       │   ├── adminIpWhitelistMiddleware.js
+│       │   ├── checkPermissionMiddleware.js
+│       │   ├── ipBlockerMiddleware.js
+│       │   └── rateLimiter.js
+│       ├── services/          # 业务逻辑服务层
+│       │   ├── KmsService.js  # 密钥管理服务
+│       │   ├── TronListener.js # TRON 链监听
+│       │   ├── TronCollectionService.js  # 归集服务
+│       │   ├── GameOpenerService.js      # 开奖服务
+│       │   ├── BetQueueService.js        # 投注队列
+│       │   ├── PayoutService.js          # 自动出款服务
+│       │   ├── PendingBetProcessor.js   # 待处理投注
+│       │   ├── WalletBalanceMonitor.js  # 钱包余额监控
+│       │   ├── riskControlService.js     # 风控服务
+│       │   ├── auditLogService.js        # 审计日志
+│       │   └── settingsCache.js          # 设置缓存
+│       ├── utils/             # 工具函数
+│       │   ├── balanceChangeLogger.js
+│       │   ├── gameUtils.js
+│       │   ├── ipUtils.js
+│       │   ├── maskUtils.js
+│       │   └── safeResponse.js
+│       ├── validators/        # 输入验证
+│       │   └── authValidators.js
+│       ├── scripts/           # 维护脚本
+│       ├── v1_frontend/       # 旧版前端（已弃用，保留用于兼容）
+│       └── server.js          # 服务器入口
 │
-├── frontend-vue3/             # Vue 3 前端（新）
+├── packages/
+│   ├── database/              # 数据库连接和迁移 (@flipcoin/database)
+│   │   ├── index.js           # 数据库连接
+│   │   └── migrations/        # 数据库迁移脚本
+│   └── ui/                    # 共享 UI 组件 (@flipcoin/ui)
+│
+├── services/
+│   └── wallet/                # 钱包服务 (@flipcoin/service-wallet)
+│
+├── apps/web/                  # Vue 3 前端（新）
 │   ├── src/
 │   │   ├── api/               # API 请求模块
 │   │   ├── components/         # Vue 组件
@@ -61,7 +71,7 @@ flip_coin/
 │   ├── Dockerfile
 │   └── nginx.conf
 │
-├── admin-ui/                  # 后台管理前端 (Vue.js + Element Plus)
+├── apps/admin/                # 后台管理前端 (Vue.js + Element Plus) (@flipcoin/admin)
 │   ├── src/
 │   │   ├── views/             # 管理页面
 │   │   │   ├── admin/         # 管理员管理
@@ -169,6 +179,218 @@ docker-compose logs -f
 - ✅ 系统设置
 - ✅ 多语系管理
 
+## 💰 用户金流流程
+
+### 1. 钱包地址分配机制
+
+#### 1.1 分配方式
+- **技术实现**: 使用 HD (Hierarchical Deterministic) 钱包派生
+- **主密钥**: 从 `MASTER_MNEMONIC` (环境变量) 派生所有子钱包
+- **派生路径**:
+  - EVM 链 (BSC/ETH/Polygon): `m/44'/60'/0'/0/{index}`
+  - TRON 链: `m/44'/195'/0'/0/{index}`
+
+#### 1.2 索引分配规则
+- **平台保留索引**: 0-1000 (索引 0-1000 保留给平台内部使用)
+- **用户起始索引**: **1001** (新用户从索引 1001 开始分配)
+- **分配逻辑**: 
+  - 注册时调用 `KmsService.getNewDepositWallets()`
+  - 查询数据库中 `deposit_path_index` 的最大值
+  - 新索引 = `MAX(最大索引 + 1, 1001)`
+  - 同时生成 EVM 和 TRON 两个地址
+
+#### 1.3 地址存储
+- 用户注册时，`deposit_path_index`、`evm_deposit_address`、`tron_deposit_address` 写入 `users` 表
+- 私钥不存储，需要时通过 `KmsService.getPrivateKey(chainType, index)` 动态派生
+
+### 2. 用户充值监听机制
+
+#### 2.1 监听方式
+- **服务**: `TronListener.js`
+- **监听频率**: **每 10 秒轮询一次** (`POLLING_INTERVAL_MS = 10000`)
+- **监听范围**: 所有已注册用户的 TRON 充值地址
+
+#### 2.2 监听内容
+1. **TRC20-USDT 充值**:
+   - API: `v1/accounts/{address}/transactions/trc20`
+   - 过滤条件: `only_to=true`, `only_confirmed=true`, `contract_address=USDT_CONTRACT`
+   - USDT 合约地址 (Nile 测试网): `TG3XXyExBkPp9nzdajDZsozEu4BkaSJozs`
+
+2. **TRX 交易记录**:
+   - API: `v1/accounts/{address}/transactions`
+   - 过滤条件: `only_to=true`, `only_confirmed=true`, `TransferContract` 类型
+   - 用途: 仅记录用户收到 TRX 的交易（类型为 `deposit_trx`）
+   - **注意**: 
+     - 仅记录到 `platform_transactions` 表，**不会更新用户余额**
+     - **不会自动激活地址**，用户需要自行激活或通过其他方式激活
+     - 主要用于交易历史记录和审计
+
+#### 2.3 处理流程
+1. 轮询所有用户的 `tron_deposit_address`
+2. 查询每个地址的最近交易（基于时间戳增量查询）
+3. 检查交易是否已处理（查询 `platform_transactions` 表）
+4. 处理新交易:
+   - **TRC20-USDT 充值**:
+     - 更新用户余额 (`users.balance`)
+     - 记录交易流水 (`platform_transactions`, 类型: `deposit`)
+     - 记录账变 (`balance_changes`)
+     - 通过 Socket.IO 实时通知用户
+   - **TRX 交易**:
+     - 仅记录交易流水 (`platform_transactions`, 类型: `deposit_trx`)
+     - **不更新用户余额**（TRX 不是平台支持的充值币种）
+     - **不激活地址**（系统不再自动激活）
+
+#### 2.4 时间戳管理
+- 使用 `lastTrc20PollTimestamp` 和 `lastTrxPollTimestamp` 追踪已查询的时间点
+- 每次轮询后更新时间戳（+1ms 避免重复）
+- 初始查询范围: 过去 10 分钟
+
+### 3. 用户充值地址归集机制
+
+#### 3.1 归集方式
+- **服务**: `TronCollectionService.js`
+- **归集模式**: **Approve + TransferFrom** (双签名模式)
+  - 用户地址执行 `approve()`: 授权归集钱包可转出 USDT（不消耗能量和 TRX）
+  - 归集钱包执行 `transferFrom()`: 实际转出 USDT（消耗能量）
+
+#### 3.2 归集钱包配置
+- **归集钱包**: 从 `platform_wallets` 表读取 `is_collection=true` 的钱包
+- **注意**: 系统不再自动激活用户地址，用户需要自行激活或通过其他方式激活地址
+
+#### 3.3 归集触发条件
+1. **扫描间隔**: 由 `collection_settings.scan_interval_days` 控制（默认按天扫描）
+2. **归集条件** (需同时满足):
+   - 用户 USDT 余额 > 0
+   - 距离上次充值时间 >= `days_without_deposit` 天
+   - 或用户创建时间 >= `days_without_deposit` 天（无充值记录时）
+   - 无 pending 状态的归集记录
+
+#### 3.4 归集执行流程
+1. **检查扫描间隔**: 查询 `collection_cursor` 表，判断是否到达扫描时间
+2. **能量管理**:
+   - 获取归集钱包当前能量
+   - 计算平均能量消耗（从历史 `collection_logs` 统计，默认 35000）
+   - 估算可处理地址数量 = `当前能量 / 平均能量消耗`
+3. **批量处理**:
+   - 按 `user_id` 顺序查询用户（支持断点续传）
+   - 检查每个用户是否符合归集条件
+   - 检查并执行 `approve()`（如果 allowance < balance）
+   - 执行 `transferFrom()` 归集
+   - 记录归集日志到 `collection_logs` 表
+   - **注意**: 系统不再自动激活用户地址，未激活的地址将无法归集
+4. **断点续传**: 使用 `collection_cursor` 记录最后处理的 `user_id`，下次从该位置继续
+
+#### 3.5 能量消耗
+- **归集钱包**: 消耗自己的能量执行 `transferFrom()`
+- **用户地址**: `approve()` 不消耗能量和 TRX（由用户地址签名，但费用为 0）
+- **能量来源**: 归集钱包需要质押 TRX 或购买能量
+
+### 4. 自动出款机制
+
+#### 4.1 出款钱包
+- **出款钱包**: 从 `platform_wallets` 表读取 `is_payout=true` 的钱包
+- **私钥配置**: 通过环境变量 `TRON_PK_{address}` 配置
+- **出款方式**: 直接执行 TRC20-USDT `transfer()` 交易
+
+#### 4.2 自动出款触发条件
+需同时满足以下条件:
+1. **系统设置**: `AUTO_WITHDRAW_THRESHOLD > 0` (在 `system_settings` 表中配置)
+2. **金额限制**: 提款金额 <= `AUTO_WITHDRAW_THRESHOLD`
+3. **链类型**: `chain_type = 'TRC20'` (目前仅支持 TRC20)
+4. **服务就绪**: `PayoutService` 已初始化且钱包已加载
+
+#### 4.3 出款流程
+1. **用户提交提款请求**:
+   - 验证提款密码
+   - 检查余额是否充足
+   - 扣除用户余额
+   - 创建 `withdrawals` 记录
+
+2. **判断是否自动出款**:
+   - 符合条件 → `status = 'processing'`，异步执行链上出款
+   - 不符合条件 → `status = 'pending'`，等待人工审核
+
+3. **自动出款执行** (异步):
+   - 调用 `PayoutService.sendTrc20Payout()`
+   - 构建并签名 TRC20-USDT `transfer()` 交易
+   - 广播交易到链上
+   - 更新 `withdrawals.status = 'completed'` 并记录 `tx_hash`
+   - 如果失败，回退状态为 `pending`，等待人工审核
+
+#### 4.4 交易费用
+- **Gas 费用**: 自动出款使用 TRX 作为 Gas（不消耗能量）
+- **费用限额**: `feeLimit = 15000000` (15 TRX)
+- **费用来源**: 出款钱包需持有足够的 TRX
+
+### 5. 质押能量与交易费用
+
+#### 5.1 能量使用场景
+1. **归集交易** (`transferFrom`):
+   - 归集钱包消耗自己的能量
+   - 平均消耗: ~35000 能量/笔
+   - 能量来源: 归集钱包质押 TRX 或购买能量
+
+2. **用户地址激活**:
+   - Gas 储备钱包转 1 TRX 给用户地址
+   - 消耗 TRX（非能量）
+
+#### 5.2 TRX 使用场景
+1. **自动出款** (`transfer`):
+   - 出款钱包消耗 TRX 作为 Gas
+   - 费用限额: 15 TRX/笔
+
+2. **地址激活**:
+   - **注意**: 系统不再自动激活用户地址，用户需要自行激活或通过其他方式激活
+
+#### 5.3 钱包角色分工
+- **归集钱包** (`is_collection=true`): 执行归集，消耗能量
+- **出款钱包** (`is_payout=true`): 执行自动出款，消耗 TRX
+- **注意**: `Gas 储备钱包` 功能已移除，系统不再自动激活用户地址
+
+### 6. 潜在缺陷与改进建议
+
+#### 6.1 充值监听
+- ⚠️ **缺陷**: 轮询频率固定 10 秒，高峰期可能延迟
+  - **建议**: 考虑使用 WebSocket 事件监听（如果节点支持）
+- ⚠️ **缺陷**: 仅监听 TRON 链，EVM 链（BSC/ETH/Polygon）未实现
+  - **建议**: 实现 EVM 链的监听服务
+- ⚠️ **缺陷**: 时间戳管理可能因服务重启丢失
+  - **建议**: 将时间戳持久化到数据库
+
+#### 6.2 归集机制
+- ⚠️ **缺陷**: 能量不足时停止处理，可能导致部分用户长期未归集
+  - **建议**: 实现能量监控和自动补充机制
+- ⚠️ **缺陷**: `approve()` 失败时跳过用户，无重试机制
+  - **建议**: 实现失败重试队列
+- ⚠️ **缺陷**: 扫描间隔固定，无法根据业务需求动态调整
+  - **建议**: 支持按用户等级或余额设置不同的归集策略
+
+#### 6.3 自动出款
+- ⚠️ **缺陷**: 仅支持 TRC20，其他链未实现
+  - **建议**: 实现 BSC/ETH/Polygon 的自动出款
+- ⚠️ **缺陷**: 出款失败后回退为人工审核，无自动重试
+  - **建议**: 实现失败重试机制（如余额不足时等待充值后重试）
+- ⚠️ **缺陷**: 无出款钱包余额监控
+  - **建议**: 实现余额监控和低余额告警
+
+#### 6.4 地址分配
+- ⚠️ **缺陷**: 索引分配无并发控制，高并发注册可能分配重复索引
+  - **建议**: 使用数据库事务和锁机制确保索引唯一性
+- ⚠️ **缺陷**: 平台保留索引范围（0-1000）硬编码，无法配置
+  - **建议**: 将保留范围配置化
+
+#### 6.5 安全性
+- ⚠️ **缺陷**: 主密钥 (`MASTER_MNEMONIC`) 存储在环境变量，需确保安全
+  - **建议**: 使用密钥管理服务（KMS）或硬件安全模块（HSM）
+- ⚠️ **缺陷**: 私钥在内存中动态派生，需确保服务进程安全
+  - **建议**: 实现私钥加密存储和访问控制
+
+#### 6.6 监控与告警
+- ⚠️ **缺陷**: 缺乏关键指标监控（充值延迟、归集成功率、出款失败率）
+  - **建议**: 集成监控系统（如 Prometheus + Grafana）
+- ⚠️ **缺陷**: 无异常告警机制
+  - **建议**: 实现邮件/短信/Webhook 告警
+
 ## 🔒 安全特性
 
 - ✅ IP 白名单（后台管理）
@@ -197,7 +419,7 @@ docker-compose logs -f
 ### 前端开发
 
 ```bash
-cd frontend-vue3
+cd apps/web
 npm install
 npm run dev
 ```
@@ -205,7 +427,7 @@ npm run dev
 ### 后端开发
 
 ```bash
-cd backend
+cd apps/backend-legacy
 npm install
 npm start
 ```
@@ -214,19 +436,19 @@ npm start
 
 ```bash
 # 使用 Node.js 脚本
-cd backend
+cd apps/backend-legacy
 node scripts/run-migration.js <migration-file.sql>
 
 # 或直接使用 Docker
-docker exec -i flipcoin-db psql -U game_user -d flipcoin_db < backend/migrations/<migration-file.sql>
+docker exec -i flipcoin-db psql -U game_user -d flipcoin_db < packages/database/migrations/<migration-file.sql>
 ```
 
 ## 📚 文档
 
 - [项目宪法](./PROJECT_CONSTITUTION.md) - 开发规范
 - [变更日志](./CHANGELOG.md) - 版本变更记录
-- [前端部署指南](./frontend-vue3/DEPLOYMENT.md) - 前端部署说明
-- [多语系设置](./frontend-vue3/I18N_SETUP.md) - 多语系配置指南
+- [前端部署指南](./apps/web/DEPLOYMENT.md) - 前端部署说明
+- [多语系设置](./apps/web/I18N_SETUP.md) - 多语系配置指南
 
 ## ⚠️ 注意事项
 

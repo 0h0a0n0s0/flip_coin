@@ -1,7 +1,7 @@
-// backend/utils/balanceChangeLogger.js
+// apps/backend-legacy/utils/balanceChangeLogger.js
 // 账变记录工具函数
 
-const db = require('../db.js');
+const db = require('@flipcoin/database');
 
 /**
  * 记录账变

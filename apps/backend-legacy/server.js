@@ -1,4 +1,4 @@
-// backend/server.js
+// apps/backend-legacy/server.js
 
 require('dns').setDefaultResultOrder('ipv4first');
 

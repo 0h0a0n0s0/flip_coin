@@ -3,19 +3,23 @@
 services:
   # 後端 API 服務
   api:
-    build: ./backend 
+    build:
+      context: .
+      dockerfile: ./apps/backend-legacy/Dockerfile
     container_name: flipcoin-api
     ports:
       - "3000:3000" 
     volumes:
-      - ./backend:/usr/src/app
+      - ./apps/backend-legacy:/usr/src/app/apps/backend-legacy
+      - ./packages:/usr/src/app/packages
       - /usr/src/app/node_modules
-      - ./index.html:/usr/src/app/v1_frontend/index.html
-      - ./app.js:/usr/src/app/v1_frontend/app.js
-      - ./style.css:/usr/src/app/v1_frontend/style.css
-      - ./modules:/usr/src/app/v1_frontend/modules
-      - ./403.html:/usr/src/app/v1_frontend/403.html
-      - ./frontend-vue3/src/locales:/usr/src/app/frontend-vue3/src/locales
+      - /usr/src/app/apps/backend-legacy/node_modules
+      - ./index.html:/usr/src/app/apps/backend-legacy/v1_frontend/index.html
+      - ./app.js:/usr/src/app/apps/backend-legacy/v1_frontend/app.js
+      - ./style.css:/usr/src/app/apps/backend-legacy/v1_frontend/style.css
+      - ./modules:/usr/src/app/apps/backend-legacy/v1_frontend/modules
+      - ./403.html:/usr/src/app/apps/backend-legacy/v1_frontend/403.html
+      - ./apps/web/src/locales:/usr/src/app/apps/backend-legacy/frontend-vue3/src/locales
     dns:
       - 8.8.8.8
       - 1.1.1.1  
@@ -54,14 +58,18 @@ services:
 
   # 後台前端 UI 服務
   admin-ui:
-    build: ./admin-ui 
+    build:
+      context: .
+      dockerfile: ./apps/admin/Dockerfile
     container_name: flipcoin-admin-ui
     # 不直接暴露端口，由 Nginx 代理
     restart: unless-stopped
 
   # Vue 3 前端服務
   frontend-vue3:
-    build: ./frontend-vue3
+    build:
+      context: .
+      dockerfile: ./apps/web/Dockerfile
     container_name: flipcoin-frontend-vue3
     # 不直接暴露端口，由 nginx 代理
     restart: unless-stopped

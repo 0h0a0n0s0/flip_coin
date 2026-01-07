@@ -19,7 +19,7 @@ async function runMigration() {
     
     try {
         console.log(`[Migration] Reading migration file: ${migrationFile}`);
-        const migrationPath = path.resolve(__dirname, '..', 'migrations', migrationFile);
+        const migrationPath = path.resolve(__dirname, '..', '..', '..', 'packages', 'database', 'migrations', migrationFile);
         const sql = fs.readFileSync(migrationPath, 'utf8');
         
         console.log('[Migration] Executing migration...');

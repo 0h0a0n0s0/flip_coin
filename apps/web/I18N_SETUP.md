@@ -63,7 +63,7 @@ const message = t('common.success')
 ## 📁 文件结构
 
 ```
-frontend-vue3/
+apps/web/
 ├── src/
 │   ├── locales/
 │   │   ├── en.json          # 英文翻译
