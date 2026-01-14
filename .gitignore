@@ -1,26 +1,59 @@
 # 環境變數檔案 (包含私鑰、RPC URL 等)
 .env
+.env.local
+.env.*.local
+.env.development.local
+.env.test.local
+.env.production.local
 
 # Node.js 依賴資料夾 (非常龐大，不需要上傳)
-backend/node_modules/
+# 通用規則 - 覆蓋所有位置
+node_modules/
+**/node_modules/
+
+# Monorepo 特定的 node_modules
+apps/*/node_modules/
+packages/*/node_modules/
+services/*/node_modules/
+
+# 建構輸出目錄
+dist/
+**/dist/
+apps/*/dist/
+packages/*/dist/
+services/*/dist/
+
+# 緩存目錄
+.cache/
+**/.cache/
+node_modules/.cache/
+
+# Lock 文件 (項目使用 pnpm，這些不應該被跟踪)
+package-lock.json
+yarn.lock
+**/package-lock.json
+**/yarn.lock
+
+# 日誌文件
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
 
 # 作業系統產生的檔案
 .DS_Store
 Thumbs.db
 
-# IDE 或編輯器設定檔 (例如 VS Code)
+# IDE 或編輯器設定檔
 .vscode/
+.idea/
+*.swp
+*.swo
+*~
 
 # Docker Volume 資料 (通常不需要上傳，除非有特殊需求)
-# 如果您未來有其他 volume，也加進來
 # postgres_data/ # (通常 Docker volume 不在專案目錄下，但以防萬一)
 
-# 建構輸出或日誌檔 (如果有的話)
-# build/
-# dist/
-# *.log
-
-# (★★★ v2 新增 ★★★)
-admin-ui/node_modules/
-admin-ui/dist/
-admin-ui/vue.config.js # (如果您不希望 .env 檔案 被上傳)
+# Source Maps (如果不在 node_modules 中)
+*.map
