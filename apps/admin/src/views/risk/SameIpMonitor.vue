@@ -89,8 +89,15 @@ export default {
       this.loading = true;
       try {
         const response = await getSameIpSummary();
-        this.threshold = response.threshold ?? '-';
-        this.ipList = response.list || [];
+        // (★★★ 修復：後端使用標準響應格式 { success: true, data: { threshold, list } } ★★★)
+        if (response && response.success && response.data) {
+            this.threshold = response.data.threshold ?? '-';
+            this.ipList = response.data.list || [];
+        } else {
+            // 向後兼容：如果沒有標準格式，直接使用 response
+            this.threshold = response.threshold ?? '-';
+            this.ipList = response.list || [];
+        }
       } catch (error) {
         console.error('Failed to fetch same IP summary:', error);
         ElMessage.error('载入同 IP 风控资料失败');
@@ -113,7 +120,13 @@ export default {
       this.detailDialog.users = [];
       try {
         const response = await getUsersByIp(row.ip_address);
-        this.detailDialog.users = response.list || [];
+        // (★★★ 修復：後端使用標準響應格式 { success: true, data: { list } } ★★★)
+        if (response && response.success && response.data) {
+            this.detailDialog.users = response.data.list || [];
+        } else {
+            // 向後兼容：如果沒有標準格式，直接使用 response
+            this.detailDialog.users = response.list || [];
+        }
       } catch (error) {
         console.error('Failed to fetch users by IP:', error);
         ElMessage.error('载入用户详情失败');

@@ -30,7 +30,15 @@ export function useAuth() {
 
     loading.value = true
     try {
-      const { user, token } = await api.register(username, password)
+      const response = await api.register(username, password)
+      // (★★★ 修復：適配標準 API 響應格式 { success: true, data: { user, token } } ★★★)
+      const data = (response && response.success && response.data) ? response.data : response
+      const { user, token } = data
+      
+      if (!user || !token) {
+        throw new Error('註冊響應格式錯誤')
+      }
+      
       notifySuccess(t('notifications.register_success'))
       
       setToken(token)
@@ -60,7 +68,15 @@ export function useAuth() {
     
     loading.value = true
     try {
-      const { user, token } = await api.login(username, password)
+      const response = await api.login(username, password)
+      // (★★★ 修復：適配標準 API 響應格式 { success: true, data: { user, token } } ★★★)
+      const data = (response && response.success && response.data) ? response.data : response
+      const { user, token } = data
+      
+      if (!user || !token) {
+        throw new Error('登入響應格式錯誤')
+      }
+      
       notifySuccess(t('notifications.login_success'))
       
       setToken(token)
@@ -104,7 +120,9 @@ export function useAuth() {
    */
   async function fetchUserInfo(token) {
     try {
-      const user = await api.getUserInfo(token)
+      const response = await api.getUserInfo(token)
+      // (★★★ 修復：適配標準 API 響應格式 { success: true, data: user } ★★★)
+      const user = (response && response.success && response.data) ? response.data : response
       setCurrentUser(user)
     } catch (error) {
       console.error('Auto-login failed:', error.message)

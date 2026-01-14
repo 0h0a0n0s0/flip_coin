@@ -209,8 +209,16 @@ export default {
        async fetchAccounts() {
             this.loading = true;
             try { 
-                // (API 現在会返回 role_name)
-                this.tableData = await this.$api.getAdminAccounts(); 
+                const response = await this.$api.getAdminAccounts();
+                // (★★★ 修復：後端使用標準響應格式 { success: true, data: [...] } ★★★)
+                if (response && response.success && response.data) {
+                    this.tableData = Array.isArray(response.data) ? response.data : [];
+                } else if (Array.isArray(response)) {
+                    // 向後兼容：如果直接是數組
+                    this.tableData = response;
+                } else {
+                    this.tableData = [];
+                }
             } 
             catch (error) { console.error('Failed to fetch admin accounts:', error); }
             finally { this.loading = false; }
@@ -218,7 +226,16 @@ export default {
        // (★★★ Y-27: 新增：获取角色列表 ★★★)
        async fetchRolesList() {
            try {
-               this.rolesList = await this.$api.getRoles();
+               const response = await this.$api.getRoles();
+               // (★★★ 修復：後端使用標準響應格式 { success: true, data: [...] } ★★★)
+               if (response && response.success && response.data) {
+                   this.rolesList = Array.isArray(response.data) ? response.data : [];
+               } else if (Array.isArray(response)) {
+                   // 向後兼容：如果直接是數組
+                   this.rolesList = response;
+               } else {
+                   this.rolesList = [];
+               }
            } catch (error) {
                console.error('Failed to fetch roles list:', error);
                ElMessage.error('無法载入权限组列表');

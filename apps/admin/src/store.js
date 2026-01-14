@@ -15,9 +15,11 @@ const permissionsStore = reactive({
     if (this.isLoaded) return; // (★★★ 2. 防止重复加载 ★★★)
     try {
       const perms = await api.getMyPermissions();
-      this.permissions = perms;
+      // (★★★ 修復：後端使用標準響應格式 { success: true, data: {...} } ★★★)
+      // request.js 攔截器返回 response.data，所以 perms = { success: true, data: {...} }
+      this.permissions = (perms && perms.success && perms.data) ? perms.data : perms;
       this.isLoaded = true; // (★★★ 3. 标记为已加载 ★★★)
-      console.log('[RBAC Store] Permissions loaded.');
+      console.log('[RBAC Store] Permissions loaded:', this.permissions);
     } catch (error) {
       console.error('[RBAC Store] Failed to load permissions:', error);
       this.permissions = {};

@@ -134,7 +134,16 @@ export default {
        async fetchLevels() {
             this.loading = true;
             try {
-                this.tableData = await this.$api.getUserLevels();
+                const response = await this.$api.getUserLevels();
+                // (★★★ 修復：後端使用標準響應格式 { success: true, data: [...] } ★★★)
+                if (response && response.success && response.data) {
+                    this.tableData = Array.isArray(response.data) ? response.data : [];
+                } else if (Array.isArray(response)) {
+                    // 向後兼容：如果直接是數組
+                    this.tableData = response;
+                } else {
+                    this.tableData = [];
+                }
             } catch (error) { console.error('Failed to fetch user levels:', error); }
             finally { this.loading = false; }
        },

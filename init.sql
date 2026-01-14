@@ -154,6 +154,11 @@ CREATE TABLE platform_wallets (
     is_opener_a BOOLEAN NOT NULL DEFAULT false,
     is_opener_b BOOLEAN NOT NULL DEFAULT false,
     is_payout BOOLEAN NOT NULL DEFAULT false,
+    is_energy_provider BOOLEAN NOT NULL DEFAULT false,
+    max_energy_limit BIGINT DEFAULT NULL,
+    current_staked_trx NUMERIC(20, 6) DEFAULT 0,
+    current_index INT NOT NULL DEFAULT 0,
+    encrypted_mnemonic TEXT,
     is_active BOOLEAN NOT NULL DEFAULT true,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
@@ -292,11 +297,15 @@ VALUES ('DEFAULT_LANGUAGE', 'zh-CN', '默认语言 (zh-CN: 简体中文, en-US: 
 INSERT INTO system_settings (key, value, description, category) 
 VALUES ('SUPPORTED_LANGUAGES', '["zh-CN","en-US"]', '支持的语言列表 (JSON 数组)', 'I18n');
 
+INSERT INTO system_settings (key, value, description, category) 
+VALUES ('PLATFORM_NAME', 'FlipCoin', '平台名稱', 'General');
+
 -- 4. 插入本地 IP 到白名單（仅允许本机和同一 WiFi 内网访问）
 INSERT INTO admin_ip_whitelist (ip_range, description) VALUES ('127.0.0.1/32', 'Localhost Access');
 INSERT INTO admin_ip_whitelist (ip_range, description) VALUES ('::1/128', 'Localhost IPv6 Access');
 INSERT INTO admin_ip_whitelist (ip_range, description) VALUES ('192.168.50.0/24', 'Same WiFi Network (192.168.50.x)');
 INSERT INTO admin_ip_whitelist (ip_range, description) VALUES ('192.168.65.1/32', 'Docker Host IP (Local Dev)');
+INSERT INTO admin_ip_whitelist (ip_range, description) VALUES ('125.229.37.48/32', 'Admin IP (125.229.37.48)');
 
 -- 建立 withdrawals (新表格)
 CREATE TABLE withdrawals (
@@ -361,6 +370,46 @@ CREATE TABLE collection_cursor (
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     UNIQUE(collection_wallet_address)
 );
+
+-- ----------------------------
+-- 建立 collection_retry_queue (歸集重試隊列表)
+-- ----------------------------
+CREATE TABLE collection_retry_queue (
+    id SERIAL PRIMARY KEY,
+    user_id VARCHAR(8) NOT NULL,
+    retry_count INT NOT NULL DEFAULT 0,
+    next_retry_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    error_reason TEXT NULL,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX idx_collection_retry_queue_user_id ON collection_retry_queue(user_id);
+CREATE INDEX idx_collection_retry_queue_next_retry_at ON collection_retry_queue(next_retry_at);
+CREATE INDEX idx_collection_retry_queue_retry_count ON collection_retry_queue(retry_count);
+
+-- ----------------------------
+-- 建立 energy_rentals (能量租赁记录表)
+-- ----------------------------
+CREATE TABLE energy_rentals (
+    id SERIAL PRIMARY KEY,
+    provider_address VARCHAR(255) NOT NULL,
+    receiver_address VARCHAR(255) NOT NULL,
+    energy_amount BIGINT NOT NULL,
+    status VARCHAR(20) NOT NULL DEFAULT 'ACTIVE' CHECK (status IN ('ACTIVE', 'RECLAIMED', 'FAILED')),
+    tx_id VARCHAR(255),
+    related_task_id VARCHAR(100),
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    reclaimed_at TIMESTAMP WITH TIME ZONE,
+    error_message TEXT,
+    FOREIGN KEY (provider_address) REFERENCES platform_wallets(address) ON DELETE CASCADE,
+    FOREIGN KEY (receiver_address) REFERENCES platform_wallets(address) ON DELETE CASCADE
+);
+
+CREATE INDEX idx_energy_rentals_provider ON energy_rentals(provider_address);
+CREATE INDEX idx_energy_rentals_receiver ON energy_rentals(receiver_address);
+CREATE INDEX idx_energy_rentals_status ON energy_rentals(status);
+CREATE INDEX idx_energy_rentals_task_id ON energy_rentals(related_task_id);
+CREATE INDEX idx_energy_rentals_created_at ON energy_rentals(created_at DESC);
 
 -- ----------------------------
 -- 建立 admin_audit_logs (後台操作稽核)
@@ -441,6 +490,17 @@ CREATE TABLE tron_notifications (
 CREATE INDEX idx_tron_notifications_resolved ON tron_notifications(resolved);
 CREATE INDEX idx_tron_notifications_type ON tron_notifications(type);
 CREATE INDEX idx_tron_notifications_created_at ON tron_notifications(created_at DESC);
+
+-- ----------------------------
+-- 建立 blockchain_sync_status (區塊鏈同步狀態表)
+-- ----------------------------
+CREATE TABLE blockchain_sync_status (
+    chain VARCHAR(50) PRIMARY KEY, -- 區塊鏈名稱，如 'TRON', 'BSC' 等
+    last_scanned_block BIGINT NOT NULL DEFAULT 0, -- 最後掃描的區塊高度
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX idx_blockchain_sync_status_chain ON blockchain_sync_status(chain);
 
 -- ----------------------------
 -- 建立 games (游戏管理表)

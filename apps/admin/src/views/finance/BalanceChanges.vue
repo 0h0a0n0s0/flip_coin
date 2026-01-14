@@ -140,8 +140,15 @@ export default {
         }
 
         const response = await this.$api.getBalanceChanges(params);
-        this.tableData = response.list;
-        this.totalItems = response.total;
+        // (★★★ 修復：後端使用標準響應格式 { success: true, data: { total, list } } ★★★)
+        if (response && response.success && response.data) {
+            this.tableData = response.data.list || [];
+            this.totalItems = response.data.total || 0;
+        } else {
+            // 向後兼容：如果沒有標準格式，直接使用 response
+            this.tableData = response.list || [];
+            this.totalItems = response.total || 0;
+        }
       } catch (error) {
         console.error('Failed to fetch balance changes:', error);
         this.$message.error('获取账变记录失败');

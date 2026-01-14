@@ -137,10 +137,26 @@ const { handleSubmitWithdrawal, copyAddress, loading } = useWallet()
 watch(() => props.modelValue, (val) => {
   dialogVisible.value = val
   if (val && currentUser.value) {
-    // 加载钱包地址（需要从 API 获取）
-    walletAddress.value = currentUser.value.tron_address || ''
+    updateWalletAddress()
   }
 })
+
+// (★★★ 新增：監聽鏈類型變化，動態更新地址 ★★★)
+watch(selectedChain, () => {
+  if (dialogVisible.value && currentUser.value) {
+    updateWalletAddress()
+  }
+})
+
+function updateWalletAddress() {
+  if (!currentUser.value) return
+  // (★★★ 修復：使用正確的字段名 tron_deposit_address 和 evm_deposit_address，並根據選中的鏈類型動態切換 ★★★)
+  if (selectedChain.value === 'TRC20') {
+    walletAddress.value = currentUser.value.tron_deposit_address || ''
+  } else {
+    walletAddress.value = currentUser.value.evm_deposit_address || ''
+  }
+}
 
 watch(dialogVisible, (val) => {
   emit('update:modelValue', val)

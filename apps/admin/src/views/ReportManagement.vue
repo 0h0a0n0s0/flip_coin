@@ -167,7 +167,13 @@ export default {
         };
 
         const response = await this.$api.getProfitLossReport(params);
-        this.reportData = response;
+        // (★★★ 修復：後端使用標準響應格式 { success: true, data: {...} } ★★★)
+        if (response && response.success && response.data) {
+          this.reportData = response.data;
+        } else {
+          // 向後兼容：如果沒有標準格式，直接使用 response
+          this.reportData = response;
+        }
 
       } catch (error) {
         console.error('Failed to fetch profit-loss report:', error);

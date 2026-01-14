@@ -108,8 +108,9 @@ function openRegister() {
 
 onMounted(async () => {
   try {
-    const data = await api.getPlatformName()
-    platformName.value = data.platform_name || 'FairHash'
+    // (★★★ 修復：getPlatformName 已經處理標準格式，直接返回字符串 ★★★)
+    const name = await api.getPlatformName()
+    platformName.value = name || 'FairHash'
     document.title = platformName.value
   } catch (error) {
     console.error('Failed to load platform name:', error)

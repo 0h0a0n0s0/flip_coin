@@ -16,14 +16,24 @@ function sanitizeMessage(message) {
     return sanitized;
 }
 
-function sendError(res, status = 500, message = DEFAULT_ERROR_MESSAGE) {
+function sendError(res, status = 500, message = DEFAULT_ERROR_MESSAGE, extraFields = {}) {
     return res.status(status).json({
-        error: sanitizeMessage(message)
+        success: false,
+        error: sanitizeMessage(message),
+        ...extraFields
+    });
+}
+
+function sendSuccess(res, data, status = 200) {
+    return res.status(status).json({
+        success: true,
+        data: data
     });
 }
 
 module.exports = {
     sendError,
+    sendSuccess,
     sanitizeMessage,
     DEFAULT_ERROR_MESSAGE
 };

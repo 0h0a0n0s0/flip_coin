@@ -3,6 +3,7 @@
 const TronWeb = require('tronweb');
 const db = require('@flipcoin/database');
 const util = require('util');
+const { getAlertInstance } = require('./AlertService');
 
 // (从 .env 读取节点)
 const NILE_NODE_HOST = process.env.NILE_NODE_HOST;
@@ -50,6 +51,9 @@ class PayoutService {
 
         this.payoutWallet = null; // (目前只支援一個出款钱包)
         this._loadPromise = null; // (用于追蹤载入狀态)
+        this.alertService = getAlertInstance(); // (★★★ v9.0 新增：警報服務 ★★★)
+        this.lastLowBalanceAlertTime = null; // (用於防止重複警報)
+        this.LOW_BALANCE_THRESHOLD = parseFloat(process.env.PAYOUT_LOW_BALANCE_THRESHOLD || '100'); // 默認 100 USDT
         
         // (★★★ v8.1 修改：不在此处调用異步方法，改为在需要时调用 ★★★)
         // this._loadPayoutWallets();
@@ -114,7 +118,41 @@ class PayoutService {
     }
 
     /**
-     * @description 执行 TRC20-USDT 转帐
+     * @description 檢查出款錢包餘額
+     * @private
+     */
+    async _checkPayoutWalletBalance() {
+        if (!this.payoutWallet) {
+            return null;
+        }
+        
+        try {
+            const walletAddressHex = this.tronWeb.address.toHex(this.payoutWallet.address);
+            const transaction = await this.tronWeb.transactionBuilder.triggerConstantContract(
+                this.usdtContractHex,
+                'balanceOf(address)',
+                {},
+                [{ type: 'address', value: walletAddressHex }],
+                walletAddressHex
+            );
+
+            if (!transaction || !transaction.constant_result || !transaction.constant_result[0]) {
+                throw new Error('balanceOf call failed: No constant_result');
+            }
+            
+            const balance = '0x' + transaction.constant_result[0];
+            const balanceBigInt = BigInt(balance);
+            const balanceUSDT = Number(balanceBigInt) / (10**USDT_DECIMALS);
+            
+            return balanceUSDT;
+        } catch (error) {
+            console.error('[v8 Payout] Failed to check wallet balance:', error.message);
+            return null;
+        }
+    }
+
+    /**
+     * @description 執行 TRC20-USDT 轉帳
      * @param {object} withdrawalRequest - { id, chain_type, address (recipient), amount }
      * @returns {Promise<string>} 交易 Hash
      */
@@ -125,7 +163,7 @@ class PayoutService {
             throw new Error(`Auto-payout for chain ${chain_type} is not supported.`);
         }
         
-        // (★★★ v8.1 修改：确保钱包已载入 ★★★)
+        // (★★★ v8.1 修改：確保錢包已載入 ★★★)
         await this.ensureWalletsLoaded();
         
         if (!this.payoutWallet) {
@@ -134,6 +172,24 @@ class PayoutService {
 
         const wallet = this.payoutWallet;
         console.log(`[v8 Payout] Attempting payout for WID-${id}: ${amount} USDT to ${recipientAddress} from ${wallet.address}`);
+        
+        // (★★★ v9.0 新增：檢查餘額並發送警報 ★★★)
+        const balance = await this._checkPayoutWalletBalance();
+        if (balance !== null && balance < this.LOW_BALANCE_THRESHOLD) {
+            const now = Date.now();
+            // 防止重複警報（每小時最多一次）
+            if (!this.lastLowBalanceAlertTime || (now - this.lastLowBalanceAlertTime) > 3600000) {
+                await this.alertService.sendCritical(
+                    `出款錢包餘額不足！\n\n` +
+                    `地址: ${wallet.address}\n` +
+                    `當前餘額: ${balance.toFixed(2)} USDT\n` +
+                    `閾值: ${this.LOW_BALANCE_THRESHOLD} USDT\n` +
+                    `請立即充值！`,
+                    { extra: `出款請求 ID: ${id}` }
+                );
+                this.lastLowBalanceAlertTime = now;
+            }
+        }
         
         try {
             this.tronWeb.setPrivateKey(wallet.privateKey);

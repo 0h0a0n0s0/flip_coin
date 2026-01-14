@@ -157,13 +157,13 @@ function handlePlay(e) {
 .game-card-thumbnail {
   position: relative;
   width: 100%;
-  height: 105px;
+  height: 95px;
   overflow: hidden;
 }
 
 @media (min-width: 768px) {
   .game-card-thumbnail {
-    height: 115px;
+    height: 132px;
   }
 }
 
@@ -267,7 +267,7 @@ function handlePlay(e) {
 }
 
 .game-card-info {
-  padding: var(--space-2);
+  padding: var(--space-2) var(--space-3);
   display: flex;
   flex-direction: column;
   gap: var(--space-1);
@@ -281,11 +281,11 @@ function handlePlay(e) {
 }
 
 .game-title {
-  font-size: 12px;
+  font-size: 13px;
   font-weight: 600;
   color: var(--foreground);
   margin: 0;
-  line-height: 1.2;
+  line-height: 1.3;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -293,7 +293,7 @@ function handlePlay(e) {
 }
 
 .game-provider {
-  font-size: 10px;
+  font-size: 11px;
   color: var(--text-muted);
   margin: 0;
   overflow: hidden;

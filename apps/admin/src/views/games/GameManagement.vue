@@ -297,9 +297,18 @@ export default {
         });
         
         const response = await this.$api.getGames(params);
-        if (response.data) {
+        // (★★★ 修復：後端使用標準響應格式 { success: true, data: { total, list } } ★★★)
+        if (response && response.success && response.data) {
           this.tableData = response.data.list || [];
           this.totalItems = response.data.total || 0;
+        } else if (response && response.data) {
+          // 向後兼容：如果沒有 success 標記，但有 data
+          this.tableData = response.data.list || [];
+          this.totalItems = response.data.total || 0;
+        } else {
+          // 向後兼容：如果沒有標準格式，直接使用 response
+          this.tableData = response.list || [];
+          this.totalItems = response.total || 0;
         }
       } catch (error) {
         console.error('Failed to fetch games:', error);

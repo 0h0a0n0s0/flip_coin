@@ -5,6 +5,7 @@ const db = require('@flipcoin/database');
 const util = require('util');
 const axios = require('axios'); // (★★★ v8.48 新增 ★★★)
 const { logBalanceChange, CHANGE_TYPES } = require('../utils/balanceChangeLogger');
+const { getAlertInstance } = require('./AlertService');
 
 // (★★★ v8.49 修正：从 .env 读取 Listener 节点 ★★★)
 const NILE_LISTENER_HOST = process.env.NILE_LISTENER_HOST;
@@ -22,8 +23,10 @@ const DEFAULT_USDT_CONTRACT = 'TG3XXyExBkPp9nzdajDZsozEu4BkaSJozs';
 const USDT_CONTRACT_ADDRESS = process.env.USDT_CONTRACT_ADDRESS || DEFAULT_USDT_CONTRACT; 
 const USDT_DECIMALS = 6; 
 const TRX_DECIMALS = 6;
-const POLLING_INTERVAL_MS = 10000; 
+const POLLING_INTERVAL_MS = 10000; // 默認輪詢間隔：10秒
+const CATCHUP_INTERVAL_MS = 3000; // 發現交易時的快速輪詢間隔：3秒
 const TRONGRID_API_KEY = process.env.TRONGRID_API_KEY || process.env.TRON_PRO_API_KEY || null;
+const CHAIN_NAME = 'TRON'; // 區塊鏈名稱，用於 blockchain_sync_status 表
 
 // (日志辅助函数)
 function logPollError(error, context) {
@@ -63,13 +66,28 @@ class TronListener {
         });
 
         this.isPolling = false; 
-        this.lastTrc20PollTimestamp = Date.now() - (10 * 60 * 1000); // (预设查询过去 10 分钟)
+        this.lastTrc20PollTimestamp = Date.now() - (10 * 60 * 1000); // (保留用於向後兼容)
         this.lastTrxPollTimestamp = Date.now() - (10 * 60 * 1000);
         
+        // (★★★ 新增：區塊掃描相關狀態 ★★★)
+        this.lastScannedBlock = null; // 最後掃描的區塊高度
+        this.currentPollingInterval = POLLING_INTERVAL_MS; // 當前輪詢間隔
+        this.pollingTimer = null; // 輪詢定時器
+        this.transactionFoundInLastScan = false; // 上次掃描是否發現交易
+        
+        // (★★★ v9.0 新增：警報服務和大額充值閾值 ★★★)
+        this.alertService = getAlertInstance();
+        this.LARGE_DEPOSIT_THRESHOLD = parseFloat(process.env.LARGE_DEPOSIT_THRESHOLD || '1000'); // 默認 1000 USDT
+        
         // (★★★ v8.49 修正：建立 axios 實例，指向 Listener 节点 ★★★)
+        // (★★★ v9.1 優化：從環境變量讀取超時配置，支持重試機制 ★★★)
+        const API_TIMEOUT = parseInt(process.env.TRON_API_TIMEOUT || '60000');
+        const MAX_RETRIES = parseInt(process.env.TRON_API_MAX_RETRIES || '3');
+        this.maxRetries = MAX_RETRIES;
+        
         this.axiosInstance = axios.create({
             baseURL: NILE_LISTENER_HOST,
-            timeout: 60000, // (增加 timeout 从 10 秒到 60 秒)
+            timeout: API_TIMEOUT,
             headers: TRONGRID_API_KEY ? { 'TRON-PRO-API-KEY': TRONGRID_API_KEY } : {},
             // (GetBlock 节点不需要 API Key 在 Header 中，因为它在 URL 里)
             // (增加重試和错误处理)
@@ -78,26 +96,242 @@ class TronListener {
             }
         });
 
+        // (★★★ 修復：正確識別節點類型 ★★★)
+        let nodeType = 'Unknown';
         if (NILE_LISTENER_HOST.includes('getblock.io')) {
+            nodeType = 'GetBlock.io';
             console.warn(`[v7-Poll] WARNING: Detected GetBlock endpoint for NILE_LISTENER_HOST. TronGrid v1 routes (/v1/...) may return 404 on GetBlock. Prefer https://nile.trongrid.io or another TronGrid-compatible host for listener polling.`);
+        } else if (NILE_LISTENER_HOST.includes('trongrid.io')) {
+            nodeType = 'TronGrid';
+        } else if (NILE_LISTENER_HOST.includes('nile')) {
+            nodeType = 'Nile Testnet';
         }
 
         // (★★★ v8.49 修改日志 ★★★)
-        console.log(`✅ [v7-Poll] TronListener.js (NILE TESTNET) initialized (v8.49 Manual Axios Logic / GetBlock Node).`);
+        console.log(`✅ [v7-Poll] TronListener.js (NILE TESTNET) initialized (v8.49 Manual Axios Logic / ${nodeType} Node).`);
     }
 
     async start() {
-        console.log(`[v7-Poll] Starting Account Polling Service (Interval: ${POLLING_INTERVAL_MS}ms)`);
+        console.log(`[v7-Poll] Starting Account Polling Service (Adaptive Interval: ${POLLING_INTERVAL_MS}ms default, ${CATCHUP_INTERVAL_MS}ms catch-up)`);
+        
+        // (★★★ 新增：從數據庫恢復最後掃描的區塊高度 ★★★)
+        await this._loadLastScannedBlock();
         
         // (立即执行第一次)
-        this._pollAllUsers();
+        await this._pollAllUsers();
         
-        // (设定定时器)
-        setInterval(() => this._pollAllUsers(), POLLING_INTERVAL_MS);
+        // (設定自適應定時器)
+        this._scheduleNextPoll();
+    }
+    
+    /**
+     * (★★★ 新增：從數據庫加載最後掃描的區塊高度 ★★★)
+     */
+    async _loadLastScannedBlock() {
+        try {
+            const result = await db.query(
+                'SELECT last_scanned_block FROM blockchain_sync_status WHERE chain = $1',
+                [CHAIN_NAME]
+            );
+            
+            if (result.rows.length > 0) {
+                this.lastScannedBlock = parseInt(result.rows[0].last_scanned_block) || 0;
+                console.log(`[v7-Poll] Loaded last scanned block: ${this.lastScannedBlock}`);
+            } else {
+                // 如果沒有記錄，創建初始記錄
+                this.lastScannedBlock = 0;
+                await db.query(
+                    'INSERT INTO blockchain_sync_status (chain, last_scanned_block) VALUES ($1, $2)',
+                    [CHAIN_NAME, 0]
+                );
+                console.log(`[v7-Poll] Created initial sync status record for ${CHAIN_NAME}`);
+            }
+        } catch (error) {
+            console.error('[v7-Poll] Failed to load last scanned block:', error);
+            this.lastScannedBlock = 0; // 默認從 0 開始
+        }
+    }
+    
+    /**
+     * (★★★ 新增：保存最後掃描的區塊高度到數據庫 ★★★)
+     */
+    async _saveLastScannedBlock(blockNumber) {
+        try {
+            await db.query(
+                `INSERT INTO blockchain_sync_status (chain, last_scanned_block, updated_at)
+                 VALUES ($1, $2, NOW())
+                 ON CONFLICT (chain) 
+                 DO UPDATE SET last_scanned_block = $2, updated_at = NOW()`,
+                [CHAIN_NAME, blockNumber]
+            );
+            this.lastScannedBlock = blockNumber;
+        } catch (error) {
+            console.error(`[v7-Poll] Failed to save last scanned block ${blockNumber}:`, error);
+        }
+    }
+    
+    /**
+     * (★★★ 新增：獲取當前最新區塊高度 ★★★)
+     * (★★★ 修復：支持多種 API 響應格式，包括 GetBlock.io 和 TronGrid ★★★)
+     */
+    /**
+     * (★★★ v9.1 優化：增加重試機制和更好的錯誤處理 ★★★)
+     * @param {number} retryCount - 當前重試次數
+     * @returns {Promise<number>} 區塊號
+     */
+    async _getLatestBlockNumber(retryCount = 0) {
+        const maxRetries = this.maxRetries || 3;
+        const backoffDelay = Math.min(1000 * Math.pow(2, retryCount), 10000); // 指數退避，最大 10 秒
+        
+        try {
+            // (★★★ 修復：TronGrid 使用 /wallet/getnowblock (POST) 而不是 /v1/blocks/latest (GET) ★★★)
+            // /v1/blocks/latest 在 TronGrid 上返回 404，應該使用 /wallet/getnowblock
+            const response = await this.axiosInstance.post('wallet/getnowblock', {}, {
+                headers: { 'Content-Type': 'application/json' }
+            });
+            
+            if (response.status === 200 && response.data) {
+                // (★★★ 修復：支持 TronGrid 格式 ★★★)
+                if (response.data.block_header && response.data.block_header.raw_data && response.data.block_header.raw_data.number) {
+                    const blockNumber = parseInt(response.data.block_header.raw_data.number);
+                    console.log(`[v7-Poll] ✅ Got block number from API (TronGrid format): ${blockNumber}`);
+                    return blockNumber;
+                }
+                
+                // (★★★ 修復：支持 GetBlock.io 或其他格式 ★★★)
+                if (response.data.block_header && response.data.block_header.raw_data && typeof response.data.block_header.raw_data.number === 'number') {
+                    const blockNumber = parseInt(response.data.block_header.raw_data.number);
+                    console.log(`[v7-Poll] ✅ Got block number from API (alternative format): ${blockNumber}`);
+                    return blockNumber;
+                }
+                
+                // (★★★ 修復：支持直接返回 block_number 的格式 ★★★)
+                if (response.data.block_number) {
+                    const blockNumber = parseInt(response.data.block_number);
+                    console.log(`[v7-Poll] ✅ Got block number from API (block_number format): ${blockNumber}`);
+                    return blockNumber;
+                }
+                
+                // (★★★ 修復：支持直接返回 number 的格式 ★★★)
+                if (response.data.number) {
+                    const blockNumber = parseInt(response.data.number);
+                    console.log(`[v7-Poll] ✅ Got block number from API (number format): ${blockNumber}`);
+                    return blockNumber;
+                }
+                
+                // (★★★ 修復：嘗試從 data 數組中獲取（某些 API 返回數組格式）★★★)
+                if (Array.isArray(response.data) && response.data.length > 0) {
+                    const firstBlock = response.data[0];
+                    if (firstBlock.block_header && firstBlock.block_header.raw_data && firstBlock.block_header.raw_data.number) {
+                        const blockNumber = parseInt(firstBlock.block_header.raw_data.number);
+                        console.log(`[v7-Poll] ✅ Got block number from API (array format): ${blockNumber}`);
+                        return blockNumber;
+                    }
+                    if (firstBlock.block_number) {
+                        const blockNumber = parseInt(firstBlock.block_number);
+                        console.log(`[v7-Poll] ✅ Got block number from API (array block_number format): ${blockNumber}`);
+                        return blockNumber;
+                    }
+                    if (firstBlock.number) {
+                        const blockNumber = parseInt(firstBlock.number);
+                        console.log(`[v7-Poll] ✅ Got block number from API (array number format): ${blockNumber}`);
+                        return blockNumber;
+                    }
+                }
+                
+                // (★★★ 修復：記錄實際響應格式以便調試 ★★★)
+                // 記錄完整的響應結構（但限制長度避免日誌過大）
+                const responseStr = JSON.stringify(response.data, null, 2);
+                const truncatedResponse = responseStr.length > 1000 ? responseStr.substring(0, 1000) + '...' : responseStr;
+                console.warn(`[v7-Poll] ⚠️ API response format not recognized for blocks/latest from ${NILE_LISTENER_HOST}`);
+                console.warn(`[v7-Poll] ⚠️ Response keys:`, Object.keys(response.data).join(', '));
+                console.warn(`[v7-Poll] ⚠️ Response structure (first 1000 chars):`, truncatedResponse);
+            }
+            
+            // (★★★ 修復：如果 API 失敗，嘗試使用 TronWeb 作為備用方案 ★★★)
+            console.warn(`[v7-Poll] API response format not recognized, falling back to TronWeb for latest block number`);
+            try {
+                const block = await this.tronWeb.trx.getCurrentBlock();
+                if (block && block.block_header && block.block_header.raw_data && block.block_header.raw_data.number) {
+                    const blockNumber = parseInt(block.block_header.raw_data.number);
+                    console.log(`[v7-Poll] ✅ Successfully got block number from TronWeb fallback: ${blockNumber}`);
+                    return blockNumber;
+                } else {
+                    console.error(`[v7-Poll] TronWeb fallback returned invalid block structure`);
+                }
+            } catch (tronWebError) {
+                console.error(`[v7-Poll] TronWeb fallback also failed:`, tronWebError.message);
+            }
+            
+            throw new Error('Invalid response from blocks/latest API - unable to parse block number');
+        } catch (error) {
+            // (★★★ v9.1 優化：超時錯誤時進行重試 ★★★)
+            const maxRetries = this.maxRetries || 3;
+            const isTimeoutError = error.code === 'ECONNABORTED' || error.code === 'ETIMEDOUT';
+            const isNetworkError = error.code === 'ECONNREFUSED' || error.code === 'EAI_AGAIN' || error.code === 'ENOTFOUND';
+            const isRetryableError = isTimeoutError || isNetworkError || (error.response?.status >= 500);
+            
+            if (isRetryableError && retryCount < maxRetries) {
+                const backoffDelay = Math.min(1000 * Math.pow(2, retryCount), 10000); // 指數退避，最大 10 秒
+                console.warn(`[v7-Poll] ⚠️ Request failed (${error.code || error.response?.status}) on attempt ${retryCount + 1}/${maxRetries}, retrying in ${backoffDelay}ms...`);
+                console.warn(`[v7-Poll] Endpoint: ${NILE_LISTENER_HOST}/wallet/getnowblock`);
+                
+                await new Promise(resolve => setTimeout(resolve, backoffDelay));
+                return this._getLatestBlockNumber(retryCount + 1);
+            }
+            
+            // (★★★ 修復：如果重試失敗，嘗試使用 TronWeb 作為備用方案 ★★★)
+            if (isNetworkError || error.response?.status === 404) {
+                console.warn(`[v7-Poll] API endpoint unavailable after ${retryCount + 1} attempts, trying TronWeb fallback...`);
+                try {
+                    const block = await this.tronWeb.trx.getCurrentBlock();
+                    if (block && block.block_header && block.block_header.raw_data && block.block_header.raw_data.number) {
+                        const blockNumber = parseInt(block.block_header.raw_data.number);
+                        console.log(`[v7-Poll] ✅ Successfully got block number from TronWeb fallback: ${blockNumber}`);
+                        return blockNumber;
+                    }
+                } catch (tronWebError) {
+                    console.error(`[v7-Poll] TronWeb fallback also failed:`, tronWebError.message);
+                }
+            }
+            
+            // (★★★ v9.1 優化：更詳細的錯誤日誌 ★★★)
+            if (isTimeoutError) {
+                const timeout = this.axiosInstance.defaults.timeout || 60000;
+                console.error(`[v7-Poll] ❌ Request timeout after ${timeout}ms (attempts: ${retryCount + 1}/${maxRetries})`);
+                console.error(`[v7-Poll] Endpoint: ${NILE_LISTENER_HOST}/wallet/getnowblock`);
+            }
+            
+            logPollError(error, `Failed to get latest block number after ${retryCount + 1} attempts`);
+            return null;
+        }
+    }
+    
+    /**
+     * (★★★ 新增：自適應輪詢調度 ★★★)
+     */
+    _scheduleNextPoll() {
+        // 清除舊的定時器
+        if (this.pollingTimer) {
+            clearTimeout(this.pollingTimer);
+        }
+        
+        // 根據是否發現交易調整間隔
+        if (this.transactionFoundInLastScan) {
+            this.currentPollingInterval = CATCHUP_INTERVAL_MS;
+            this.transactionFoundInLastScan = false; // 重置標記
+        } else {
+            this.currentPollingInterval = POLLING_INTERVAL_MS;
+        }
+        
+        this.pollingTimer = setTimeout(async () => {
+            await this._pollAllUsers();
+            this._scheduleNextPoll(); // 遞歸調度下一次
+        }, this.currentPollingInterval);
     }
 
     /**
-     * (★★★ v8.49 核心：使用 Axios 手动轮询 v1 API ★★★)
+     * (★★★ v9.0 升級：保留時間戳輪詢 + 添加區塊高度追蹤 + 自適應間隔 ★★★)
      */
     async _pollAllUsers() {
         if (this.isPolling) {
@@ -118,12 +352,18 @@ class TronListener {
         }
 
         if (usersToPoll.length === 0) {
+            // (★★★ 新增：即使沒有用戶，也更新區塊高度 ★★★)
+            const latestBlock = await this._getLatestBlockNumber();
+            if (latestBlock !== null) {
+                await this._saveLastScannedBlock(latestBlock);
+            }
             this.isPolling = false;
             return;
         }
 
         let newTrc20Timestamp = this.lastTrc20PollTimestamp;
         let newTrxTimestamp = this.lastTrxPollTimestamp;
+        let transactionFound = false; // (★★★ 新增：追蹤是否發現交易 ★★★)
 
         for (const user of usersToPoll) {
             const latestUsdtTs = await this._pollUsdtTransactionsForUser(user);
@@ -131,6 +371,7 @@ class TronListener {
                 // (無论是否处理，都更新时间戳以避免重复查询)
                 if (latestUsdtTs > newTrc20Timestamp) {
                     newTrc20Timestamp = latestUsdtTs;
+                    transactionFound = true; // (發現交易)
                 }
             }
 
@@ -139,8 +380,15 @@ class TronListener {
                 // (無论是否处理，都更新时间戳以避免重复查询)
                 if (latestTrxTs > newTrxTimestamp) {
                     newTrxTimestamp = latestTrxTs;
+                    transactionFound = true; // (發現交易)
                 }
             }
+        }
+        
+        // (★★★ 新增：更新區塊高度 ★★★)
+        const latestBlock = await this._getLatestBlockNumber();
+        if (latestBlock !== null) {
+            await this._saveLastScannedBlock(latestBlock);
         }
         
         // (更新时间戳，加 1ms 避免下次轮询重复获取最後一笔)
@@ -150,9 +398,12 @@ class TronListener {
         this.lastTrc20PollTimestamp = newTrc20Timestamp + 1;
         this.lastTrxPollTimestamp = newTrxTimestamp + 1;
         
+        // (★★★ 新增：設置交易發現標記，用於自適應輪詢 ★★★)
+        this.transactionFoundInLastScan = transactionFound;
+        
         // (只在时间戳有变化时输出日志，避免日志噪音)
         if (this.lastTrc20PollTimestamp !== oldTrc20Ts + 1 || this.lastTrxPollTimestamp !== oldTrxTs + 1) {
-            console.log(`[v7-Poll] 📅 Timestamp updated: TRC20=${this.lastTrc20PollTimestamp}, TRX=${this.lastTrxPollTimestamp}`);
+            console.log(`[v7-Poll] 📅 Timestamp updated: TRC20=${this.lastTrc20PollTimestamp}, TRX=${this.lastTrxPollTimestamp}, Block=${latestBlock || 'N/A'}, Found=${transactionFound ? 'Yes' : 'No'}`);
         }
         
         this.isPolling = false;
@@ -457,6 +708,18 @@ class TronListener {
             await client.query('COMMIT');
             
             console.log(`[v7-Poll] ✅ User ${user.user_id} credited: +${amount} USDT | Balance: ${newBalance} USDT`);
+
+            // (★★★ v9.0 新增：大額充值通知 ★★★)
+            if (amount >= this.LARGE_DEPOSIT_THRESHOLD) {
+                await this.alertService.sendInfo(
+                    `大額充值通知\n\n` +
+                    `用戶 ID: ${user.user_id}\n` +
+                    `充值金額: ${amount.toFixed(2)} USDT\n` +
+                    `交易 Hash: ${txID}\n` +
+                    `充值地址: ${toAddress}\n` +
+                    `當前餘額: ${newBalance.toFixed(2)} USDT`
+                );
+            }
 
             // 5. Socket.IO 通知
             const userSocketId = this.connectedUsers[user.user_id];

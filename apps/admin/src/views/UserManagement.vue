@@ -312,8 +312,16 @@ export default {
           activityDateRange: this.searchParams.activityDateRange ? JSON.stringify(this.searchParams.activityDateRange) : undefined,
         };
         const response = await this.$api.getUsers(params);
-        this.tableData = response.list;
-        this.totalItems = response.total;
+        // (★★★ 修復：後端使用標準響應格式 { success: true, data: { total, list } } ★★★)
+        // request.js 攔截器返回 response.data，所以 response = { success: true, data: {...} }
+        if (response && response.success && response.data) {
+            this.tableData = response.data.list || [];
+            this.totalItems = response.data.total || 0;
+        } else {
+            // 向後兼容：如果沒有標準格式，直接使用 response
+            this.tableData = response.list || [];
+            this.totalItems = response.total || 0;
+        }
       } catch (error) {
         console.error('Failed to fetch users:', error);
       } finally {
@@ -402,7 +410,15 @@ export default {
         this.referralDialogVisible = true;
         try {
             const referrals = await this.$api.getReferrals(row.invite_code);
-            this.referralData.list = referrals;
+            // (★★★ 修復：後端使用標準響應格式 { success: true, data: [...] } ★★★)
+            if (referrals && referrals.success && referrals.data) {
+                this.referralData.list = Array.isArray(referrals.data) ? referrals.data : [];
+            } else if (Array.isArray(referrals)) {
+                // 向後兼容：如果直接是數組
+                this.referralData.list = referrals;
+            } else {
+                this.referralData.list = [];
+            }
         } catch (error) {
              console.error('Failed to fetch referrals:', error);
              ElMessage.error('载入推薦列表失败');

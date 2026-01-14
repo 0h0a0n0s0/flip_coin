@@ -58,7 +58,9 @@ function formatUserName(player) {
 
 async function loadLeaderboard() {
   try {
-    const data = await api.getLeaderboard()
+    const response = await api.getLeaderboard()
+    // (★★★ 修復：適配標準 API 響應格式 { success: true, data: [...] } ★★★)
+    const data = (response && response.success && Array.isArray(response.data)) ? response.data : (Array.isArray(response) ? response : [])
     leaderboardData.value = data || []
   } catch (error) {
     console.error('Failed to load leaderboard:', error)

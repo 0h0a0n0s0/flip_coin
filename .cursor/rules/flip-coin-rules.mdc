@@ -2,222 +2,103 @@
 alwaysApply: true
 ---
 
-# ⚠️ IMPORTANT NOTICE
+# ⚠️ FLIP COIN PROJECT CONSTITUTION
 
-**These rules are automatically applied in every conversation, no user reminder needed.**
-**Before generating or modifying any code, these rules must be automatically checked.**
+**Applied to every generation. Violations trigger an automatic stop.**
 
-## 1. General Enforcement Principles
+## 1. Tech Stack & Environment (Strict)
 
-Cursor must always:
-
-* Apply these rules before generating or modifying code.
-* Stop generation if a rule may be violated.
-* Explain the violation: rule, reason, location.
-* Present interactive buttons:
-
-  [Continue (Single-Time Exception)]
-  [Cancel Operation]
-
-Only when the user explicitly clicks **Continue** may Cursor proceed.
-Exceptions do not modify the constitution.
+Cursor Must enforce:
+* **Backend:** Node.js 18+, Express, PostgreSQL 14+, Socket.IO.
+* **Frontend:** Vue 3 (Composition API only), Tailwind CSS, Pinia.
+* **Blockchain:** TronWeb (TRON), ethers.js (EVM).
+* **Package Manager:** pnpm (Workspace mode).
 
 ## 2. Architectural Rules (Global)
 
-Cursor Must:
+### 2.1 Monorepo Structure & Authority
+* **`apps/web`** (`@flipcoin/web`): Public User UI. NO direct DB access. NO direct `services/` imports.
+* **`apps/admin`** (`@flipcoin/admin`): Internal Staff UI. Requires VPN/IP Whitelist.
+* **`services/wallet`** (`@flipcoin/service-wallet`): 🛡️ **HIGH SECURITY**. Logic physically isolated. Accessed ONLY via HTTP/gRPC.
+* **`packages/`**: Stateless code only (UI components, Schemas). NO business logic.
 
-* Maintain strict separation of concerns across frontend and backend.
-* Use modular code; avoid monolithic files (> 400 lines).
-* Ensure all new features align with service-based backend and modular frontend.
-
+### 2.2 Dependency Boundaries
 Cursor Must Not:
+* Import `@flipcoin/database` directly into Frontend apps.
+* Create circular dependencies between packages.
 
-* Introduce tightly coupled logic across layers.
-* Mix UI logic with business logic.
-* Create large files without splitting them into modules.
+## 3. Financial & Blockchain Rules (CRITICAL - FROM README)
 
-### 2.1 Monorepo Structure & Directory Authority
+**Violation of this section is a Critical Security Failure.**
 
-Cursor Must enforce the following directory responsibilities:
+### 3.1 Wallet & Key Management
+* **HD Wallet Paths:** Must use BIP44.
+    * TRON: `m/44'/195'/0'/0/{index}`
+    * EVM: `m/44'/60'/0'/0/{index}`
+* **Index Allocation:**
+    * **Dynamic Config:** Start Index MUST be loaded from Env/Config (e.g., `WALLET_START_INDEX`).
+    * **Prohibition:** **NEVER hardcode** the start index (e.g., 1001) in code.
+* **Key Storage:** NEVER store raw private keys in `users` table.
 
-* **`apps/web`** (`@flipcoin/web`):
-    * **Target:** End-users (Players).
-    * **Access:** Public internet.
-    * **Constraints:** NO direct DB access. NO direct import of `services/wallet` code.
+### 3.2 Transaction Logic
+* **Deposit Listener:** Must use `blockchain_sync_status` to track block height.
+* **TRON Collection:** Must use **Approve + TransferFrom** pattern.
+    * Step 1: User Address `approve()` -> Collection Wallet.
+    * Step 2: Collection Wallet `transferFrom()` -> Cold Wallet.
+* **Concurrency:** Any balance update MUST use `SELECT ... FOR UPDATE NOWAIT` (Row Locking).
 
-* **`apps/admin`** (`@flipcoin/admin`):
-    * **Target:** Internal staff only.
-    * **Access:** Private network / VPN only.
-    * **Constraints:** Strict RBAC enforcement.
-
-* **`apps/backend-legacy`** (`@flipcoin/backend-legacy`):
-    * **Status:** Frozen monolith.
-    * **Constraints:** Maintenance only. No new core features (especially Wallet) allowed here.
-
-* **`services/wallet`** (`@flipcoin/service-wallet`):
-    * **Status:** 🛡️ HIGH SECURITY ZONE.
-    * **Constraints:** Logic must be physically isolated. Accessed ONLY via HTTP/gRPC API.
-
-* **`packages/`** (Shared Libraries):
-    * **Content:** Stateless code only (UI components, DB Schemas, Utilities).
-    * **Constraints:** Must not contain business logic bound to a specific app.
-
-### 2.2 Dependency Boundaries (Strict Enforcement)
-
-Cursor Must NOT allow:
-
-* Frontend apps (`web`, `admin`) importing directly from `@flipcoin/database`.
-* Frontend apps importing directly from `services/`.
-* Circular dependencies between `packages/*`.
-
-## 3. Frontend Rules (Always Enforced)
+## 4. Backend Rules (API & Logic)
 
 Cursor Must:
+* **Structure:** `Route` (Validation) -> `Service` (Business Logic) -> `Response`.
+* **No SQL in Routes:** All DB operations must stay in Services.
+* **Standard Response:**
+    * Success: `{ "success": true, "data": { ... } }`
+    * Error: `{ "success": false, "error": "Human readable message" }`
+* **Security:** Sanitize errors (No stack traces). Mask addresses/hashes in logs.
 
-* Use a unified API module (e.g., api.js).
-* Implement all requests through api.get/api.post/api.request.
-* Keep UI operations inside UI modules/components.
-* Centralize state (state.js or designated store).
-* Keep components < 300 lines unless explicitly approved.
-* Use spacing tokens (space-1 to space-6), radius tokens (4/8/12px).
-* Use design tokens for colors; avoid raw hex values.
-
-Cursor Must Not:
-
-* Use bare fetch().
-* Mix DOM operations with business logic.
-* Duplicate logic across multiple files.
-* Introduce new spacing values or arbitrary px sizes.
-* Redesign H5 layouts; only scale down Web layout (structural consistency rule).
-
-## 4. Backend Rules (Always Enforced)
+## 5. Frontend Rules (Vue 3)
 
 Cursor Must:
+* **Logic:** Use **Composition API** (`<script setup>`) exclusively.
+* **API:** Use centralized `api.js`. NEVER use bare `fetch()`/`axios` in components.
+* **State:** Centralize state in Pinia stores. Keep components < 300 lines.
 
-* Place DB logic in services or repositories only.
-* Keep routing thin: validate → call service → format response.
-* Use standardized API responses:
+## 6. UI Density & RWD (Casino-Grade)
 
-  success format:
-  { "success": true, "data": … }
+Cursor Must maintain **Structural Parity** (H5 is a scaled version of Web, not a redesign).
 
-  error format (via sendError):
-  { "success": false, "error": "message" }
+### 6.1 Component Metrics (Strict)
+* **Web GameCard:** Height ~180–210px.
+* **H5 GameCard:** ~60–70% of Web size.
+* **Quick Entry Card:** Web 88–110px; H5 68–82px.
 
-Cursor Must Not:
+### 6.2 Scaling Logic
+* **Breakpoints:** Desktop >= 1280, Mobile <= 767.
+* **H5 Scaling:** Spacing 70–80%, Icons 80–90%, Cards 60–70% of Desktop.
+* **Styling:** Use Design Tokens (space-1 to space-6, radius 4/8/12px). NO raw hex colors.
 
-* Write SQL or ORM queries inside routes.
-* Allow services to access req/res.
-* Expose raw error messages or stack traces.
-* Modify user balances without validator + service checks.
+## 7. Development Workflow
 
-## 5. Security Rules
+* **Naming:** `camelCase` for vars, `PascalCase` for Components.
+* **Versioning:** Update CHANGELOG.md. NO version comments (`// v1.2`) in code.
 
-Cursor Must:
+## 8. Automatic Simulation Checklist (Mandatory)
 
-* Validate all money-related operations.
-* Sanitize all external-facing error messages.
-* Mask blockchain addresses when displaying them.
-* Apply IP whitelist logic for admin areas when relevant.
+**Before generating code, Cursor must perform these internal checks:**
 
-Cursor Must Not:
+### 8.1 Safety & Business Check
+1.  **Hardcoding:** Am I writing a magic number (like 1001)? → Change to Config.
+2.  **Concurrency:** Am I modifying balance? → **Add DB Lock**.
+3.  **Chain Logic:** Am I using TRON direct transfer? → **Change to Approve+TransferFrom**.
+4.  **Layers:** Am I writing SQL in a Route? → Move to Service.
 
-* Output sensitive data, internal DB structure, or raw chain errors.
+### 8.2 Frontend Simulation
+1.  **Visuals:** Did I use tokens? Is the text visible (contrast)?
+2.  **RWD:** Did I break the layout on mobile? (Must be proportional scale).
 
-## 6. UI Density and Structural Rules (Critical)
+### 8.3 API Contract Check
+1.  **Format:** Does output match `{ "success": true, "data": ... }`?
+2.  **Handshake:** Does the Frontend payload match Backend Validator expectations?
 
-Cursor Must:
-
-* Enforce high-density casino-grade UI.
-* Maintain structural parity between Web and H5 (H5 = scaled version, not redesigned).
-* Apply component density guidelines:
-
-  * Web GameCard height: ~180–210px
-  * H5 GameCard = ~60–70% Web size
-  * Quick Entry Card: Web 88–110px; H5 68–82px
-
-Cursor Must Not:
-
-* Modify fundamental layout patterns for H5.
-* Introduce excessive white space.
-* Break spacing rhythm.
-
-## 7. RWD Scaling Rules
-
-Cursor Must:
-
-* Use breakpoint logic:
-  desktop >= 1280
-  tablet 768–1279
-  mobile <= 767
-* Ensure H5 uses proportional scaling:
-  spacing 70–80%
-  icons 80–90%
-  cards 60–70%
-  modals 70%
-
-## 8. Naming & File Rules
-
-Cursor Must:
-
-* Use camelCase for variables/functions.
-* Use PascalCase for classes/components.
-* Ensure file names match import paths exactly (case-sensitive).
-
-Cursor Must Not:
-
-* Introduce version comments inside the code (e.g., // v1.2).
-* Use inconsistent file naming styles.
-
-## 9. Versioning & Documentation Rules
-
-Cursor Must:
-
-* Place all change history in CHANGELOG.md.
-  Cursor Must Not:
-* Add version markers inside source files.
-
-## 10. Automatic Violation Detection (Mandatory)
-
-Before generating code, Cursor must check:
-
-* Layering violations (route writing SQL, service using req/res)
-* Design system violations (raw px, raw color)
-* UI density violations
-* RWD structure violations
-* Security violations (money, addresses, admin area)
-* Performance violations (monolithic file creation)
-* Monorepo boundary violations (e.g., Frontend importing DB, Frontend importing services directly)
-
-If any violation detected:
-→ Stop generation
-→ Provide violation summary
-→ Display:
-
-```
-[Continue (Single-Time Exception)]
-[Cancel Operation]
-```
-
-This is mandatory and cannot be disabled.
-
-### 11.1 Frontend Simulation (UI & Logic)
-* **Dependency Check:** Verify all components imports exist and `package.json` includes required libs.
-* **Visual Logic:** Confirm `tokens.css` variables are used. Check for "invisible text" (contrast issues) and broken RWD layouts.
-* **State Logic:** Ensure local state vs. global store (Pinia/Vuex) usage aligns with Section 1.1.
-
-### 11.2 Backend Simulation (Server & DB)
-* **Layer Isolation:** Verify NO SQL logic exists in Routes. (Routes must only call Services).
-* **API Contract Check:**
-  * Does the return format MATCH `{ success: true, data: ... }`?
-  * Are error responses handled via `sendError()`?
-  * Does the Service function strictly return data (not `res.json`)?
-* **Safety Check:** Ensure `req.body` inputs are validated before passing to Services.
-
-### 11.3 Integration Simulation (Handshake)
-* **Contract Matching:** If generating both FE and BE, does the FE payload (e.g., `POST body`) match exactly what the BE Validator expects?
-* **Auth Flow:** Is the endpoint protected? If so, does the code handle the token/session correctly?
-
-**Action Protocol:**
-* If a logical gap is found (e.g., FE calls an API that doesn't exist yet): **Flag it explicitly** or generate the missing counterpart.
-* **STOP** if the code violates the API standard response format.
+**If any violation is detected: STOP and ask the user.**

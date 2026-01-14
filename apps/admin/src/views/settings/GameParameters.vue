@@ -205,7 +205,17 @@ export default {
             this.loading = true;
             try {
                 // (★★★ v8.1 修改：API 現在返回分组的物件 ★★★)
-                const settingsByCategory = await this.$api.getSettings();
+                const response = await this.$api.getSettings();
+                // (★★★ 修復：後端使用標準響應格式 { success: true, data: {...} } ★★★)
+                let settingsByCategory;
+                if (response && response.success && response.data) {
+                    settingsByCategory = response.data;
+                } else if (response && typeof response === 'object' && !Array.isArray(response)) {
+                    // 向後兼容：如果直接是對象（按 category 分組）
+                    settingsByCategory = response;
+                } else {
+                    settingsByCategory = {};
+                }
                 
                 // (储存原始值，用于比对)
                 this.originalSettings = JSON.parse(JSON.stringify(settingsByCategory));

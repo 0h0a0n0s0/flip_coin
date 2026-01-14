@@ -35,9 +35,12 @@ class KmsService {
         this.tronWeb.setSolidityNode(NILE_NODE_HOST);
         this.tronWeb.setEventServer(NILE_NODE_HOST);
         
-        this.PLATFORM_RESERVED_INDEX_UNTIL = 1000; // (★★★ 修改：平台保留索引到1000，用戶從1001開始 ★★★)
-
-        console.log("✅ [v7] KmsService initialized successfully.");
+        // (★★★ 修復：從環境變數讀取用戶起始索引，符合規則 3.1 ★★★)
+        // WALLET_START_INDEX 表示用戶起始索引（預設 1001），平台保留索引為其減 1
+        const walletStartIndex = parseInt(process.env.WALLET_START_INDEX || '1001', 10);
+        this.PLATFORM_RESERVED_INDEX_UNTIL = walletStartIndex - 1;
+        
+        console.log(`✅ [v7] KmsService initialized successfully. Wallet start index: ${walletStartIndex} (platform reserved until: ${this.PLATFORM_RESERVED_INDEX_UNTIL})`);
     }
     
     // (★★★ v8.49 修正：使用 tronweb@5.3.2 的方式 ★★★)
@@ -71,23 +74,84 @@ class KmsService {
     }
 
     async getNewDepositWallets(client) { 
-        // (★★★ 修改：確保新用戶從索引1001開始 ★★★)
-        const result = await client.query(
-            'SELECT MAX(deposit_path_index) FROM users'
-        );
-        const maxIndexInDb = result.rows[0].max || 0; 
-        // 確保新索引至少從 1001 開始（PLATFORM_RESERVED_INDEX_UNTIL + 1）
-        const minStartIndex = this.PLATFORM_RESERVED_INDEX_UNTIL + 1; // 1001
-        const maxIndex = Math.max(maxIndexInDb, this.PLATFORM_RESERVED_INDEX_UNTIL);
-        const newIndex = Math.max(maxIndex + 1, minStartIndex); // 確保至少是 1001
-        const evmWallet = this._deriveEvmWallet(newIndex);
-        const tronWallet = this._deriveTronWallet(newIndex);
-        console.log(`[KMS] Generated new wallet set for index ${newIndex}: EVM (${evmWallet.address}), TRON (${tronWallet.address})`);
-        return {
-            deposit_path_index: newIndex,
-            evm_deposit_address: evmWallet.address,
-            tron_deposit_address: tronWallet.address
-        };
+        // (★★★ 修復競態條件：使用悲觀鎖確保索引分配的原子性 ★★★)
+        // 使用 SELECT ... FOR UPDATE 鎖定索引追蹤記錄，防止並發衝突
+        // 添加重試邏輯以處理併發衝突（最多重試 3 次）
+        const maxRetries = 3;
+        let retryCount = 0;
+        
+        while (retryCount < maxRetries) {
+            try {
+                // 使用 FOR UPDATE NOWAIT 快速失敗，避免長時間等待
+                // 如果鎖定失敗，立即拋出錯誤，由外層重試邏輯處理
+                const lockResult = await client.query(
+                    `SELECT current_index FROM platform_wallets 
+                     WHERE name = 'HD_WALLET_INDEX_TRACKER' 
+                     FOR UPDATE NOWAIT`
+                );
+                
+                let currentIndex;
+                if (lockResult.rows.length === 0) {
+                    // 如果追蹤記錄不存在，創建它（這種情況不應該發生，但作為安全措施）
+                    // 注意：address 必須是唯一的，使用與遷移文件相同的值
+                    await client.query(
+                        `INSERT INTO platform_wallets (name, chain_type, address, current_index, is_active)
+                         VALUES ('HD_WALLET_INDEX_TRACKER', 'MULTI', 'HD_INDEX_TRACKER_PLACEHOLDER', $1, false)
+                         ON CONFLICT (address) DO NOTHING`,
+                        [this.PLATFORM_RESERVED_INDEX_UNTIL]
+                    );
+                    // 重新查詢（使用 NOWAIT 確保立即獲得鎖）
+                    const retryResult = await client.query(
+                        `SELECT current_index FROM platform_wallets 
+                         WHERE name = 'HD_WALLET_INDEX_TRACKER' 
+                         FOR UPDATE NOWAIT`
+                    );
+                    if (retryResult.rows.length === 0) {
+                        throw new Error('[KMS] CRITICAL: Failed to initialize HD_WALLET_INDEX_TRACKER record');
+                    }
+                    currentIndex = parseInt(retryResult.rows[0].current_index) || this.PLATFORM_RESERVED_INDEX_UNTIL;
+                } else {
+                    currentIndex = parseInt(lockResult.rows[0].current_index) || this.PLATFORM_RESERVED_INDEX_UNTIL;
+                }
+                
+                // 確保新索引至少從用戶起始索引開始（PLATFORM_RESERVED_INDEX_UNTIL + 1）
+                const minStartIndex = this.PLATFORM_RESERVED_INDEX_UNTIL + 1;
+                const newIndex = Math.max(currentIndex + 1, minStartIndex);
+                
+                // 更新索引追蹤記錄（在同一事務中，確保原子性）
+                await client.query(
+                    `UPDATE platform_wallets 
+                     SET current_index = $1 
+                     WHERE name = 'HD_WALLET_INDEX_TRACKER'`,
+                    [newIndex]
+                );
+                
+                // 派生新錢包地址
+                const evmWallet = this._deriveEvmWallet(newIndex);
+                const tronWallet = this._deriveTronWallet(newIndex);
+                
+                console.log(`[KMS] Generated new wallet set for index ${newIndex}: EVM (${evmWallet.address}), TRON (${tronWallet.address})`);
+                return {
+                    deposit_path_index: newIndex,
+                    evm_deposit_address: evmWallet.address,
+                    tron_deposit_address: tronWallet.address
+                };
+            } catch (error) {
+                // 如果是鎖定衝突錯誤（55P03），進行重試
+                if (error.code === '55P03' && retryCount < maxRetries - 1) {
+                    retryCount++;
+                    const waitTime = Math.min(50 * retryCount, 200); // 指數退避，最多等待 200ms
+                    console.warn(`[KMS] Lock conflict on getNewDepositWallets, retrying (${retryCount}/${maxRetries}) after ${waitTime}ms`);
+                    await new Promise(resolve => setTimeout(resolve, waitTime));
+                    continue;
+                }
+                // 其他錯誤或達到最大重試次數，直接拋出
+                throw error;
+            }
+        }
+        
+        // 理論上不會到達這裡，但作為安全措施
+        throw new Error('[KMS] Failed to get new deposit wallets after maximum retries');
     }
 }
 

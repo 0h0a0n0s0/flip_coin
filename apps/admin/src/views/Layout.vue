@@ -508,8 +508,15 @@ export default {
     async loadTronNotificationCount() {
       try {
         const response = await this.$api.getTronNotificationsCount();
-        if (response.data && response.data.count !== undefined) {
+        // (★★★ 修復：後端使用標準響應格式 { success: true, data: { count } } ★★★)
+        if (response && response.success && response.data && response.data.count !== undefined) {
           this.tronNotificationCount = response.data.count;
+        } else if (response && response.data && response.data.count !== undefined) {
+          // 向後兼容：如果沒有 success 標記，但有 data.count
+          this.tronNotificationCount = response.data.count;
+        } else if (response && response.count !== undefined) {
+          // 向後兼容：如果直接有 count
+          this.tronNotificationCount = response.count;
         }
       } catch (error) {
         console.error('Failed to load tron notification count:', error);

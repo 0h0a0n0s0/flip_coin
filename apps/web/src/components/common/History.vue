@@ -101,7 +101,9 @@ async function loadHistory() {
 
   loading.value = true
   try {
-    const data = await api.getHistory(token)
+    const response = await api.getHistory(token)
+    // (★★★ 修復：適配標準 API 響應格式 { success: true, data: [...] } ★★★)
+    const data = (response && response.success && Array.isArray(response.data)) ? response.data : (Array.isArray(response) ? response : [])
     historyList.value = data || []
   } catch (error) {
     console.error('Failed to load history:', error)

@@ -156,6 +156,12 @@ class PendingBetProcessor {
             // 4b. 更新用户余额和连胜
             let updatedUser;
             if (didWin) {
+                // (★★★ 修復：添加行鎖以確保並發安全 ★★★)
+                await client.query(
+                    'SELECT balance, current_streak FROM users WHERE user_id = $1 FOR UPDATE',
+                    [userId]
+                );
+                
                 const userResult = await client.query(
                     `UPDATE users 
                      SET balance = balance + $1,

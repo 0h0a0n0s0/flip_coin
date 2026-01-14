@@ -165,11 +165,13 @@ export default {
       try {
         const responseData = await this.$api.login(this.loginForm);
 
-        if (responseData && responseData.token) {
-            localStorage.setItem('admin_token', responseData.token);
+        // (★★★ 修復：後端使用標準響應格式 { success: true, data: { token: ... } } ★★★)
+        if (responseData && responseData.success && responseData.data && responseData.data.token) {
+            localStorage.setItem('admin_token', responseData.data.token);
             this.$router.push('/dashboard'); 
         } else {
-             console.error('登入失败，但未拋出错误。');
+             console.error('登入失败，但未拋出错误。響應數據:', responseData);
+             this.$message.error('登入失败：無法獲取 token');
         }
 
       } catch (error) {

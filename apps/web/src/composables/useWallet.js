@@ -39,7 +39,9 @@ export function useWallet() {
     loading.value = true
     try {
       const token = getToken()
-      const history = await api.getDepositHistory(token)
+      const response = await api.getDepositHistory(token)
+      // (★★★ 修復：適配標準 API 響應格式 { success: true, data: [...] } ★★★)
+      const history = (response && response.success && Array.isArray(response.data)) ? response.data : (Array.isArray(response) ? response : [])
       depositHistory.value = history || []
       return history
     } catch (error) {
@@ -58,7 +60,9 @@ export function useWallet() {
     loading.value = true
     try {
       const token = getToken()
-      const history = await api.getWithdrawalHistory(token)
+      const response = await api.getWithdrawalHistory(token)
+      // (★★★ 修復：適配標準 API 響應格式 { success: true, data: [...] } ★★★)
+      const history = (response && response.success && Array.isArray(response.data)) ? response.data : (Array.isArray(response) ? response : [])
       withdrawalHistory.value = history || []
       return history
     } catch (error) {
@@ -87,7 +91,9 @@ export function useWallet() {
     loading.value = true
     try {
       const token = getToken()
-      const updatedUser = await api.updateNickname(token, newNickname)
+      const response = await api.updateNickname(token, newNickname)
+      // (★★★ 修復：適配標準 API 響應格式 { success: true, data: user } ★★★)
+      const updatedUser = (response && response.success && response.data) ? response.data : response
       setCurrentUser(updatedUser)
       notifySuccess(t('notifications.nickname_save_success'))
       return true
@@ -116,7 +122,9 @@ export function useWallet() {
     loading.value = true
     try {
       const token = getToken()
-      const updatedUser = await api.bindReferrer(token, referrerCode)
+      const response = await api.bindReferrer(token, referrerCode)
+      // (★★★ 修復：適配標準 API 響應格式 { success: true, data: user } ★★★)
+      const updatedUser = (response && response.success && response.data) ? response.data : response
       setCurrentUser(updatedUser)
       notifySuccess(t('notifications.referrer_bind_success'))
       return true
@@ -206,7 +214,9 @@ export function useWallet() {
         amount: parseFloat(amount),
         withdrawal_password: withdrawalPassword
       }
-      const result = await api.requestWithdrawal(token, data)
+      const response = await api.requestWithdrawal(token, data)
+      // (★★★ 修復：適配標準 API 響應格式 { success: true, data: { message: ... } } ★★★)
+      const result = (response && response.success && response.data) ? response.data : response
       notifySuccess(result.message || t('notifications.withdraw_success'))
       
       // 刷新历史

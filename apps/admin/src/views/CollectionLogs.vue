@@ -178,10 +178,19 @@ export default {
           dateRange: isoRange ? JSON.stringify(isoRange) : undefined
         };
         const response = await this.$api.getCollectionLogs(params);
-        this.tableData = response.list;
-        this.totalItems = response.total;
-        this.pageTotalAmount = response.pageTotalAmount || 0;
-        this.totalAmount = response.totalAmount || 0;
+        // (★★★ 修復：後端使用標準響應格式 { success: true, data: { total, list, ... } } ★★★)
+        if (response && response.success && response.data) {
+            this.tableData = response.data.list || [];
+            this.totalItems = response.data.total || 0;
+            this.pageTotalAmount = response.data.pageTotalAmount || 0;
+            this.totalAmount = response.data.totalAmount || 0;
+        } else {
+            // 向後兼容：如果沒有標準格式，直接使用 response
+            this.tableData = response.list || [];
+            this.totalItems = response.total || 0;
+            this.pageTotalAmount = response.pageTotalAmount || 0;
+            this.totalAmount = response.totalAmount || 0;
+        }
       } catch (error) {
         console.error('Failed to fetch collection logs:', error);
         ElMessage.error('载入归集记录失败');

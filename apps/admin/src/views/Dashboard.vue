@@ -294,8 +294,14 @@ export default {
     async fetchStats() {
       this.loading = true;
       try {
-        const data = await this.$api.getDashboardStats();
-        this.stats = data;
+        const response = await this.$api.getDashboardStats();
+        // (★★★ 修復：後端使用標準響應格式 { success: true, data: {...} } ★★★)
+        if (response && response.success && response.data) {
+          this.stats = response.data;
+        } else {
+          // 向後兼容：如果沒有標準格式，直接使用 response
+          this.stats = response;
+        }
       } catch (error) {
         console.error('Failed to fetch stats:', error);
         this.$message.error('獲取統計數據失敗');
@@ -306,8 +312,14 @@ export default {
     async fetchWalletMonitoring() {
       this.walletLoading = true;
       try {
-        const data = await this.$api.getWalletMonitoring();
-        this.walletMonitoring = data;
+        const response = await this.$api.getWalletMonitoring();
+        // (★★★ 修復：後端使用標準響應格式 { success: true, data: {...} } ★★★)
+        if (response && response.success && response.data) {
+          this.walletMonitoring = response.data;
+        } else {
+          // 向後兼容：如果沒有標準格式，直接使用 response
+          this.walletMonitoring = response;
+        }
       } catch (error) {
         console.error('Failed to fetch wallet monitoring:', error);
         this.$message.error('獲取錢包監控數據失敗');

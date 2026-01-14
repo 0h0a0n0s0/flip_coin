@@ -233,8 +233,9 @@ watch(() => props.modelValue, (val) => {
   dialogVisible.value = val
   if (val && currentUser.value) {
     nickname.value = currentUser.value.nickname || ''
-    tronAddress.value = currentUser.value.tron_address || ''
-    evmAddress.value = currentUser.value.evm_address || ''
+    // (★★★ 修復：使用正確的字段名 tron_deposit_address 和 evm_deposit_address ★★★)
+    tronAddress.value = currentUser.value.tron_deposit_address || ''
+    evmAddress.value = currentUser.value.evm_deposit_address || ''
     if (activeTab.value === 'deposit') {
       fetchDepositHistory()
     } else if (activeTab.value === 'withdraw') {

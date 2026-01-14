@@ -119,7 +119,16 @@ export default {
        async fetchRoles() {
             this.loading = true;
             try {
-                this.rolesList = await this.$api.getRoles();
+                const response = await this.$api.getRoles();
+                // (★★★ 修復：後端使用標準響應格式 { success: true, data: [...] } ★★★)
+                if (response && response.success && response.data) {
+                    this.rolesList = Array.isArray(response.data) ? response.data : [];
+                } else if (Array.isArray(response)) {
+                    // 向後兼容：如果直接是數組
+                    this.rolesList = response;
+                } else {
+                    this.rolesList = [];
+                }
             } catch (error) { console.error('Failed to fetch roles:', error); }
             finally { this.loading = false; }
        },
@@ -127,7 +136,16 @@ export default {
        // (僅执行一次) 获取所有可用的权限点
        async fetchAllPermissions() {
             try {
-                this.allPermissions = await this.$api.getAllPermissions();
+                const response = await this.$api.getAllPermissions();
+                // (★★★ 修復：後端使用標準響應格式 { success: true, data: {...} } ★★★)
+                if (response && response.success && response.data) {
+                    this.allPermissions = response.data;
+                } else if (response && typeof response === 'object' && !Array.isArray(response)) {
+                    // 向後兼容：如果直接是對象（按 category 分組）
+                    this.allPermissions = response;
+                } else {
+                    this.allPermissions = null;
+                }
             } catch (error) {
                 console.error('Failed to fetch all permissions:', error);
                 ElMessage.error('無法载入权限列表，请刷新页面');
@@ -163,7 +181,9 @@ export default {
            
            try {
                // 获取该角色的详細资料 (包含 permission_ids)
-               const roleDetails = await this.$api.getRoleDetails(row.id);
+               const response = await this.$api.getRoleDetails(row.id);
+               // (★★★ 修復：後端使用標準響應格式 { success: true, data: {...} } ★★★)
+               const roleDetails = (response && response.success && response.data) ? response.data : response;
                Object.assign(this.roleForm, {
                    id: roleDetails.id,
                    name: roleDetails.name,

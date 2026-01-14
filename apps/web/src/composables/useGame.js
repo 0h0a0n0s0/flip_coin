@@ -45,7 +45,9 @@ export function useGame() {
 
     try {
       const token = getToken()
-      const settledBet = await api.placeBet(token, choice, amount, gameMode)
+      const response = await api.placeBet(token, choice, amount, gameMode)
+      // (★★★ 修復：適配標準 API 響應格式 { success: true, data: settledBet } ★★★)
+      const settledBet = (response && response.success && response.data) ? response.data : response
       
       console.log('Bet settled:', settledBet)
       
