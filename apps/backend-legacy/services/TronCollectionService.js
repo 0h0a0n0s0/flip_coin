@@ -59,8 +59,17 @@ class TronCollectionService {
         this.gasReserveWallet = null; // (已停用) 用于启用/补 TRX 的钱包
         this.consecutiveFailures = 0; // (★★★ v9.0 新增：連續失敗計數 ★★★)
         this.lastEnergyExhaustedAlertTime = null; // (防止重複警報)
+        this.io = null; // Socket.IO 實例（用於推送通知）
         
         this._loadPlatformWallets();
+    }
+
+    /**
+     * 設置 Socket.IO 實例
+     * @param {Object} socketIO - Socket.IO 實例
+     */
+    setIo(socketIO) {
+        this.io = socketIO;
     }
 
     // (载入归集钱包)
@@ -72,6 +81,14 @@ class TronCollectionService {
 
             const collectionRow = wallets.rows.find(w => w.is_collection);
             if (collectionRow) {
+                // (★★★ 安全檢查：防止能量提供者钱包被用于归集 ★★★)
+                if (collectionRow.is_energy_provider) {
+                    console.error(`[Collection] ⚠️ SECURITY WARNING: Collection Wallet (${collectionRow.address}) is also marked as energy provider!`);
+                    console.error(`[Collection] This will cause energy depletion. Please separate these roles.`);
+                    console.error(`[Collection] Collection wallet should NOT be used as energy provider.`);
+                    // 不阻止加载，但记录警告
+                }
+                
                 const pkEnvVar = `TRON_PK_${collectionRow.address}`;
                 const privateKey = process.env[pkEnvVar];
                 if (!privateKey) {
@@ -292,6 +309,11 @@ class TronCollectionService {
         }
         
         try {
+            // #region agent log
+            const energyBefore = await this._getCollectionWalletEnergy();
+            fetch('http://127.0.0.1:7242/ingest/14db9cbb-ee24-417b-9eeb-3494fd0c6cdc',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'TronCollectionService.js:_transferFrom',message:'Before transferFrom - energy check',data:{collectionWallet:this.collectionWallet.address,userAddress,energyBefore,amount:amountBigNumberStr},timestamp:Date.now(),sessionId:'debug-session',runId:'pre-fix',hypothesisId:'A'})}).catch(()=>{});
+            // #endregion
+            
             this.tronWeb.setPrivateKey(this.collectionWallet.privateKey);
             
             const collectionAddressHex = this.tronWeb.address.toHex(this.collectionWallet.address);
@@ -335,6 +357,11 @@ class TronCollectionService {
                 console.warn(`[Collection] Could not get actual energy usage for TX ${receipt.txid}`);
             }
             
+            // #region agent log
+            const energyAfter = await this._getCollectionWalletEnergy();
+            fetch('http://127.0.0.1:7242/ingest/14db9cbb-ee24-417b-9eeb-3494fd0c6cdc',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'TronCollectionService.js:_transferFrom',message:'After transferFrom - energy check',data:{collectionWallet:this.collectionWallet.address,userAddress,txHash:receipt.txid,energyBefore,energyAfter,energyUsed:actualEnergyUsed,energyDiff:energyBefore-energyAfter},timestamp:Date.now(),sessionId:'debug-session',runId:'pre-fix',hypothesisId:'A'})}).catch(()=>{});
+            // #endregion
+            
             console.log(`[Collection] ✅ TransferFrom successful. TX: ${receipt.txid}, Energy: ${actualEnergyUsed}`);
             return { txHash: receipt.txid, energyUsed: actualEnergyUsed };
         } catch (error) {
@@ -376,6 +403,10 @@ class TronCollectionService {
             const balanceStr = await this._getUsdtBalance(user.tron_deposit_address);
             const balance = parseFloat(BigInt(balanceStr).toString()) / (10**USDT_DECIMALS);
             
+            // #region agent log
+            fetch('http://127.0.0.1:7242/ingest/14db9cbb-ee24-417b-9eeb-3494fd0c6cdc',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'TronCollectionService.js:377',message:'Checking USDT balance',data:{userId:user.user_id,address:user.tron_deposit_address,balance,balanceStr},timestamp:Date.now(),sessionId:'debug-session',runId:'pre-fix',hypothesisId:'B'})}).catch(()=>{});
+            // #endregion
+            
             if (balance <= 0) {
                 return { shouldCollect: false, reason: 'No USDT balance' };
             }
@@ -402,6 +433,9 @@ class TronCollectionService {
                 [user.user_id]
             );
             
+            let daysSince = null;
+            let timeSource = null;
+            
             if (depositResult.rows.length === 0) {
                 // 没有充值记录，检查用户創建时间
                 const userResult = await db.query(
@@ -410,16 +444,28 @@ class TronCollectionService {
                 );
                 if (userResult.rows.length > 0) {
                     const userCreatedAt = new Date(userResult.rows[0].created_at);
-                    const daysSinceCreation = (Date.now() - userCreatedAt.getTime()) / (1000 * 60 * 60 * 24);
-                    if (daysSinceCreation < daysWithoutDeposit) {
-                        return { shouldCollect: false, reason: `Created ${Math.floor(daysSinceCreation)} days ago, need ${daysWithoutDeposit} days` };
+                    daysSince = (Date.now() - userCreatedAt.getTime()) / (1000 * 60 * 60 * 24);
+                    timeSource = 'user_created_at';
+                    
+                    // #region agent log
+                    fetch('http://127.0.0.1:7242/ingest/14db9cbb-ee24-417b-9eeb-3494fd0c6cdc',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'TronCollectionService.js:415',message:'No deposit found, checking user creation',data:{userId:user.user_id,daysSince,daysWithoutDeposit,userCreatedAt:userResult.rows[0].created_at,shouldCollect:daysSince >= daysWithoutDeposit},timestamp:Date.now(),sessionId:'debug-session',runId:'pre-fix',hypothesisId:'B'})}).catch(()=>{});
+                    // #endregion
+                    
+                    if (daysSince < daysWithoutDeposit) {
+                        return { shouldCollect: false, reason: `Created ${Math.floor(daysSince)} days ago, need ${daysWithoutDeposit} days` };
                     }
                 }
             } else {
                 const lastDepositTime = new Date(depositResult.rows[0].created_at);
-                const daysSinceDeposit = (Date.now() - lastDepositTime.getTime()) / (1000 * 60 * 60 * 24);
-                if (daysSinceDeposit < daysWithoutDeposit) {
-                    return { shouldCollect: false, reason: `Last deposit ${Math.floor(daysSinceDeposit)} days ago, need ${daysWithoutDeposit} days` };
+                daysSince = (Date.now() - lastDepositTime.getTime()) / (1000 * 60 * 60 * 24);
+                timeSource = 'last_deposit';
+                
+                // #region agent log
+                fetch('http://127.0.0.1:7242/ingest/14db9cbb-ee24-417b-9eeb-3494fd0c6cdc',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'TronCollectionService.js:421',message:'Last deposit found',data:{userId:user.user_id,daysSince,daysWithoutDeposit,lastDepositTime:depositResult.rows[0].created_at,shouldCollect:daysSince >= daysWithoutDeposit},timestamp:Date.now(),sessionId:'debug-session',runId:'pre-fix',hypothesisId:'B'})}).catch(()=>{});
+                // #endregion
+                
+                if (daysSince < daysWithoutDeposit) {
+                    return { shouldCollect: false, reason: `Last deposit ${Math.floor(daysSince)} days ago, need ${daysWithoutDeposit} days` };
                 }
             }
             
@@ -464,6 +510,11 @@ class TronCollectionService {
         
         const settings = settingsResult.rows[0];
         const scanIntervalDays = settings.scan_interval_days;
+        const daysWithoutDeposit = settings.days_without_deposit;
+        
+        // #region agent log
+        fetch('http://127.0.0.1:7242/ingest/14db9cbb-ee24-417b-9eeb-3494fd0c6cdc',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'TronCollectionService.js:465',message:'Starting collection scan',data:{scanIntervalDays,daysWithoutDeposit,collectionWallet:this.collectionWallet.address},timestamp:Date.now(),sessionId:'debug-session',runId:'pre-fix',hypothesisId:'C'})}).catch(()=>{});
+        // #endregion
         
         // (★★★ v9.0 升級：使用新的 collection_cursor 表（基於 last_processed_user_id）★★★)
         const cursorResult = await db.query(
@@ -482,6 +533,10 @@ class TronCollectionService {
             );
             lastProcessedUserId = null;
         }
+        
+        // #region agent log
+        fetch('http://127.0.0.1:7242/ingest/14db9cbb-ee24-417b-9eeb-3494fd0c6cdc',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'TronCollectionService.js:485',message:'Collection cursor position',data:{lastProcessedUserId,hasCursor:!!cursor},timestamp:Date.now(),sessionId:'debug-session',runId:'pre-fix',hypothesisId:'C'})}).catch(()=>{});
+        // #endregion
         
         // 获取当前能量
         let currentEnergy;
@@ -585,6 +640,20 @@ class TronCollectionService {
         }
         
         // (★★★ v9.0 升級：使用新的游標邏輯（基於 last_processed_user_id）★★★)
+        // 先查詢 hans01 用戶信息以便日誌記錄
+        const hans01Check = await db.query(
+            `SELECT id, user_id, username, deposit_path_index, tron_deposit_address, created_at 
+             FROM users WHERE username = 'hans01' LIMIT 1`
+        );
+        
+        let hans01Info = null;
+        if (hans01Check.rows.length > 0) {
+            hans01Info = hans01Check.rows[0];
+            // #region agent log
+            fetch('http://127.0.0.1:7242/ingest/14db9cbb-ee24-417b-9eeb-3494fd0c6cdc',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'TronCollectionService.js:592',message:'hans01 user info',data:{userId:hans01Info.user_id,id:hans01Info.id,address:hans01Info.tron_deposit_address,createdAt:hans01Info.created_at,lastProcessedUserId},timestamp:Date.now(),sessionId:'debug-session',runId:'pre-fix',hypothesisId:'A'})}).catch(()=>{});
+            // #endregion
+        }
+        
         let usersQuery = `
             SELECT id, user_id, deposit_path_index, tron_deposit_address 
             FROM users 
@@ -600,6 +669,10 @@ class TronCollectionService {
         const usersResult = lastProcessedUserId && lastProcessedUserId > 0
             ? await db.query(usersQuery, [lastProcessedUserId, estimatedCapacity * 2]) // 多查一些，因为有些可能不符合条件
             : await db.query(usersQuery, [estimatedCapacity * 2]);
+        
+        // #region agent log
+        fetch('http://127.0.0.1:7242/ingest/14db9cbb-ee24-417b-9eeb-3494fd0c6cdc',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'TronCollectionService.js:605',message:'User query results',data:{totalUsers:usersResult.rows.length,lastProcessedUserId,firstUserId:usersResult.rows[0]?.id,lastUserId:usersResult.rows[usersResult.rows.length-1]?.id,hans01InResult:hans01Info ? usersResult.rows.some(u=>u.id===hans01Info.id) : false,estimatedCapacity},timestamp:Date.now(),sessionId:'debug-session',runId:'pre-fix',hypothesisId:'A'})}).catch(()=>{});
+        // #endregion
         
         if (usersResult.rows.length === 0) {
             console.log('[Collection] No users to process. Resetting cursor.');
@@ -628,6 +701,13 @@ class TronCollectionService {
             
             // 检查是否应该归集
             const shouldCollectResult = await this._shouldCollect(user);
+            
+            // #region agent log
+            if (hans01Info && (user.id === hans01Info.id || user.user_id === hans01Info.user_id)) {
+                fetch('http://127.0.0.1:7242/ingest/14db9cbb-ee24-417b-9eeb-3494fd0c6cdc',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'TronCollectionService.js:635',message:'hans01 collection check result',data:{shouldCollect:shouldCollectResult.shouldCollect,reason:shouldCollectResult.reason,balance:shouldCollectResult.balance,userId:user.user_id,userAddress:user.tron_deposit_address},timestamp:Date.now(),sessionId:'debug-session',runId:'pre-fix',hypothesisId:'B'})}).catch(()=>{});
+            }
+            // #endregion
+            
             if (!shouldCollectResult.shouldCollect) {
                 skippedCount++;
                 lastProcessedUserId = user.id; // (★★★ v9.0 升級：使用 user.id 而不是 user_id ★★★)
@@ -873,6 +953,280 @@ class TronCollectionService {
             console.error(`[Collection] Failed to reclaim energy: ${reclaimError.message}`);
         }
         */
+    }
+
+    /**
+     * @description 手動執行歸集任務（由管理員觸發）
+     * @param {number} adminId - 管理員 ID
+     * @param {string} adminUsername - 管理員用戶名
+     * @param {string} ipAddress - 管理員 IP 地址
+     * @param {string} userAgent - 管理員 User-Agent
+     */
+    async executeManualCollection(adminId, adminUsername, ipAddress, userAgent) {
+        const { recordAuditLog } = require('./auditLogService');
+        
+        // 記錄審計日誌
+        try {
+            await recordAuditLog({
+                adminId: adminId,
+                adminUsername: adminUsername,
+                action: 'manual_collection',
+                resource: 'collection',
+                resourceId: null,
+                description: `手動觸發歸集任務`,
+                ipAddress: ipAddress,
+                userAgent: userAgent
+            });
+        } catch (auditError) {
+            console.error('[Collection] Failed to record audit log:', auditError);
+        }
+
+        let collectedCount = 0;
+        let failedCount = 0;
+        let errorMessage = null;
+
+        try {
+            console.log(`[Collection] 🔧 Manual collection triggered by admin ${adminUsername} (ID: ${adminId})`);
+
+            if (!this.collectionWallet) {
+                throw new Error('歸集錢包未配置');
+            }
+
+            // 執行歸集邏輯（重用現有的 collectFunds 方法，但需要修改以返回統計信息）
+            // 由於 collectFunds 是異步的且不返回統計，我們需要手動執行歸集邏輯
+            const result = await this._executeCollectionLogic();
+            collectedCount = result.collectedCount;
+            failedCount = result.failedCount;
+
+            // 創建成功通知
+            const notificationMessage = `手動歸集完成。成功: ${collectedCount}筆, 失敗: ${failedCount}筆。`;
+            await this._createNotification('MANUAL_COLLECTION', notificationMessage);
+
+            console.log(`[Collection] ✅ Manual collection completed: ${collectedCount} collected, ${failedCount} failed`);
+        } catch (error) {
+            errorMessage = error.message;
+            console.error(`[Collection] ❌ Manual collection failed:`, error);
+
+            // 創建失敗通知
+            await this._createNotification('COLLECTION_ERROR', `手動歸集執行異常: ${errorMessage}`);
+        }
+    }
+
+    /**
+     * @description 執行歸集邏輯（返回統計信息）
+     * @returns {Promise<{collectedCount: number, failedCount: number}>}
+     */
+    async _executeCollectionLogic() {
+        if (!this.collectionWallet) {
+            throw new Error('Collection wallet not configured');
+        }
+
+        // 檢查歸集設定
+        const settingsResult = await db.query(
+            `SELECT * FROM collection_settings 
+             WHERE collection_wallet_address = $1 AND is_active = true`,
+            [this.collectionWallet.address]
+        );
+
+        if (settingsResult.rows.length === 0) {
+            throw new Error('未找到有效的歸集設定');
+        }
+
+        const settings = settingsResult.rows[0];
+        const daysWithoutDeposit = settings.days_without_deposit;
+
+        // 獲取游標
+        const cursorResult = await db.query(`SELECT * FROM collection_cursor LIMIT 1`);
+        let cursor = cursorResult.rows[0];
+        let lastProcessedUserId = null;
+
+        if (cursor) {
+            lastProcessedUserId = cursor.last_processed_user_id ? parseInt(cursor.last_processed_user_id) : null;
+        } else {
+            await db.query(`INSERT INTO collection_cursor (last_processed_user_id) VALUES (0)`);
+            lastProcessedUserId = null;
+        }
+
+        // 獲取當前能量
+        let currentEnergy = await this._getCollectionWalletEnergy();
+        const avgEnergy = await this._getAverageEnergyUsage();
+        const estimatedCapacity = Math.floor(currentEnergy / avgEnergy);
+
+        if (estimatedCapacity <= 0) {
+            throw new Error(`能量不足（當前: ${currentEnergy}，平均每筆: ${avgEnergy}）`);
+        }
+
+        // 查詢用戶
+        let usersQuery = `
+            SELECT id, user_id, deposit_path_index, tron_deposit_address 
+            FROM users 
+            WHERE tron_deposit_address IS NOT NULL
+        `;
+
+        if (lastProcessedUserId && lastProcessedUserId > 0) {
+            usersQuery += ` AND id > $1 ORDER BY id ASC LIMIT $2`;
+        } else {
+            usersQuery += ` ORDER BY id ASC LIMIT $1`;
+        }
+
+        const usersResult = lastProcessedUserId && lastProcessedUserId > 0
+            ? await db.query(usersQuery, [lastProcessedUserId, estimatedCapacity * 2])
+            : await db.query(usersQuery, [estimatedCapacity * 2]);
+
+        if (usersResult.rows.length === 0) {
+            return { collectedCount: 0, failedCount: 0 };
+        }
+
+        let collectedCount = 0;
+        let failedCount = 0;
+        let actualEnergyUsed = 0;
+
+        for (const user of usersResult.rows) {
+            if (actualEnergyUsed >= currentEnergy) {
+                break;
+            }
+
+            const shouldCollectResult = await this._shouldCollect(user);
+            if (!shouldCollectResult.shouldCollect) {
+                lastProcessedUserId = user.id;
+                continue;
+            }
+
+            // 檢查能量
+            let remainingEnergy = await this._getCollectionWalletEnergy() - actualEnergyUsed;
+            const ENERGY_THRESHOLD = 32000;
+
+            if (remainingEnergy < ENERGY_THRESHOLD) {
+                const energyNeeded = avgEnergy * 10;
+                try {
+                    const rentalResult = await this.energyService.rentEnergy(
+                        this.collectionWallet.address,
+                        energyNeeded,
+                        `manual_collection_${Date.now()}`
+                    );
+                    await new Promise(resolve => setTimeout(resolve, 5000));
+                    currentEnergy = await this._getCollectionWalletEnergy();
+                    remainingEnergy = currentEnergy - actualEnergyUsed;
+                } catch (rentalError) {
+                    if (remainingEnergy < avgEnergy) {
+                        break;
+                    }
+                }
+            }
+
+            if (remainingEnergy < avgEnergy) {
+                break;
+            }
+
+            try {
+                // 檢查並執行 approve
+                const allowanceStr = await this._checkAllowance(user.tron_deposit_address);
+                const allowance = BigInt(allowanceStr);
+                const balanceStr = await this._getUsdtBalance(user.tron_deposit_address);
+                const balance = BigInt(balanceStr);
+
+                if (allowance < balance) {
+                    const userPrivateKey = this.kmsService.getPrivateKey('TRC20', user.deposit_path_index);
+                    await this._approveCollection(userPrivateKey, user.tron_deposit_address);
+                    await new Promise(resolve => setTimeout(resolve, 5000));
+                }
+
+                // 執行 transferFrom
+                const transferResult = await this._transferFrom(user.tron_deposit_address, balanceStr);
+
+                // 記錄歸集日誌
+                await db.query(
+                    `INSERT INTO collection_logs 
+                     (user_id, user_deposit_address, collection_wallet_address, amount, tx_hash, energy_used, status) 
+                     VALUES ($1, $2, $3, $4, $5, $6, 'completed')`,
+                    [
+                        user.user_id,
+                        user.tron_deposit_address,
+                        this.collectionWallet.address,
+                        shouldCollectResult.balance,
+                        transferResult.txHash,
+                        transferResult.energyUsed
+                    ]
+                );
+
+                actualEnergyUsed += transferResult.energyUsed;
+                collectedCount++;
+                lastProcessedUserId = user.id;
+
+                await new Promise(resolve => setTimeout(resolve, 2000));
+            } catch (error) {
+                console.error(`[Collection] Failed to collect from user ${user.user_id}:`, error.message);
+
+                await db.query(
+                    `INSERT INTO collection_logs 
+                     (user_id, user_deposit_address, collection_wallet_address, amount, status, error_message) 
+                     VALUES ($1, $2, $3, $4, 'failed', $5)`,
+                    [
+                        user.user_id,
+                        user.tron_deposit_address,
+                        this.collectionWallet.address,
+                        shouldCollectResult.balance || 0,
+                        error.message.substring(0, 500)
+                    ]
+                );
+
+                failedCount++;
+                lastProcessedUserId = user.id;
+
+                if (error.message && (error.message.includes('energy') || error.message.includes('ENERGY'))) {
+                    break;
+                }
+            }
+        }
+
+        // 更新游標
+        if (lastProcessedUserId) {
+            await db.query(
+                `UPDATE collection_cursor SET last_processed_user_id = $1, updated_at = NOW()`,
+                [lastProcessedUserId]
+            );
+        } else {
+            await db.query(
+                `UPDATE collection_cursor SET last_processed_user_id = 0, updated_at = NOW()`
+            );
+        }
+
+        return { collectedCount, failedCount };
+    }
+
+    /**
+     * @description 創建通知記錄並推送 Socket.IO 事件
+     * @param {string} type - 通知類型
+     * @param {string} message - 通知消息
+     */
+    async _createNotification(type, message) {
+        try {
+            // 創建通知記錄
+            const result = await db.query(
+                `INSERT INTO tron_notifications (type, message, resolved, created_at)
+                 VALUES ($1, $2, false, NOW())
+                 RETURNING id`,
+                [type, message]
+            );
+
+            const notificationId = result.rows[0].id;
+            console.log(`[Collection] Created notification: ${notificationId} (${type})`);
+
+            // 推送 Socket.IO 事件
+            if (this.io) {
+                this.io.to('admin').emit('admin:notification_new', {
+                    id: notificationId,
+                    type: type,
+                    message: message,
+                    resolved: false
+                });
+                console.log(`[Collection] Emitted Socket.IO notification to admin room`);
+            } else {
+                console.warn(`[Collection] Socket.IO instance not available, skipping push`);
+            }
+        } catch (error) {
+            console.error(`[Collection] Failed to create notification:`, error);
+        }
     }
 }
 

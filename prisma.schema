@@ -1,0 +1,480 @@
+// ⚠️ 此文件仅用于文档目的，帮助 AI 理解数据库结构
+// 本项目不使用 Prisma ORM，实际使用 PostgreSQL + pg 库
+// 此 schema 基于 init.sql 和迁移文件生成，仅供参考
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ============================================
+// 用户相关表
+// ============================================
+
+model User {
+  id                              Int       @id @default(autoincrement())
+  username                        String    @unique @db.VarChar(50)
+  password_hash                   String    @db.VarChar(100)
+  balance                         Decimal   @default(0) @db.Decimal(20, 6)
+  deposit_path_index              Int?      @unique
+  evm_deposit_address             String?   @unique @db.VarChar(42)
+  tron_deposit_address            String?   @unique @db.VarChar(255)
+  user_id                         String    @unique @db.VarChar(8)
+  current_streak                  Int       @default(0)
+  max_streak                      Int       @default(0)
+  nickname                        String?   @db.VarChar(50)
+  level                           Int       @default(1)
+  invite_code                     String?   @unique @db.VarChar(8)
+  referrer_code                   String?   @db.VarChar(8)
+  registration_ip                 String?   @db.VarChar(50)
+  first_login_ip                  String?   @db.VarChar(50)
+  first_login_country             String?   @db.VarChar(100)
+  first_login_at                  DateTime? @db.Timestamptz(6)
+  device_id                       String?   @db.VarChar(255)
+  last_login_ip                   String?   @db.VarChar(50)
+  last_activity_at                DateTime? @db.Timestamptz(6)
+  user_agent                      String?   @db.Text
+  status                          String    @default("active") @db.VarChar(20)
+  withdrawal_password_hash        String?   @db.VarChar(100)
+  has_withdrawal_password         Boolean   @default(false)
+  original_password_hash          String?   @db.VarChar(100)
+  original_withdrawal_password_hash String? @db.VarChar(100)
+  password_fingerprint            String?   @db.VarChar(64)
+  withdrawal_password_fingerprint String?   @db.VarChar(64)
+  last_level_up_time              DateTime  @default(now()) @db.Timestamptz(6)
+  created_at                      DateTime  @default(now()) @db.Timestamptz(6)
+
+  // Relations
+  bets                            Bet[]
+  platform_transactions           PlatformTransaction[]
+  withdrawals                     Withdrawal[]
+  balance_changes                  BalanceChange[]
+  collection_logs                 CollectionLog[]
+  user_login_logs                 UserLoginLog[]
+
+  @@index([evm_deposit_address])
+  @@index([tron_deposit_address])
+  @@index([registration_ip])
+  @@index([first_login_ip])
+  @@index([device_id])
+  @@index([original_password_hash])
+  @@index([original_withdrawal_password_hash])
+  @@index([password_fingerprint])
+  @@index([withdrawal_password_fingerprint])
+  @@map("users")
+}
+
+// ============================================
+// 游戏相关表
+// ============================================
+
+model Bet {
+  id                Int       @id @default(autoincrement())
+  user_id           String    @db.VarChar(8)
+  game_type         String    @default("FlipCoin") @db.VarChar(50)
+  choice            String    @db.VarChar(4)
+  amount            Decimal   @db.Decimal(20, 6)
+  status            String    @default("pending") @db.VarChar(15)
+  bet_ip            String?   @db.VarChar(50)
+  bet_time          DateTime  @default(now()) @db.Timestamptz(6)
+  settle_time       DateTime? @db.Timestamptz(6)
+  tx_hash           String?   @unique @db.VarChar(66)
+  payout_multiplier Decimal   @default(2) @db.Decimal(10, 2)
+
+  // Relations
+  user              User      @relation(fields: [user_id], references: [user_id], onDelete: Cascade)
+
+  @@index([bet_ip])
+  @@map("bets")
+}
+
+model Game {
+  id                Int       @id @default(autoincrement())
+  provider          String    @default("自营") @db.VarChar(50)
+  provider_params   String?   @db.Text
+  name_zh           String    @db.VarChar(100)
+  name_en           String?   @db.VarChar(100)
+  game_code         String?   @db.VarChar(50)
+  game_status       String?   @db.VarChar(20)
+  status            String    @default("enabled") @db.VarChar(10)
+  sort_order        Int       @default(0)
+  payout_multiplier Decimal   @default(2) @db.Decimal(10, 2)
+  created_at        DateTime  @default(now()) @db.Timestamptz(6)
+  updated_at        DateTime  @default(now()) @updatedAt @db.Timestamptz(6)
+
+  @@index([provider])
+  @@index([status])
+  @@index([sort_order])
+  @@map("games")
+}
+
+// ============================================
+// 交易相关表
+// ============================================
+
+model PlatformTransaction {
+  id          Int       @id @default(autoincrement())
+  user_id     String    @db.VarChar(8)
+  type        String    @db.VarChar(50)
+  chain       String?   @db.VarChar(20)
+  amount      Decimal   @default(0) @db.Decimal(20, 6)
+  gas_fee     Decimal   @default(0) @db.Decimal(20, 6)
+  tx_hash     String?   @db.VarChar(255)
+  status      String    @default("completed") @db.VarChar(20)
+  created_at  DateTime  @default(now()) @db.Timestamptz(6)
+  updated_at  DateTime  @default(now()) @updatedAt @db.Timestamptz(6)
+
+  // Relations
+  user        User?     @relation(fields: [user_id], references: [user_id], onDelete: SetNull)
+
+  @@index([type])
+  @@index([user_id])
+  @@map("platform_transactions")
+}
+
+model Withdrawal {
+  id              Int       @id @default(autoincrement())
+  user_id         String    @db.VarChar(8)
+  chain_type      String    @db.VarChar(20)
+  address         String    @db.VarChar(255)
+  amount          Decimal   @db.Decimal(20, 6)
+  status          String    @default("pending") @db.VarChar(20)
+  gas_fee         Decimal   @default(0) @db.Decimal(20, 6)
+  tx_hash         String?   @db.VarChar(255)
+  rejection_reason String?  @db.Text
+  request_time    DateTime  @default(now()) @db.Timestamptz(6)
+  review_time     DateTime? @db.Timestamptz(6)
+  reviewer_id     Int?
+
+  // Relations
+  user            User?     @relation(fields: [user_id], references: [user_id], onDelete: SetNull)
+  reviewer        AdminUser? @relation(fields: [reviewer_id], references: [id], onDelete: SetNull)
+
+  @@index([status])
+  @@index([user_id])
+  @@map("withdrawals")
+}
+
+model BalanceChange {
+  id            Int       @id @default(autoincrement())
+  user_id       String    @db.VarChar(8)
+  change_type   String    @db.VarChar(50)
+  amount        Decimal   @db.Decimal(20, 6)
+  balance_after Decimal   @db.Decimal(20, 6)
+  remark        String?   @db.Text
+  created_at    DateTime  @default(now()) @db.Timestamptz(6)
+
+  // Relations
+  user          User      @relation(fields: [user_id], references: [user_id], onDelete: Cascade)
+
+  @@index([user_id])
+  @@index([change_type])
+  @@index([created_at])
+  @@index([user_id, created_at(sort: Desc)])
+  @@map("balance_changes")
+}
+
+// ============================================
+// 管理员相关表
+// ============================================
+
+model AdminUser {
+  id                Int       @id @default(autoincrement())
+  username          String    @unique @db.VarChar(50)
+  password_hash     String    @db.VarChar(100)
+  role_id           Int?
+  status            String    @default("active") @db.VarChar(20)
+  created_at        DateTime  @default(now()) @db.Timestamptz(6)
+  last_login_ip     String?   @db.VarChar(50)
+  google_secret     String?   @db.VarChar(100)
+  is_2fa_enabled    Boolean   @default(false)
+  profile_name       String?   @db.VarChar(100)
+  profile_email     String?   @db.VarChar(255)
+
+  // Relations
+  role              AdminRole? @relation(fields: [role_id], references: [id], onDelete: SetNull)
+  withdrawals       Withdrawal[]
+  audit_logs        AdminAuditLog[]
+
+  @@map("admin_users")
+}
+
+model AdminRole {
+  id                Int       @id @default(autoincrement())
+  name              String    @unique @db.VarChar(50)
+  description       String?   @db.Text
+  created_at        DateTime  @default(now()) @db.Timestamptz(6)
+
+  // Relations
+  admin_users       AdminUser[]
+  role_permissions  AdminRolePermission[]
+
+  @@map("admin_roles")
+}
+
+model AdminPermission {
+  id                Int       @id @default(autoincrement())
+  resource          String    @db.VarChar(50)
+  action            String    @db.VarChar(50)
+  description       String?   @db.Text
+  category          String    @default("General") @db.VarChar(50)
+
+  // Relations
+  role_permissions  AdminRolePermission[]
+
+  @@unique([resource, action])
+  @@map("admin_permissions")
+}
+
+model AdminRolePermission {
+  role_id           Int
+  permission_id     Int
+
+  // Relations
+  role              AdminRole      @relation(fields: [role_id], references: [id], onDelete: Cascade)
+  permission        AdminPermission @relation(fields: [permission_id], references: [id], onDelete: Cascade)
+
+  @@id([role_id, permission_id])
+  @@map("admin_role_permissions")
+}
+
+model AdminIpWhitelist {
+  id                Int       @id @default(autoincrement())
+  ip_range          String    @unique @db.Cidr
+  description       String?   @db.Text
+  created_at        DateTime  @default(now()) @db.Timestamptz(6)
+
+  @@map("admin_ip_whitelist")
+}
+
+model AdminAuditLog {
+  id                Int       @id @default(autoincrement())
+  admin_id          Int?
+  admin_username     String?   @db.VarChar(50)
+  action            String    @db.VarChar(100)
+  resource          String?   @db.VarChar(100)
+  resource_id       String?   @db.VarChar(100)
+  description       String?   @db.Text
+  ip_address        String?   @db.VarChar(100)
+  user_agent        String?   @db.Text
+  created_at        DateTime  @default(now()) @db.Timestamptz(6)
+
+  // Relations
+  admin             AdminUser? @relation(fields: [admin_id], references: [id], onDelete: SetNull)
+
+  @@index([action])
+  @@index([created_at])
+  @@map("admin_audit_logs")
+}
+
+// ============================================
+// 钱包相关表
+// ============================================
+
+model PlatformWallet {
+  id                  Int       @id @default(autoincrement())
+  name                String    @db.VarChar(100)
+  chain_type          String    @db.VarChar(20)
+  address             String    @unique @db.VarChar(255)
+  is_gas_reserve      Boolean   @default(false)
+  is_collection       Boolean   @default(false)
+  is_opener_a         Boolean   @default(false)
+  is_opener_b         Boolean   @default(false)
+  is_payout           Boolean   @default(false)
+  is_energy_provider  Boolean   @default(false)
+  max_energy_limit    BigInt?
+  current_staked_trx  Decimal   @default(0) @db.Decimal(20, 6)
+  current_index       Int       @default(0)
+  encrypted_mnemonic  String?   @db.Text
+  is_active           Boolean   @default(true)
+  created_at          DateTime  @default(now()) @db.Timestamptz(6)
+
+  @@map("platform_wallets")
+}
+
+model EnergyRental {
+  id                Int       @id @default(autoincrement())
+  provider_address  String    @db.VarChar(255)
+  receiver_address  String    @db.VarChar(255)
+  energy_amount     BigInt
+  status            String    @default("ACTIVE") @db.VarChar(20)
+  tx_id             String?   @db.VarChar(255)
+  related_task_id   String?   @db.VarChar(100)
+  created_at        DateTime  @default(now()) @db.Timestamptz(6)
+  reclaimed_at      DateTime? @db.Timestamptz(6)
+  error_message     String?   @db.Text
+
+  @@index([provider_address])
+  @@index([receiver_address])
+  @@index([status])
+  @@index([related_task_id])
+  @@index([created_at(sort: Desc)])
+  @@map("energy_rentals")
+}
+
+// ============================================
+// 归集相关表
+// ============================================
+
+model CollectionLog {
+  id                        Int       @id @default(autoincrement())
+  user_id                   String    @db.VarChar(8)
+  user_deposit_address      String    @db.VarChar(255)
+  collection_wallet_address String    @db.VarChar(255)
+  amount                    Decimal   @db.Decimal(20, 6)
+  tx_hash                   String?   @db.VarChar(255)
+  energy_used               Int?
+  status                    String    @default("pending") @db.VarChar(20)
+  error_message             String?   @db.Text
+  created_at                DateTime  @default(now()) @db.Timestamptz(6)
+
+  // Relations
+  user                      User?     @relation(fields: [user_id], references: [user_id], onDelete: SetNull)
+
+  @@index([user_id])
+  @@index([created_at])
+  @@index([status])
+  @@map("collection_logs")
+}
+
+model CollectionSetting {
+  id                        Int       @id @default(autoincrement())
+  collection_wallet_address String    @unique @db.VarChar(255)
+  scan_interval_days        Int       @default(1)
+  days_without_deposit      Int       @default(7)
+  is_active                 Boolean   @default(true)
+  created_at                DateTime  @default(now()) @db.Timestamptz(6)
+  updated_at                DateTime  @default(now()) @updatedAt @db.Timestamptz(6)
+
+  @@map("collection_settings")
+}
+
+model CollectionCursor {
+  id                        Int       @id @default(autoincrement())
+  collection_wallet_address String    @unique @db.VarChar(255)
+  last_user_id             String?    @db.VarChar(8)
+  last_processed_date       DateTime  @default(now()) @db.Date
+  created_at                DateTime  @default(now()) @db.Timestamptz(6)
+  updated_at                DateTime  @default(now()) @updatedAt @db.Timestamptz(6)
+
+  @@map("collection_cursor")
+}
+
+model CollectionRetryQueue {
+  id                Int       @id @default(autoincrement())
+  user_id           String    @db.VarChar(8)
+  retry_count       Int       @default(0)
+  next_retry_at     DateTime  @default(now()) @db.Timestamptz(6)
+  error_reason      String?   @db.Text
+  created_at        DateTime  @default(now()) @db.Timestamptz(6)
+  updated_at        DateTime  @default(now()) @updatedAt @db.Timestamptz(6)
+
+  @@index([user_id])
+  @@index([next_retry_at])
+  @@index([retry_count])
+  @@map("collection_retry_queue")
+}
+
+// ============================================
+// 系统设置相关表
+// ============================================
+
+model SystemSetting {
+  key           String    @id @db.VarChar(50)
+  value         String    @db.Text
+  description   String?   @db.Text
+  category      String    @default("General") @db.VarChar(50)
+  updated_at    DateTime  @default(now()) @updatedAt @db.Timestamptz(6)
+
+  @@map("system_settings")
+}
+
+model BlockedRegion {
+  id            Int       @id @default(autoincrement())
+  ip_range      String    @unique @db.Cidr
+  description   String?   @db.Text
+  created_at    DateTime  @default(now()) @db.Timestamptz(6)
+
+  @@map("blocked_regions")
+}
+
+model UserLevel {
+  level                     Int       @id
+  name                      String    @default("") @db.VarChar(50)
+  max_bet_amount            Decimal   @default(100) @db.Decimal(20, 6)
+  required_bets_for_upgrade Int       @default(0)
+  min_bet_amount_for_upgrade Decimal @default(0) @db.Decimal(20, 6)
+  upgrade_reward_amount     Decimal   @default(0) @db.Decimal(20, 6)
+  created_at                DateTime  @default(now()) @db.Timestamptz(6)
+  updated_at                DateTime  @default(now()) @updatedAt @db.Timestamptz(6)
+
+  @@map("user_levels")
+}
+
+// ============================================
+// 日志相关表
+// ============================================
+
+model UserLoginLog {
+  id            Int       @id @default(autoincrement())
+  user_id       String    @db.VarChar(8)
+  login_ip      String    @db.VarChar(50)
+  login_country String?   @db.VarChar(100)
+  device_id     String?   @db.VarChar(255)
+  user_agent    String?   @db.Text
+  login_at      DateTime  @default(now()) @db.Timestamptz(6)
+
+  // Relations
+  user          User      @relation(fields: [user_id], references: [user_id], onDelete: Cascade)
+
+  @@index([user_id])
+  @@index([login_ip])
+  @@index([login_at])
+  @@index([device_id])
+  @@map("user_login_logs")
+}
+
+model TronNotification {
+  id            Int       @id @default(autoincrement())
+  type          String    @db.VarChar(50)
+  address       String?   @db.VarChar(50)
+  message       String    @db.Text
+  resolved      Boolean   @default(false)
+  created_at    DateTime  @default(now()) @db.Timestamptz(6)
+  resolved_at   DateTime? @db.Timestamptz(6)
+
+  @@index([resolved])
+  @@index([type])
+  @@index([created_at(sort: Desc)])
+  @@map("tron_notifications")
+}
+
+model RiskLog {
+  id                Int       @id @default(autoincrement())
+  ip_address        String    @db.VarChar(100)
+  affected_user_ids Json      @db.JsonB
+  action_taken      String    @db.VarChar(100)
+  created_at        DateTime  @default(now()) @db.Timestamptz(6)
+
+  @@index([ip_address])
+  @@index([created_at])
+  @@map("risk_logs")
+}
+
+// ============================================
+// 区块链同步状态表
+// ============================================
+
+model BlockchainSyncStatus {
+  chain              String    @id @db.VarChar(50)
+  last_scanned_block BigInt    @default(0)
+  created_at         DateTime  @default(now()) @db.Timestamptz(6)
+  updated_at         DateTime  @default(now()) @updatedAt @db.Timestamptz(6)
+
+  @@index([chain])
+  @@map("blockchain_sync_status")
+}

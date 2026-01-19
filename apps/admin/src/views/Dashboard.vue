@@ -137,84 +137,122 @@
           <el-button type="primary" size="small" :icon="Refresh" @click="refreshWallets">刷新</el-button>
         </div>
       </template>
-      <div v-if="walletMonitoring" class="wallet-grid">
-        <!-- 自動出款類型 -->
-        <div v-if="walletMonitoring.payout && walletMonitoring.payout.length > 0" class="wallet-group">
-          <div class="wallet-group-header">
-            <el-icon><CreditCard /></el-icon>
-            <span>自動出款</span>
-          </div>
-          <div class="wallet-list">
-            <div v-for="wallet in walletMonitoring.payout" :key="wallet.id" class="wallet-item">
-              <div class="wallet-name">{{ wallet.name }}</div>
-              <div class="wallet-address">{{ maskAddress(wallet.address) }}</div>
-              <div class="wallet-balances">
-                <div class="balance-item">
-                  <span class="balance-label">TRX</span>
-                  <span class="balance-value">{{ formatBalance(wallet.trxBalance) }}</span>
-                </div>
-                <div class="balance-item">
-                  <span class="balance-label">USDT</span>
-                  <span class="balance-value">{{ formatBalance(wallet.usdtBalance) }}</span>
+      <div v-if="walletMonitoring">
+        <el-row :gutter="16" class="wallet-grid-row">
+          <!-- 自動出款類型 -->
+          <el-col :xs="24" :sm="12" :md="8" :lg="6" :xl="6" v-if="walletMonitoring.payout && walletMonitoring.payout.length > 0">
+            <div class="wallet-group">
+              <div class="wallet-group-header">
+                <el-icon><CreditCard /></el-icon>
+                <span>自動出款</span>
+              </div>
+              <div class="wallet-list">
+                <div v-for="wallet in walletMonitoring.payout" :key="wallet.id" class="wallet-item">
+                  <div class="wallet-name">{{ wallet.name }}</div>
+                  <div class="wallet-address">{{ maskAddress(wallet.address) }}</div>
+                  <div class="wallet-balances">
+                    <div class="balance-item">
+                      <span class="balance-label">TRX</span>
+                      <span class="balance-value">{{ formatBalance(wallet.trxBalance) }}</span>
+                    </div>
+                    <div class="balance-item">
+                      <span class="balance-label">USDT</span>
+                      <span class="balance-value">{{ formatBalance(wallet.usdtBalance) }}</span>
+                    </div>
+                  </div>
                 </div>
               </div>
             </div>
-          </div>
-        </div>
+          </el-col>
 
-        <!-- 歸集類型 -->
-        <div v-if="walletMonitoring.collection && walletMonitoring.collection.length > 0" class="wallet-group">
-          <div class="wallet-group-header">
-            <el-icon><Box /></el-icon>
-            <span>歸集</span>
-          </div>
-          <div class="wallet-list">
-            <div v-for="wallet in walletMonitoring.collection" :key="wallet.id" class="wallet-item">
-              <div class="wallet-name">{{ wallet.name }}</div>
-              <div class="wallet-address">{{ maskAddress(wallet.address) }}</div>
-              <div class="wallet-balances">
-                <div class="balance-item">
-                  <span class="balance-label">TRX</span>
-                  <span class="balance-value">{{ formatBalance(wallet.trxBalance) }}</span>
-                </div>
-                <div class="balance-item">
-                  <span class="balance-label">USDT</span>
-                  <span class="balance-value">{{ formatBalance(wallet.usdtBalance) }}</span>
-                </div>
-                <div class="balance-item">
-                  <span class="balance-label">能量</span>
-                  <span class="balance-value">{{ formatBalance(wallet.energy, 0) }}</span>
+          <!-- 歸集類型 -->
+          <el-col :xs="24" :sm="12" :md="8" :lg="6" :xl="6" v-if="walletMonitoring.collection && walletMonitoring.collection.length > 0">
+            <div class="wallet-group">
+              <div class="wallet-group-header">
+                <el-icon><Box /></el-icon>
+                <span>歸集</span>
+              </div>
+              <div class="wallet-list">
+                <div v-for="wallet in walletMonitoring.collection" :key="wallet.id" class="wallet-item">
+                  <div class="wallet-name">{{ wallet.name }}</div>
+                  <div class="wallet-address">{{ maskAddress(wallet.address) }}</div>
+                  <div class="wallet-balances">
+                    <div class="balance-item">
+                      <span class="balance-label">TRX</span>
+                      <span class="balance-value">{{ formatBalance(wallet.trxBalance) }}</span>
+                    </div>
+                    <div class="balance-item">
+                      <span class="balance-label">USDT</span>
+                      <span class="balance-value">{{ formatBalance(wallet.usdtBalance) }}</span>
+                    </div>
+                    <div class="balance-item">
+                      <span class="balance-label">能量</span>
+                      <span class="balance-value">{{ formatBalance(wallet.energy, 0) }}</span>
+                    </div>
+                  </div>
                 </div>
               </div>
             </div>
-          </div>
-        </div>
+          </el-col>
 
-        <!-- Gas 儲備類型 -->
-        <div v-if="walletMonitoring.gasReserve && walletMonitoring.gasReserve.length > 0" class="wallet-group">
-          <div class="wallet-group-header">
-            <el-icon><Lightning /></el-icon>
-            <span>Gas 儲備</span>
-          </div>
-          <div class="wallet-list">
-            <div v-for="wallet in walletMonitoring.gasReserve" :key="wallet.id" class="wallet-item">
-              <div class="wallet-name">{{ wallet.name }}</div>
-              <div class="wallet-address">{{ maskAddress(wallet.address) }}</div>
-              <div class="wallet-balances">
-                <div class="balance-item">
-                  <span class="balance-label">TRX</span>
-                  <span class="balance-value">{{ formatBalance(wallet.trxBalance) }}</span>
-                </div>
-                <div class="balance-item">
-                  <span class="balance-label">USDT</span>
-                  <span class="balance-value">{{ formatBalance(wallet.usdtBalance) }}</span>
+          <!-- Gas 儲備類型 -->
+          <el-col :xs="24" :sm="12" :md="8" :lg="6" :xl="6" v-if="walletMonitoring.gasReserve && walletMonitoring.gasReserve.length > 0">
+            <div class="wallet-group">
+              <div class="wallet-group-header">
+                <el-icon><Lightning /></el-icon>
+                <span>Gas 儲備</span>
+              </div>
+              <div class="wallet-list">
+                <div v-for="wallet in walletMonitoring.gasReserve" :key="wallet.id" class="wallet-item">
+                  <div class="wallet-name">{{ wallet.name }}</div>
+                  <div class="wallet-address">{{ maskAddress(wallet.address) }}</div>
+                  <div class="wallet-balances">
+                    <div class="balance-item">
+                      <span class="balance-label">TRX</span>
+                      <span class="balance-value">{{ formatBalance(wallet.trxBalance) }}</span>
+                    </div>
+                    <div class="balance-item">
+                      <span class="balance-label">USDT</span>
+                      <span class="balance-value">{{ formatBalance(wallet.usdtBalance) }}</span>
+                    </div>
+                  </div>
                 </div>
               </div>
             </div>
-          </div>
-        </div>
+          </el-col>
 
-        <div v-if="!walletMonitoring.payout?.length && !walletMonitoring.collection?.length && !walletMonitoring.gasReserve?.length" class="empty-state">
+          <!-- 能量提供者類型 -->
+          <el-col :xs="24" :sm="12" :md="8" :lg="6" :xl="6" v-if="walletMonitoring.energyProvider && walletMonitoring.energyProvider.length > 0">
+            <div class="wallet-group">
+              <div class="wallet-group-header">
+                <el-icon><Lightning /></el-icon>
+                <span>能量租賃</span>
+              </div>
+              <div class="wallet-list">
+                <div v-for="wallet in walletMonitoring.energyProvider" :key="wallet.id" class="wallet-item">
+                  <div class="wallet-name">{{ wallet.name }}</div>
+                  <div class="wallet-address">{{ maskAddress(wallet.address) }}</div>
+                  <div class="wallet-balances">
+                    <div class="balance-item">
+                      <span class="balance-label">质押 TRX</span>
+                      <span class="balance-value">{{ formatBalanceWithLog(wallet.stakedTrx || 0, wallet.id, 'stakedTrx') }}</span>
+                    </div>
+                    <div class="balance-item">
+                      <span class="balance-label">USDT</span>
+                      <span class="balance-value">{{ formatBalance(wallet.usdtBalance) }}</span>
+                    </div>
+                    <div class="balance-item">
+                      <span class="balance-label">剩余能量</span>
+                      <span class="balance-value">{{ formatBalance(wallet.energy, 0) }}</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </el-col>
+        </el-row>
+
+        <div v-if="!walletMonitoring.payout?.length && !walletMonitoring.collection?.length && !walletMonitoring.gasReserve?.length && !walletMonitoring.energyProvider?.length" class="empty-state">
           <el-empty description="暫無錢包數據"></el-empty>
         </div>
       </div>
@@ -320,6 +358,9 @@ export default {
           // 向後兼容：如果沒有標準格式，直接使用 response
           this.walletMonitoring = response;
         }
+        // #region agent log
+        fetch('http://127.0.0.1:7242/ingest/14db9cbb-ee24-417b-9eeb-3494fd0c6cdc',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sessionId:'debug-session',runId:'run1',hypothesisId:'H4',location:'Dashboard.vue:fetchWalletMonitoring',message:'walletMonitoring received',data:{hasEnergyProvider:!!this.walletMonitoring?.energyProvider,energyProviderCount:this.walletMonitoring?.energyProvider?.length||0,firstEnergyProvider:this.walletMonitoring?.energyProvider?.[0]?{stakedTrx:this.walletMonitoring.energyProvider[0].stakedTrx,trxBalance:this.walletMonitoring.energyProvider[0].trxBalance}:null},timestamp:Date.now()})}).catch(()=>{});
+        // #endregion
       } catch (error) {
         console.error('Failed to fetch wallet monitoring:', error);
         this.$message.error('獲取錢包監控數據失敗');
@@ -511,10 +552,23 @@ export default {
     formatBalance(balance, decimals = 6) {
       if (!balance || balance === '0' || balance === 0) return '0';
       const num = parseFloat(balance);
+      // #region agent log
+      fetch('http://127.0.0.1:7242/ingest/14db9cbb-ee24-417b-9eeb-3494fd0c6cdc',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sessionId:'debug-session',runId:'run1',hypothesisId:'H1',location:'Dashboard.vue:formatBalance',message:'formatBalance input',data:{balanceType:typeof balance,balance:String(balance).slice(0,32),parsedNum:num,decimals},timestamp:Date.now()})}).catch(()=>{});
+      // #endregion
+      // decimals=0 時，min/max 小數位必須一致，否則會 RangeError（你目前的錯誤）
+      const safeDecimals = Number.isFinite(Number(decimals)) ? Number(decimals) : 6;
+      const maxFractionDigits = safeDecimals === 0 ? 0 : 6;
+      const minFractionDigits = safeDecimals === 0 ? 0 : 2;
       return num.toLocaleString('zh-TW', {
-        minimumFractionDigits: 2,
-        maximumFractionDigits: decimals === 0 ? 0 : 6
+        minimumFractionDigits: minFractionDigits,
+        maximumFractionDigits: maxFractionDigits
       });
+    },
+    formatBalanceWithLog(balance, walletId, fieldName) {
+      // #region agent log
+      fetch('http://127.0.0.1:7242/ingest/14db9cbb-ee24-417b-9eeb-3494fd0c6cdc',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sessionId:'debug-session',runId:'run1',hypothesisId:'H5',location:'Dashboard.vue:formatBalanceWithLog',message:'rendering stakedTrx',data:{walletId,fieldName,balance,balanceType:typeof balance},timestamp:Date.now()})}).catch(()=>{});
+      // #endregion
+      return this.formatBalance(balance);
     },
     maskAddress(address) {
       if (!address) return '';
@@ -711,10 +765,8 @@ export default {
   border: none;
 }
 
-.wallet-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
-  gap: var(--spacing-lg);
+.wallet-grid-row {
+  margin-bottom: var(--spacing-lg);
 }
 
 .wallet-group {

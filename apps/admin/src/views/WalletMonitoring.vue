@@ -7,10 +7,6 @@
       </div>
     </div>
 
-    <el-card shadow="never" class="action-card">
-       <el-button type="primary" @click="handleAdd">新增钱包</el-button>
-    </el-card>
-
     <el-card shadow="never" class="search-card">
       <el-form :inline="true" :model="searchParams" @submit.native.prevent="handleSearch" class="search-form">
         <el-form-item label="钱包名称"><el-input v-model="searchParams.name" placeholder="名称 (模糊)" clearable></el-input></el-form-item>
@@ -25,12 +21,18 @@
           </el-select>
         </el-form-item>
         <el-form-item label="钱包地址"><el-input v-model="searchParams.address" placeholder="地址 (精确)" clearable></el-input></el-form-item>
-        <el-form-item><el-button type="primary" @click="handleSearch">查询</el-button></el-form-item>
+        <el-form-item>
+          <el-button type="primary" @click="handleSearch">查询</el-button>
+          <el-button type="primary" @click="handleRefreshOnChainData" :loading="refreshLoading" style="margin-left: 8px;">
+            刷新鏈上數據
+          </el-button>
+          <el-button class="add-wallet-btn" @click="handleAdd" style="margin-left: 8px;">新增钱包</el-button>
+        </el-form-item>
       </el-form>
     </el-card>
 
     <el-card shadow="never" class="table-card" v-loading="loading">
-      <el-table :data="tableData" style="width: 100%">
+      <el-table :data="tableData" style="width: 100%" :cell-style="{ paddingTop: '8px', paddingBottom: '8px' }">
         <el-table-column prop="name" label="钱包名称" width="180" />
         <el-table-column prop="chain_type" label="公链类型" width="120" />
         <el-table-column label="钱包地址">
@@ -39,12 +41,38 @@
           </template>
         </el-table-column>
         
-        <el-table-column label="功能" width="420">
+        <el-table-column label="功能" width="150">
           <template #default="scope">
             <el-tag v-if="scope.row.is_gas_reserve" type="success" effect="dark" class="fn-tag">Gas 储备</el-tag>
             <el-tag v-if="scope.row.is_collection" type="danger" effect="dark" class="fn-tag">归集</el-tag>
-            <el-tag v-if="scope.row.is_payout" type="warning" effect="dark" class="fn-tag">自动出款</el-tag> <el-tag v-if="scope.row.is_opener_a" class="fn-tag">开奖A</el-tag>
+            <el-tag v-if="scope.row.is_payout" type="warning" effect="dark" class="fn-tag">自动出款</el-tag>
+            <el-tag v-if="scope.row.is_energy_provider" type="info" effect="dark" class="fn-tag">能量租賃</el-tag>
+            <el-tag v-if="scope.row.is_opener_a" class="fn-tag">开奖A</el-tag>
             <el-tag v-if="scope.row.is_opener_b" class="fn-tag">开奖B</el-tag>
+          </template>
+        </el-table-column>
+        
+        <el-table-column label="USDT" width="120" align="left">
+          <template #default="scope">
+            {{ getDisplayValue(scope.row, 'usdt') }}
+          </template>
+        </el-table-column>
+        
+        <el-table-column label="TRX" width="120" align="left">
+          <template #default="scope">
+            {{ getDisplayValue(scope.row, 'trx') }}
+          </template>
+        </el-table-column>
+        
+        <el-table-column label="質押 (Staked)" width="130" align="left">
+          <template #default="scope">
+            {{ getDisplayValue(scope.row, 'staked') }}
+          </template>
+        </el-table-column>
+        
+        <el-table-column label="能量 (Energy)" width="130" align="left">
+          <template #default="scope">
+            {{ getDisplayValue(scope.row, 'energy') }}
           </template>
         </el-table-column>
         
@@ -56,10 +84,19 @@
            </template>
         </el-table-column>
         
-        <el-table-column label="操作" width="100" fixed="right">
+        <el-table-column label="操作" width="220" fixed="right">
           <template #default="scope">
-            <el-button type="primary" link @click="handleEdit(scope.row)">编辑</el-button>
-            <el-button type="danger" link @click="handleDelete(scope.row)">删除</el-button>
+            <div class="action-buttons-container">
+              <el-button type="primary" class="action-btn-edit" @click="handleEdit(scope.row)">
+                编辑
+              </el-button>
+              <el-button type="danger" class="action-btn-delete" @click="handleDelete(scope.row)">
+                删除
+              </el-button>
+              <el-button v-if="scope.row.is_collection" class="action-btn-collect" @click="handleManualCollection(scope.row)">
+                归集
+              </el-button>
+            </div>
           </template>
         </el-table-column>
       </el-table>
@@ -88,6 +125,7 @@
            <el-checkbox v-model="walletForm.is_gas_reserve" label="Gas 储备 (TRX/BNB)" />
            <el-checkbox v-model="walletForm.is_collection" label="归集 (USDT)" />
            <el-checkbox v-model="walletForm.is_payout" label="自动出款 (USDT)" />
+           <el-checkbox v-model="walletForm.is_energy_provider" label="能量租賃" />
         </el-form-item>
          <el-form-item label="开奖功能" prop="opener">
            <el-checkbox v-model="walletForm.is_opener_a" label="开奖地址 A (支付方)" />
@@ -146,6 +184,7 @@ export default {
   data() {
      return {
          loading: false,
+         refreshLoading: false,
          tableData: [],
          totalItems: 0,
          pagination: { page: 1, limit: 10 },
@@ -162,6 +201,7 @@ export default {
            is_opener_a: false, 
            is_opener_b: false,
            is_payout: false,
+           is_energy_provider: false,
            is_active: true,
            scan_interval_days: 1,
            days_without_deposit: 7
@@ -180,6 +220,16 @@ export default {
       this.fetchWallets();
   },
   methods: {
+      formatNum(v) {
+          const n = Number(v || 0);
+          if (!Number.isFinite(n)) return '0';
+          return n.toLocaleString('zh-CN', { maximumFractionDigits: 6 });
+      },
+      formatInt(v) {
+          const n = Number(v || 0);
+          if (!Number.isFinite(n)) return '0';
+          return Math.floor(n).toLocaleString('zh-CN');
+      },
       async fetchWallets() {
           if (this.loading) return;
           this.loading = true;
@@ -192,14 +242,22 @@ export default {
               };
               const response = await this.$api.getWallets(params);
               // (★★★ 修復：後端使用標準響應格式 { success: true, data: { total, list } } ★★★)
+              let list = [];
+              let total = 0;
               if (response && response.success && response.data) {
-                  this.tableData = response.data.list || [];
-                  this.totalItems = response.data.total || 0;
+                  list = response.data.list || [];
+                  total = response.data.total || 0;
               } else {
                   // 向後兼容：如果沒有標準格式，直接使用 response
-                  this.tableData = response.list || [];
-                  this.totalItems = response.total || 0;
+                  list = response.list || [];
+                  total = response.total || 0;
               }
+              
+              // 過濾掉 HD_WALLET_INDEX_TRACKER 系統內部記錄
+              this.tableData = list.filter(row => row.name !== 'HD_WALLET_INDEX_TRACKER');
+              // 調整總數（如果過濾掉了記錄，總數也需要相應調整）
+              const filteredCount = list.length - this.tableData.length;
+              this.totalItems = Math.max(0, total - filteredCount);
           } catch (error) { console.error('Failed to fetch wallets:', error); }
           finally { this.loading = false; }
       },
@@ -224,6 +282,7 @@ export default {
            is_opener_a: false, 
            is_opener_b: false,
            is_payout: false,
+           is_energy_provider: false,
            is_active: true,
            scan_interval_days: 1,
            days_without_deposit: 7
@@ -244,24 +303,12 @@ export default {
              is_opener_a: row.is_opener_a, 
              is_opener_b: row.is_opener_b,
              is_payout: row.is_payout,
+             is_energy_provider: row.is_energy_provider || false,
              is_active: row.is_active,
-             scan_interval_days: 1,
-             days_without_deposit: 7
+             // 直接從 row 獲取 collection settings（後端已 JOIN）
+             scan_interval_days: row.scan_interval_days || 1,
+             days_without_deposit: row.days_without_deposit || 7
           });
-          
-          // 如果是归集钱包，载入归集设定
-          if (row.is_collection && row.address) {
-              try {
-                  const settings = await this.$api.getCollectionSettings();
-                  const walletSetting = settings.find(s => s.collection_wallet_address === row.address);
-                  if (walletSetting) {
-                      this.walletForm.scan_interval_days = walletSetting.scan_interval_days;
-                      this.walletForm.days_without_deposit = walletSetting.days_without_deposit;
-                  }
-              } catch (error) {
-                  console.error('Failed to load collection settings:', error);
-              }
-          }
           
           this.dialogVisible = true;
           this.$nextTick(() => { this.$refs.walletFormRef?.clearValidate(); });
@@ -274,27 +321,13 @@ export default {
                   this.submitLoading = true;
                   try {
                       if (this.walletForm.id) {
+                          // 後端會自動處理 collection_settings 的更新（如果 is_collection=true）
                           await this.$api.updateWallet(this.walletForm.id, this.walletForm);
-                          
-                          // 如果是归集钱包，更新归集设定
-                          if (this.walletForm.is_collection && this.walletForm.address) {
-                              try {
-                                  await this.$api.updateCollectionSettings({
-                                      collection_wallet_address: this.walletForm.address,
-                                      scan_interval_days: this.walletForm.scan_interval_days,
-                                      days_without_deposit: this.walletForm.days_without_deposit,
-                                      is_active: true
-                                  });
-                              } catch (error) {
-                                  console.error('Failed to update collection settings:', error);
-                              }
-                          }
-                          
                           ElMessage.success('钱包更新成功');
                       } else {
                           await this.$api.addWallet(this.walletForm);
                           
-                          // 如果是归集钱包，創建归集设定
+                          // 如果是归集钱包，創建归集设定（新增時需要單獨調用）
                           if (this.walletForm.is_collection && this.walletForm.address) {
                               try {
                                   await this.$api.updateCollectionSettings({
@@ -330,15 +363,191 @@ export default {
               } catch (error) { console.error('Failed to delete wallet:', error); }
           }).catch(() => {});
       },
+      /**
+       * @description 根據錢包角色判斷是否應該顯示某個欄位的值
+       * @param {Object} row - 表格行數據
+       * @param {string} field - 欄位名稱 ('usdt', 'trx', 'staked', 'energy')
+       * @returns {string} 顯示值或 '-'
+       */
+      getDisplayValue(row, field) {
+          // HD Tracker 或特殊行顯示 '-'
+          if (row.name === 'HD_WALLET_INDEX_TRACKER' || !row.address || !row.address.startsWith('T')) {
+              return '-';
+          }
+
+          // 獲取鏈上餘額數據
+          const onChainData = row.onChainData || {};
+          const value = onChainData[field] !== undefined ? onChainData[field] : null;
+
+          // 如果沒有數據，顯示 '-'
+          if (value === null || value === undefined) {
+              return '-';
+          }
+
+          // 根據角色判斷是否顯示
+          const isCollection = row.is_collection;
+          const isGasReserve = row.is_gas_reserve;
+          const isEnergyProvider = row.is_energy_provider;
+          const isPayout = row.is_payout;
+          const isOpener = row.is_opener_a || row.is_opener_b;
+
+          switch (field) {
+              case 'usdt':
+                  // Collection, Gas Reserve, Energy Provider, Payout, Opener 都顯示 USDT
+                  if (isCollection || isGasReserve || isEnergyProvider || isPayout || isOpener) {
+                      return this.formatNum(value);
+                  }
+                  return '-';
+
+              case 'trx':
+                  // Collection, Gas Reserve, Energy Provider, Payout, Opener 都顯示 TRX
+                  if (isCollection || isGasReserve || isEnergyProvider || isPayout || isOpener) {
+                      return this.formatNum(value);
+                  }
+                  return '-';
+
+              case 'staked':
+                  // 只有 Energy Provider 顯示質押
+                  if (isEnergyProvider) {
+                      return this.formatNum(value);
+                  }
+                  return '-';
+
+              case 'energy':
+                  // Collection, Energy Provider, Payout, Opener 顯示能量
+                  if (isCollection || isEnergyProvider || isPayout || isOpener) {
+                      return this.formatInt(value);
+                  }
+                  return '-';
+
+              default:
+                  return '-';
+          }
+      },
+      /**
+       * @description 刷新當前頁面的鏈上數據
+       */
+      async handleRefreshOnChainData() {
+          if (this.refreshLoading) return;
+
+          // 提取當前頁面的有效錢包地址
+          const validWallets = this.tableData
+              .filter(row => row.address && row.address.startsWith('T') && row.name !== 'HD_WALLET_INDEX_TRACKER')
+              .map(row => ({
+                  address: row.address,
+                  type: row.chain_type
+              }));
+
+          if (validWallets.length === 0) {
+              ElMessage.warning('當前頁面沒有有效的 TRC20 錢包地址');
+              return;
+          }
+
+          this.refreshLoading = true;
+          try {
+              const response = await this.$api.fetchOnChainBalances(validWallets);
+              if (response && response.success && response.data) {
+                  // 創建地址到餘額的映射
+                  const balanceMap = {};
+                  response.data.forEach(item => {
+                      balanceMap[item.address] = {
+                          usdt: item.usdt,
+                          trx: item.trx,
+                          staked: item.staked,
+                          energy: item.energy
+                      };
+                  });
+
+                  // 更新表格數據
+                  this.tableData = this.tableData.map(row => {
+                      if (balanceMap[row.address]) {
+                          return {
+                              ...row,
+                              onChainData: balanceMap[row.address]
+                          };
+                      }
+                      return row;
+                  });
+
+                  ElMessage.success(`成功刷新 ${response.data.length} 個錢包的鏈上數據`);
+              } else {
+                  ElMessage.error('刷新鏈上數據失敗');
+              }
+          } catch (error) {
+              console.error('Failed to refresh on-chain data:', error);
+              ElMessage.error('刷新鏈上數據失敗：' + (error.response?.data?.error || error.message));
+          } finally {
+              this.refreshLoading = false;
+          }
+      },
+      /**
+       * @description 記錄歸集按鈕檢查（用於調試）
+       */
+      logCollectionCheck(row) {
+          // #region agent log
+          const isCollection = !!row.is_collection;
+          const isStrictTrue = row.is_collection === true;
+          console.log('[DEBUG] WalletMonitoring - is_collection check:', {
+              walletName: row.name,
+              is_collection: row.is_collection,
+              is_collectionType: typeof row.is_collection,
+              is_collectionTruthy: isCollection,
+              isStrictTrue: isStrictTrue,
+              rawValue: row.is_collection
+          });
+          fetch('http://127.0.0.1:7242/ingest/14db9cbb-ee24-417b-9eeb-3494fd0c6cdc',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'WalletMonitoring.vue:logCollectionCheck',message:'檢查 is_collection 值',data:{walletName:row.name,is_collection:row.is_collection,is_collectionType:typeof row.is_collection,is_collectionTruthy:isCollection,isStrictTrue,rawValue:row.is_collection},timestamp:Date.now(),sessionId:'debug-session',runId:'run2',hypothesisId:'H1'})}).catch(()=>{});
+          // #endregion
+          return true; // 返回 true 以確保元素渲染（用於觸發日誌）
+      },
+      /**
+       * @description 檢查是否應該顯示歸集按鈕
+       */
+      shouldShowCollectionButton(row) {
+          if (!row) return false;
+          const result = !!row.is_collection;
+          // #region agent log
+          console.log('[DEBUG] shouldShowCollectionButton:', {
+              walletName: row.name,
+              is_collection: row.is_collection,
+              result: result
+          });
+          // #endregion
+          return result;
+      },
+      /**
+       * @description 手動觸發歸集
+       */
+      async handleManualCollection(row) {
+          try {
+              await ElMessageBox.confirm(
+                  '是否要手動進行一次歸集？',
+                  '確認歸集',
+                  {
+                      confirmButtonText: '確定',
+                      cancelButtonText: '取消',
+                      type: 'warning'
+                  }
+              );
+
+              try {
+                  await this.$api.manualCollection();
+                  ElMessage.success('後台任務已啟動，請留意右上角通知');
+              } catch (error) {
+                  console.error('Failed to trigger manual collection:', error);
+                  ElMessage.error('觸發歸集失敗：' + (error.response?.data?.error || error.message));
+              }
+          } catch (error) {
+              // 用戶取消操作
+              if (error !== 'cancel') {
+                  console.error('Manual collection error:', error);
+              }
+          }
+      },
   }
 }
 </script>
 
 <style scoped>
-.action-card {
-  margin-bottom: var(--spacing-md);
-}
-
 .fn-tag {
   margin-right: 6px;
   margin-bottom: 4px;
@@ -380,5 +589,114 @@ export default {
   color: #909399;
   margin-top: 5px;
   line-height: 1.4;
+}
+
+.add-wallet-btn {
+  background-color: #87CEEB;
+  border-color: #87CEEB;
+  color: #fff;
+}
+
+.add-wallet-btn:hover {
+  background-color: #6BB6FF;
+  border-color: #6BB6FF;
+}
+
+.add-wallet-btn:active {
+  background-color: #5AA3E6;
+  border-color: #5AA3E6;
+}
+
+/* 確保操作欄中的按鈕文本可見 - 強制覆蓋全局白色樣式 */
+.table-card :deep(.el-table .el-button.is-link),
+.table-card :deep(.el-table .el-button--primary.is-link),
+.table-card :deep(.el-table .el-button--danger.is-link),
+.table-card :deep(.el-table .el-button--warning.is-link) {
+  color: inherit !important;
+}
+
+.table-card :deep(.el-table .el-button--primary.is-link) {
+  color: #409eff !important;
+}
+
+.table-card :deep(.el-table .el-button--danger.is-link) {
+  color: #f56c6c !important;
+}
+
+.table-card :deep(.el-table .el-button--warning.is-link) {
+  color: #e6a23c !important;
+}
+
+/* 確保按鈕內的 span 文本可見 - 強制顯示 */
+.table-card :deep(.el-table .el-button.is-link span),
+.table-card :deep(.el-table .el-button--primary.is-link span),
+.table-card :deep(.el-table .el-button--danger.is-link span),
+.table-card :deep(.el-table .el-button--warning.is-link span) {
+  color: inherit !important;
+  display: inline-block !important;
+  visibility: visible !important;
+  opacity: 1 !important;
+  font-size: 14px !important;
+  line-height: 1.5 !important;
+}
+
+.table-card :deep(.el-table .el-button--primary.is-link span) {
+  color: #409eff !important;
+}
+
+.table-card :deep(.el-table .el-button--danger.is-link span) {
+  color: #f56c6c !important;
+}
+
+.table-card :deep(.el-table .el-button--warning.is-link span) {
+  color: #e6a23c !important;
+}
+
+/* 操作欄位按鈕容器 - 參考用戶列表樣式 */
+.action-buttons-container {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: flex-start;
+}
+
+/* 操作欄位按鈕樣式 */
+.action-btn-edit {
+  background-color: #409eff !important;
+  border-color: #409eff !important;
+  color: #ffffff !important;
+  margin: 0 !important;
+}
+
+.action-btn-edit:hover {
+  background-color: #66b1ff !important;
+  border-color: #66b1ff !important;
+  color: #ffffff !important;
+}
+
+.action-btn-delete {
+  background-color: #f56c6c !important;
+  border-color: #f56c6c !important;
+  color: #ffffff !important;
+  margin: 0 !important;
+}
+
+.action-btn-delete:hover {
+  background-color: #f78989 !important;
+  border-color: #f78989 !important;
+  color: #ffffff !important;
+}
+
+.action-btn-collect {
+  background-color: #e6a23c !important;
+  border-color: #e6a23c !important;
+  color: #ffffff !important;
+  margin: 0 !important;
+}
+
+.action-btn-collect:hover {
+  background-color: #ebb563 !important;
+  border-color: #ebb563 !important;
+  color: #ffffff !important;
 }
 </style>

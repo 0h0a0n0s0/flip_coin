@@ -78,6 +78,14 @@ class PayoutService {
                 const payoutWalletRow = wallets.rows.find(w => w.is_payout);
                 
                 if (payoutWalletRow) {
+                    // (★★★ 安全檢查：防止能量提供者钱包被用于出款 ★★★)
+                    if (payoutWalletRow.is_energy_provider) {
+                        console.error(`[v8 Payout] ⚠️ SECURITY WARNING: Payout Wallet (${payoutWalletRow.address}) is also marked as energy provider!`);
+                        console.error(`[v8 Payout] This will cause energy depletion. Please separate these roles.`);
+                        console.error(`[v8 Payout] Payout wallet should NOT be used as energy provider.`);
+                        // 不阻止加载，但记录警告
+                    }
+                    
                     const pkEnvVar = `TRON_PK_${payoutWalletRow.address}`;
                     const privateKey = process.env[pkEnvVar];
                     
@@ -173,6 +181,16 @@ class PayoutService {
         const wallet = this.payoutWallet;
         console.log(`[v8 Payout] Attempting payout for WID-${id}: ${amount} USDT to ${recipientAddress} from ${wallet.address}`);
         
+        // #region agent log
+        try {
+            const payoutAccount = await this.tronWeb.trx.getAccount(wallet.address);
+            const energyBefore = payoutAccount.energy || 0;
+            fetch('http://127.0.0.1:7242/ingest/14db9cbb-ee24-417b-9eeb-3494fd0c6cdc',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PayoutService.js:sendTrc20Payout',message:'Before payout transfer - energy check',data:{payoutWallet:wallet.address,withdrawalId:id,recipientAddress,amount,energyBefore},timestamp:Date.now(),sessionId:'debug-session',runId:'pre-fix',hypothesisId:'D'})}).catch(()=>{});
+        } catch (e) {
+            // Ignore energy check errors
+        }
+        // #endregion
+        
         // (★★★ v9.0 新增：檢查餘額並發送警報 ★★★)
         const balance = await this._checkPayoutWalletBalance();
         if (balance !== null && balance < this.LOW_BALANCE_THRESHOLD) {
@@ -232,6 +250,17 @@ class PayoutService {
             
             const txHash = receipt.txid;
             console.log(`[v8 Payout] SUCCESS (WID-${id}): Transfer initiated. TX: ${txHash}`);
+            
+            // #region agent log
+            try {
+                const payoutAccountAfter = await this.tronWeb.trx.getAccount(wallet.address);
+                const energyAfter = payoutAccountAfter.energy || 0;
+                fetch('http://127.0.0.1:7242/ingest/14db9cbb-ee24-417b-9eeb-3494fd0c6cdc',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PayoutService.js:sendTrc20Payout',message:'After payout transfer - energy check',data:{payoutWallet:wallet.address,withdrawalId:id,txHash,energyAfter},timestamp:Date.now(),sessionId:'debug-session',runId:'pre-fix',hypothesisId:'D'})}).catch(()=>{});
+            } catch (e) {
+                // Ignore energy check errors
+            }
+            // #endregion
+            
             return txHash;
 
         } catch (error) {

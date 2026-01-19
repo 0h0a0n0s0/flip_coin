@@ -85,6 +85,10 @@ export default {
         const response = await this.$api.getTronNotifications({ resolved: false, limit: 100 });
         if (response.data && response.data.data) {
           this.notifications = response.data.data;
+        } else if (Array.isArray(response.data)) {
+          this.notifications = response.data;
+        } else if (Array.isArray(response)) {
+          this.notifications = response;
         }
       } catch (error) {
         console.error('Failed to load notifications:', error);

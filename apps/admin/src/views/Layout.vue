@@ -19,12 +19,27 @@
       </div>
       <div class="header-right">
         <span class="user-info">(用户: {{ displayName }})</span>
-        <!-- 波场异常通知图标 -->
-        <div class="tron-notification-icon" @click="showTronNotificationDialog = true" v-if="$permissions.has('wallets', 'read')">
-          <el-icon :size="24" class="tron-icon">
+        <!-- 提款審核通知 -->
+        <div 
+          class="header-action-button" 
+          @click="handleWithdrawalClick" 
+          v-if="$permissions.has('withdrawals', 'read')"
+        >
+          <el-icon :size="24" class="action-icon">
+            <Wallet />
+          </el-icon>
+          <span class="action-text">提款审核:{{ pendingWithdrawalCount }}</span>
+        </div>
+        <!-- 波场异常通知 -->
+        <div 
+          class="header-action-button" 
+          @click="showTronNotificationDialog = true" 
+          v-if="$permissions.has('wallets', 'read')"
+        >
+          <el-icon :size="24" class="action-icon">
             <Connection />
           </el-icon>
-          <span class="notification-badge" v-if="tronNotificationCount > 0">{{ tronNotificationCount > 99 ? '99+' : tronNotificationCount }}</span>
+          <span class="action-text">监听异常:{{ tronNotificationCount }}</span>
         </div>
         <el-dropdown @command="handleCommand" trigger="click">
           <el-avatar :size="40" class="user-avatar">
@@ -166,8 +181,8 @@
 
 <script>
 import { jwtDecode } from 'jwt-decode';
-// (★★★ 新增 Money Icon ★★★)
-import { DataLine, User, Coin, PieChart, Setting, Lock, Money, Right, DArrowLeft, DArrowRight, Connection } from '@element-plus/icons-vue' 
+// (★★★ 新增 Money Icon 和 Wallet Icon ★★★)
+import { DataLine, User, Coin, PieChart, Setting, Lock, Money, Right, DArrowLeft, DArrowRight, Connection, Wallet } from '@element-plus/icons-vue' 
 import { ElMessage } from 'element-plus';
 import ProfileDialog from '@/components/ProfileDialog.vue';
 import GoogleAuthDialog from '@/components/GoogleAuthDialog.vue';
@@ -189,7 +204,8 @@ export default {
     Right,
     DArrowLeft,
     DArrowRight,
-    Connection
+    Connection,
+    Wallet
   },
   data() {
     return {
@@ -204,7 +220,8 @@ export default {
       hasGoogleAuth: false, // 是否已绑定谷歌验证
       isCollapsed: false, // 側邊欄是否折疊
       showTronNotificationDialog: false, // 波场异常通知弹窗
-      tronNotificationCount: 0 // 未解决的异常通知数量
+      tronNotificationCount: 0, // 未解决的异常通知数量
+      socket: null // Socket.IO 連接實例
     };
   },
   computed: {
@@ -217,6 +234,10 @@ export default {
     },
     activeMenu() { 
       return this.$route.path; 
+    },
+    // 從 store 獲取待審核提款數量
+    pendingWithdrawalCount() {
+      return this.$withdrawalStore?.pendingWithdrawalCount || 0;
     }
   },
   created() {
@@ -233,6 +254,11 @@ export default {
         setInterval(() => {
           this.loadTronNotificationCount();
         }, 30000);
+      }
+      // 如果有提款審核權限，初始化 Socket.IO 連接和載入初始計數
+      if (this.$permissions && this.$permissions.has('withdrawals', 'read')) {
+        this.initSocketConnection();
+        this.loadPendingWithdrawalCount();
       }
     });
   },
@@ -521,6 +547,90 @@ export default {
       } catch (error) {
         console.error('Failed to load tron notification count:', error);
       }
+    },
+    /**
+     * 初始化 Socket.IO 連接
+     */
+    initSocketConnection() {
+      try {
+        // 動態導入 socket.io-client（如果未安裝則跳過）
+        import('socket.io-client').then(({ default: io }) => {
+          const token = localStorage.getItem('admin_token');
+          if (!token) {
+            console.warn('[Layout] No admin token found, skipping socket connection');
+            return;
+          }
+
+          // 連接到後端 Socket.IO 服務器
+          this.socket = io(window.location.origin, {
+            auth: { token },
+            transports: ['websocket', 'polling']
+          });
+
+          // 加入 admin room
+          this.socket.on('connect', () => {
+            console.log('[Layout] Socket.IO connected');
+            this.socket.emit('join_admin_room');
+          });
+
+          // 監聽管理員統計更新事件
+          this.socket.on('admin:stats_update', (data) => {
+            if (data && data.type === 'withdrawal_pending_count' && typeof data.count === 'number') {
+              this.$withdrawalStore.setPendingCount(data.count);
+            }
+          });
+
+          // 監聽新通知事件
+          this.socket.on('admin:notification_new', (data) => {
+            console.log('[Layout] Received new notification:', data);
+            // 刷新通知計數
+            this.loadTronNotificationCount();
+          });
+
+          this.socket.on('disconnect', () => {
+            console.log('[Layout] Socket.IO disconnected');
+          });
+
+          this.socket.on('error', (error) => {
+            console.error('[Layout] Socket.IO error:', error);
+          });
+        }).catch((error) => {
+          console.warn('[Layout] Socket.IO client not available, using polling instead:', error);
+          // 如果 socket.io-client 未安裝，使用輪詢方式
+          setInterval(() => {
+            this.loadPendingWithdrawalCount();
+          }, 30000); // 每30秒輪詢一次
+        });
+      } catch (error) {
+        console.error('[Layout] Failed to initialize socket connection:', error);
+        // 降級到輪詢
+        setInterval(() => {
+          this.loadPendingWithdrawalCount();
+        }, 30000);
+      }
+    },
+    /**
+     * 載入待審核提款數量
+     */
+    async loadPendingWithdrawalCount() {
+      try {
+        const response = await this.$api.getDashboardStats();
+        if (response && response.success && response.data) {
+          const count = response.data.pendingPayouts || 0;
+          this.$withdrawalStore.setPendingCount(count);
+        } else if (response && response.pendingPayouts !== undefined) {
+          // 向後兼容
+          this.$withdrawalStore.setPendingCount(response.pendingPayouts || 0);
+        }
+      } catch (error) {
+        console.error('Failed to load pending withdrawal count:', error);
+      }
+    },
+    /**
+     * 點擊提款審核通知，導航到提款審核頁面
+     */
+    handleWithdrawalClick() {
+      this.$router.push('/finance/withdrawals');
     }
   },
   mounted() {
@@ -534,7 +644,11 @@ export default {
     window.addEventListener('platformNameUpdated', this.loadPlatformName);
   },
   beforeUnmount() {
-    // 目前沒有 observer 需要清理，保留鉤子以便未來擴充
+    // 清理 Socket.IO 連接
+    if (this.socket) {
+      this.socket.disconnect();
+      this.socket = null;
+    }
   }
 }
 </script>
@@ -581,7 +695,8 @@ export default {
 .header-right {
   display: flex;
   align-items: center;
-  gap: 16px;
+  gap: 8px;
+  height: 100%;
 }
 
 .collapse-btn {
@@ -624,42 +739,39 @@ export default {
   transform: scale(1.05);
 }
 
-/* 波场通知图标样式 */
-.tron-notification-icon {
-  position: relative;
+/* 統一的 Header 操作按鈕樣式 - 最大化尺寸，圓角方形，垂直堆疊 */
+.header-action-button {
   cursor: pointer;
-  padding: 8px;
-  border-radius: 50%;
+  padding: 0 12px;
+  margin: 1px 0;
+  border-radius: 6px;
   transition: all 0.2s ease;
   display: flex;
-  align-items: center;
+  flex-direction: column;
   justify-content: center;
+  align-items: center;
+  gap: 2px;
+  height: 100%;
+  min-width: 75px;
+  box-sizing: border-box;
 }
 
-.tron-notification-icon:hover {
+.header-action-button:hover {
   background: rgba(255, 255, 255, 0.1);
 }
 
-.tron-icon {
+.action-icon {
   color: #fff;
+  flex-shrink: 0;
 }
 
-.notification-badge {
-  position: absolute;
-  top: 4px;
-  right: 4px;
-  background: #f56c6c;
+.action-text {
   color: #fff;
-  border-radius: 10px;
-  min-width: 18px;
-  height: 18px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 11px;
+  font-size: 12px;
+  line-height: 1.2;
+  white-space: nowrap;
   font-weight: 600;
-  padding: 0 4px;
-  border: 2px solid #135200;
+  text-align: center;
 }
 
 /* 侧边栏样式 - 深绿色系 */

@@ -80,22 +80,22 @@ COMMENT ON COLUMN platform_wallets.encrypted_mnemonic IS '加密的助記詞（�
 -- 這個記錄用於追蹤 HD 錢包派生的當前索引
 -- 使用固定的 address 值，如果已存在則跳過（address 有 UNIQUE 約束）
 -- 
--- ⚠️ 警告：此處的 1000 是佔位符初始值，實際運行時應由應用程式配置覆蓋
--- 應用程式會從環境變數 WALLET_START_INDEX 讀取用戶起始索引（預設 1001）
--- 平台保留索引 = WALLET_START_INDEX - 1（預設 1000）
+-- ⚠️ 警告：此處的 999999 是佔位符初始值，實際運行時應由應用程式配置覆蓋
+-- 應用程式會從環境變數 WALLET_START_INDEX 讀取用戶起始索引（預設 1000000）
+-- 平台保留索引 = WALLET_START_INDEX - 1（預設 999999）
 -- 生產環境請確保 .env 中設置正確的 WALLET_START_INDEX 值
 --
 DO $$
 BEGIN
     IF NOT EXISTS (SELECT 1 FROM platform_wallets WHERE name = 'HD_WALLET_INDEX_TRACKER') THEN
         INSERT INTO platform_wallets (name, chain_type, address, current_index, is_active)
-        VALUES ('HD_WALLET_INDEX_TRACKER', 'MULTI', 'HD_INDEX_TRACKER_PLACEHOLDER', 1000, false);
+        VALUES ('HD_WALLET_INDEX_TRACKER', 'MULTI', 'HD_INDEX_TRACKER_PLACEHOLDER', 999999, false);
     END IF;
 END $$;
 
--- 如果記錄已存在，確保 current_index 至少為 1000（平台保留索引）
--- ⚠️ 注意：此處的 1000 是佔位符，實際值應由應用程式配置決定
+-- 如果記錄已存在，確保 current_index 至少為 999999（平台保留索引）
+-- ⚠️ 注意：此處的 999999 是佔位符，實際值應由應用程式配置決定
 UPDATE platform_wallets 
-SET current_index = GREATEST(current_index, 1000)
-WHERE name = 'HD_WALLET_INDEX_TRACKER' AND current_index < 1000;
+SET current_index = GREATEST(current_index, 999999)
+WHERE name = 'HD_WALLET_INDEX_TRACKER' AND current_index < 999999;
 

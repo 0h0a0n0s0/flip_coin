@@ -87,15 +87,17 @@
 
         <el-table-column label="操作" width="120" fixed="right">
           <template #default="scope">
-            <div v-if="scope.row.status === 'pending'">
-                <el-button type="success" link @click="handleApprove(scope.row)" v-if="$permissions.has('withdrawals', 'update')">批准</el-button>
-                <el-button type="danger" link @click="handleReject(scope.row)" v-if="$permissions.has('withdrawals', 'update')">拒绝</el-button>
-            </div>
-            <div v-if="scope.row.status === 'processing'">
-                <el-button type="primary" link @click="handleComplete(scope.row)" v-if="$permissions.has('withdrawals', 'update')">手动完成</el-button>
-            </div>
-            <div v-if="scope.row.status === 'rejected'">
-                 <el-tooltip :content="scope.row.rejection_reason || '無理由'" placement="top"><el-icon><InfoFilled /></el-icon></el-tooltip>
+            <div class="action-buttons-container">
+              <div v-if="scope.row.status === 'pending'">
+                  <el-button class="action-btn-collect" @click="handleApprove(scope.row)" v-if="$permissions.has('withdrawals', 'update')">批准</el-button>
+                  <el-button class="action-btn-delete" @click="handleReject(scope.row)" v-if="$permissions.has('withdrawals', 'update')">拒绝</el-button>
+              </div>
+              <div v-if="scope.row.status === 'processing'">
+                  <el-button class="action-btn-edit" @click="handleComplete(scope.row)" v-if="$permissions.has('withdrawals', 'update')">手动完成</el-button>
+              </div>
+              <div v-if="scope.row.status === 'rejected'">
+                   <el-tooltip :content="scope.row.rejection_reason || '無理由'" placement="top"><el-icon><InfoFilled /></el-icon></el-tooltip>
+              </div>
             </div>
           </template>
         </el-table-column>
@@ -327,5 +329,53 @@ export default {
   margin-top: var(--spacing-md);
   display: flex;
   justify-content: flex-end;
+}
+
+/* 操作欄位按鈕容器 - 參考用戶列表樣式 */
+.action-buttons-container {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: flex-start;
+}
+
+/* 操作欄位按鈕樣式 */
+.action-btn-edit {
+  background-color: #409eff !important;
+  border-color: #409eff !important;
+  color: #ffffff !important;
+  margin: 0 !important;
+}
+
+.action-btn-edit:hover {
+  background-color: #66b1ff !important;
+  border-color: #66b1ff !important;
+  color: #ffffff !important;
+}
+
+.action-btn-delete {
+  background-color: #f56c6c !important;
+  border-color: #f56c6c !important;
+  color: #ffffff !important;
+  margin: 0 !important;
+}
+
+.action-btn-delete:hover {
+  background-color: #f78989 !important;
+  border-color: #f78989 !important;
+  color: #ffffff !important;
+}
+
+.action-btn-collect {
+  background-color: #e6a23c !important;
+  border-color: #e6a23c !important;
+  color: #ffffff !important;
+  margin: 0 !important;
+}
+
+.action-btn-collect:hover {
+  background-color: #ebb563 !important;
+  border-color: #ebb563 !important;
+  color: #ffffff !important;
 }
 </style>

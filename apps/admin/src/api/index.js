@@ -32,7 +32,7 @@ export function getWalletMonitoring() {
     return request({
         url: '/api/admin/wallet-monitoring',
         method: 'get',
-        timeout: 30000, // 增加到30秒，因為需要查詢多個錢包餘額
+        timeout: 60000, // 增加到60秒，因為需要並行查詢多個錢包餘額
     });
 }
 
@@ -116,6 +116,20 @@ export function deleteWallet(id) {
     return request({
         url: `/api/admin/wallets/${id}`,
         method: 'delete',
+    });
+}
+export function fetchOnChainBalances(wallets) {
+    return request({
+        url: '/api/admin/wallets/on-chain-balances',
+        method: 'post',
+        data: { wallets },
+        timeout: 120000, // 120秒超時，因為可能需要處理多個錢包
+    });
+}
+export function manualCollection() {
+    return request({
+        url: '/api/admin/wallets/manual-collection',
+        method: 'post',
     });
 }
 

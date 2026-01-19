@@ -355,23 +355,59 @@ io.use(async (socket, next) => {
     }
     try {
         const decoded = jwt.verify(token, process.env.JWT_SECRET);
-        const result = await db.query('SELECT user_id, status FROM users WHERE id = $1', [decoded.id]);
-        const user = result.rows[0];
-        if (!user || user.status !== 'active') {
-             return next(new Error('认证失败：用户不存在或已停用'));
+        // 檢查是否為管理員（admin_users 表）或用戶（users 表）
+        const adminResult = await db.query('SELECT id, username, status FROM admin_users WHERE id = $1', [decoded.id]);
+        if (adminResult.rows.length > 0) {
+            // 管理員用戶
+            const admin = adminResult.rows[0];
+            if (admin.status !== 'active') {
+                return next(new Error('认证失败：管理員帳號已停用'));
+            }
+            socket.isAdmin = true;
+            socket.admin_id = admin.id;
+            socket.username = admin.username;
+        } else {
+            // 普通用戶
+            const result = await db.query('SELECT user_id, status FROM users WHERE id = $1', [decoded.id]);
+            const user = result.rows[0];
+            if (!user || user.status !== 'active') {
+                return next(new Error('认证失败：用户不存在或已停用'));
+            }
+            socket.user_id = user.user_id;
+            socket.isAdmin = false;
         }
-        socket.user_id = user.user_id; 
         next();
     } catch (err) {
         return next(new Error('认证失败：凭证无效。'));
     }
 });
 io.on('connection', (socket) => { 
-    const userId = socket.user_id;
-    connectedUsers[userId] = socket.id;
+    if (socket.isAdmin) {
+        // 管理員用戶：加入 admin room
+        socket.join('admin');
+        console.log(`[Socket.IO] Admin ${socket.username} (ID: ${socket.admin_id}) joined admin room`);
+    } else {
+        // 普通用戶：記錄連接
+        const userId = socket.user_id;
+        connectedUsers[userId] = socket.id;
+    }
+    
+    // 處理加入 admin room 的請求（用於前端手動加入）
+    socket.on('join_admin_room', () => {
+        if (socket.isAdmin) {
+            socket.join('admin');
+            console.log(`[Socket.IO] Admin ${socket.username} manually joined admin room`);
+        }
+    });
+    
     socket.on('disconnect', () => {
-        if (connectedUsers[userId] === socket.id) {
-            delete connectedUsers[userId];
+        if (socket.isAdmin) {
+            console.log(`[Socket.IO] Admin ${socket.username} disconnected`);
+        } else {
+            const userId = socket.user_id;
+            if (connectedUsers[userId] === socket.id) {
+                delete connectedUsers[userId];
+            }
         }
     });
 });
@@ -379,6 +415,10 @@ io.on('connection', (socket) => {
 // --- 路由顺序 (不变) ---
 // (★★★ v8.1 修改：将 io 和 connectedUsers 传遞给 adminRoutes（必须在 Socket.IO 初始化之後）★★★)
 adminRoutes.setIoAndConnectedUsers(io, connectedUsers);
+// 設置 WithdrawalService 的 io 實例
+withdrawalService.setIo(io);
+// 設置 TronCollectionService 的 io 實例
+tronCollectionService.setIo(io);
 app.use('/api/admin', adminIpWhitelistMiddleware, adminRoutes);
 app.use('/admin', adminIpWhitelistMiddleware, adminUiProxy);
 
@@ -482,5 +522,23 @@ httpServer.listen(PORT, async () => {
         console.log("✅ [CollectionRetryJob] Started.");
     } catch (error) {
         console.error("[CollectionRetryJob] Error starting:", error);
+    }
+
+    // 8. 启动能源监控服务 (每 5 分钟执行一次)
+    try {
+        const cron = require('node-cron');
+        const { getMonitoringServiceInstance } = require('./services/MonitoringService.js');
+        const monitoringService = getMonitoringServiceInstance();
+        
+        // 每 5 分钟执行一次：'*/5 * * * *'
+        cron.schedule('*/5 * * * *', () => {
+            monitoringService.checkWallets().catch(err => {
+                console.error("[MonitoringService] Error in scheduled check:", err);
+            });
+        });
+        
+        console.log("✅ [MonitoringService] Started (runs every 5 minutes).");
+    } catch (error) {
+        console.error("[MonitoringService] Error starting:", error);
     }
 });

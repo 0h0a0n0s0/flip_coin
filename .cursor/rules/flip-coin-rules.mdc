@@ -101,4 +101,13 @@ Cursor Must maintain **Structural Parity** (H5 is a scaled version of Web, not a
 1.  **Format:** Does output match `{ "success": true, "data": ... }`?
 2.  **Handshake:** Does the Frontend payload match Backend Validator expectations?
 
+## 9. Language Protocol (Strict)
+
+Cursor Must enforce:
+* **Interaction:** All reasoning, explanations, and chat responses MUST be in **Simplified Chinese (简体中文)**.
+* **Code Comments:** All code comments, JSDoc, and documentation within files MUST be in **Simplified Chinese**.
+* **Strings & Logs:**
+    * Server-side logs and error messages: **Simplified Chinese**.
+    * Frontend UI: Prioritize `zh-CN` i18n entries. If hardcoding strings is necessary/requested, use **Simplified Chinese**.
+
 **If any violation is detected: STOP and ask the user.**

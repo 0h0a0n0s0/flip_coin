@@ -34,4 +34,24 @@ const permissionsStore = reactive({
   }
 });
 
+// 提款審核計數 Store
+const withdrawalStore = reactive({
+  pendingWithdrawalCount: 0,
+
+  setPendingCount(count) {
+    this.pendingWithdrawalCount = count;
+  },
+
+  increment() {
+    this.pendingWithdrawalCount++;
+  },
+
+  decrement() {
+    if (this.pendingWithdrawalCount > 0) {
+      this.pendingWithdrawalCount--;
+    }
+  }
+});
+
 export default permissionsStore;
+export { withdrawalStore };

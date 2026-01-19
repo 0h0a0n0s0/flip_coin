@@ -177,6 +177,12 @@ class TronEnergyService {
         console.log(`[EnergyRental] Renting ${energyAmount} energy from ${provider.address} to ${receiverAddress}`);
 
         try {
+            // #region agent log
+            const providerAccount = await this.tronWeb.trx.getAccount(provider.address);
+            const energyBefore = providerAccount.energy || 0;
+            fetch('http://127.0.0.1:7242/ingest/14db9cbb-ee24-417b-9eeb-3494fd0c6cdc',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'TronEnergyService.js:rentEnergy',message:'Before delegateResource - energy check',data:{providerAddress:provider.address,receiverAddress,energyAmount,energyBefore},timestamp:Date.now(),sessionId:'debug-session',runId:'pre-fix',hypothesisId:'B'})}).catch(()=>{});
+            // #endregion
+            
             this.tronWeb.setPrivateKey(provider.privateKey);
 
             // 使用 delegateResourceV2 代理能量
@@ -206,6 +212,12 @@ class TronEnergyService {
 
             const txHash = receipt.txid;
             console.log(`[EnergyRental] ✅ Energy rental transaction sent. TX: ${txHash}`);
+
+            // #region agent log
+            const providerAccountAfter = await this.tronWeb.trx.getAccount(provider.address);
+            const energyAfter = providerAccountAfter.energy || 0;
+            fetch('http://127.0.0.1:7242/ingest/14db9cbb-ee24-417b-9eeb-3494fd0c6cdc',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'TronEnergyService.js:rentEnergy',message:'After delegateResource - energy check',data:{providerAddress:provider.address,receiverAddress,txHash,energyBefore,energyAfter,energyDiff:energyBefore-energyAfter,rentedAmount:energyAmount},timestamp:Date.now(),sessionId:'debug-session',runId:'pre-fix',hypothesisId:'B'})}).catch(()=>{});
+            // #endregion
 
             // 记录到数据库
             const rentalResult = await db.query(

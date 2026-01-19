@@ -6,13 +6,14 @@ import router from './router'
 import ElementPlus from 'element-plus'
 import 'element-plus/dist/index.css'
 import * as api from './api'
-import permissionsStore from './store' // (★★★ 导入 Store ★★★)
+import permissionsStore, { withdrawalStore } from './store' // (★★★ 导入 Store ★★★)
 
 const app = createApp(App)
 
 // (全局挂载 API 和权限存储)
 app.config.globalProperties.$api = api;
 app.config.globalProperties.$permissions = permissionsStore;
+app.config.globalProperties.$withdrawalStore = withdrawalStore;
 
 app.use(router)
 app.use(ElementPlus)

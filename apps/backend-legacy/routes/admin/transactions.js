@@ -327,6 +327,12 @@ function transactionsRoutes(router) {
                 }
             }
 
+            // 7. 通知管理員待審核提款數量更新
+            const withdrawalService = require('../../services/WithdrawalService');
+            withdrawalService.notifyAdminPendingWithdrawalCount().catch(err => {
+                console.error('[Admin Withdrawals] Failed to notify admin pending withdrawal count:', err);
+            });
+
             sendSuccess(res, { message: '提款已拒绝并退款' });
 
         } catch (error) {
@@ -361,6 +367,12 @@ function transactionsRoutes(router) {
                  "UPDATE platform_transactions SET status = 'processing' WHERE user_id = $1 AND type = 'withdraw_request' AND amount = $2 AND status = 'pending'",
                 [result.rows[0].user_id, -Math.abs(result.rows[0].amount)]
             );
+
+            // 通知管理員待審核提款數量更新
+            const withdrawalService = require('../../services/WithdrawalService');
+            withdrawalService.notifyAdminPendingWithdrawalCount().catch(err => {
+                console.error('[Admin Withdrawals] Failed to notify admin pending withdrawal count:', err);
+            });
 
             await recordAuditLog({
                 adminId: req.user.id,
@@ -672,7 +684,8 @@ function transactionsRoutes(router) {
             const walletMonitoring = {
                 payout: [],      // 自动出款类型
                 collection: [],  // 归集类型
-                gasReserve: []   // Gas储备类型
+                gasReserve: [],   // Gas储备类型
+                energyProvider: [] // 能量提供者类型
             };
 
             // 获取余额的辅助函数
@@ -712,36 +725,96 @@ function transactionsRoutes(router) {
 
             const getEnergy = async (address) => {
                 try {
-                    const account = await tronWeb.trx.getAccount(address);
-                    return account.energy || 0;
+                    // 更贴近 TronScan: Remaining = EnergyLimit - EnergyUsed
+                    const resources = await tronWeb.trx.getAccountResources(address);
+                    const energyLimit = Number(resources?.EnergyLimit || 0);
+                    const energyUsed = Number(resources?.EnergyUsed || 0);
+                    const remaining = energyLimit - energyUsed;
+                    if (Number.isFinite(remaining)) {
+                        return Math.max(0, remaining);
+                    }
+                    return 0;
                 } catch (error) {
                     console.error(`[Wallet Monitoring] Error getting energy for ${address}:`, error.message);
                     return 0;
                 }
             };
 
-            // 处理每个钱包
-            for (const wallet of walletsResult.rows) {
+            const getStakedTrx = async (address) => {
+                try {
+                    const account = await tronWeb.trx.getAccount(address);
+                    const toNumber = (v) => {
+                        if (v === null || v === undefined) return 0;
+                        const n = Number(v);
+                        return Number.isFinite(n) ? n : 0;
+                    };
+                    let totalSun = 0;
+                    const frozen = account && account.frozen ? account.frozen : [];
+                    if (Array.isArray(frozen)) {
+                        for (const f of frozen) totalSun += toNumber(f?.frozen_balance);
+                    } else if (typeof frozen === 'object') {
+                        totalSun += toNumber(frozen.frozen_balance);
+                    }
+                    const frozenV2 = account && account.frozenV2 ? account.frozenV2 : [];
+                    if (Array.isArray(frozenV2)) {
+                        for (const f of frozenV2) totalSun += toNumber(f?.amount);
+                    }
+                    return totalSun / 1_000_000;
+                } catch (error) {
+                    console.error(`[Wallet Monitoring] Error getting staked TRX for ${address}:`, error.message);
+                    return 0;
+                }
+            };
+
+            // #region agent log
+            fetch('http://127.0.0.1:7242/ingest/14db9cbb-ee24-417b-9eeb-3494fd0c6cdc',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sessionId:'debug-session',runId:'run1',hypothesisId:'H1',location:'transactions.js:wallet-monitoring',message:'starting parallel processing',data:{walletCount:walletsResult.rows.length},timestamp:Date.now()})}).catch(()=>{});
+            // #endregion
+
+            // 并行处理所有钱包（避免串行导致超时）
+            const walletPromises = walletsResult.rows.map(async (wallet) => {
                 const walletInfo = {
                     id: wallet.id,
                     name: wallet.name,
                     address: wallet.address,
                     trxBalance: 0,
                     usdtBalance: 0,
-                    energy: 0
+                    energy: 0,
+                    stakedTrx: 0
                 };
 
+                const walletStartTime = Date.now();
                 try {
-                    walletInfo.trxBalance = await getTrxBalance(wallet.address);
-                    walletInfo.usdtBalance = await getUsdtBalance(wallet.address);
+                    // 并行获取基础余额
+                    const [trxBalance, usdtBalance] = await Promise.all([
+                        getTrxBalance(wallet.address),
+                        getUsdtBalance(wallet.address)
+                    ]);
+                    walletInfo.trxBalance = trxBalance;
+                    walletInfo.usdtBalance = usdtBalance;
 
-                    // 只有归集类型需要获取能量
-                    if (wallet.is_collection) {
+                    // 归集 / 能量提供者需要能量
+                    if (wallet.is_collection || wallet.is_energy_provider) {
                         walletInfo.energy = await getEnergy(wallet.address);
+                    }
+
+                    // 能量提供者：显示质押 TRX（而非可用余额）
+                    if (wallet.is_energy_provider) {
+                        walletInfo.stakedTrx = await getStakedTrx(wallet.address);
+                        // #region agent log
+                        fetch('http://127.0.0.1:7242/ingest/14db9cbb-ee24-417b-9eeb-3494fd0c6cdc',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sessionId:'debug-session',runId:'run1',hypothesisId:'H4',location:'transactions.js:energy-provider',message:'stakedTrx fetched',data:{address:wallet.address,stakedTrx:walletInfo.stakedTrx,trxBalance:walletInfo.trxBalance},timestamp:Date.now()})}).catch(()=>{});
+                        // #endregion
                     }
                 } catch (error) {
                     console.error(`[Wallet Monitoring] Error processing wallet ${wallet.address}:`, error.message);
+                    // #region agent log
+                    fetch('http://127.0.0.1:7242/ingest/14db9cbb-ee24-417b-9eeb-3494fd0c6cdc',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sessionId:'debug-session',runId:'run1',hypothesisId:'H2',location:'transactions.js:wallet-processing',message:'wallet error',data:{address:wallet.address,error:error.message},timestamp:Date.now()})}).catch(()=>{});
+                    // #endregion
                 }
+
+                const walletElapsed = Date.now() - walletStartTime;
+                // #region agent log
+                fetch('http://127.0.0.1:7242/ingest/14db9cbb-ee24-417b-9eeb-3494fd0c6cdc',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sessionId:'debug-session',runId:'run1',hypothesisId:'H3',location:'transactions.js:wallet-processing',message:'wallet completed',data:{address:wallet.address,elapsedMs:walletElapsed},timestamp:Date.now()})}).catch(()=>{});
+                // #endregion
 
                 // 分类钱包
                 if (wallet.is_payout) {
@@ -753,7 +826,19 @@ function transactionsRoutes(router) {
                 if (wallet.is_gas_reserve) {
                     walletMonitoring.gasReserve.push(walletInfo);
                 }
-            }
+                if (wallet.is_energy_provider) {
+                    walletMonitoring.energyProvider.push(walletInfo);
+                }
+
+                return walletInfo;
+            });
+
+            const totalStartTime = Date.now();
+            await Promise.all(walletPromises);
+            const totalElapsed = Date.now() - totalStartTime;
+            // #region agent log
+            fetch('http://127.0.0.1:7242/ingest/14db9cbb-ee24-417b-9eeb-3494fd0c6cdc',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sessionId:'debug-session',runId:'run1',hypothesisId:'H1',location:'transactions.js:wallet-monitoring',message:'all wallets processed',data:{totalElapsedMs:totalElapsed,walletCount:walletsResult.rows.length},timestamp:Date.now()})}).catch(()=>{});
+            // #endregion
 
             return sendSuccess(res, walletMonitoring);
         } catch (error) {
@@ -1435,22 +1520,69 @@ function transactionsRoutes(router) {
         try {
             const { resolved, limit = 50 } = req.query;
 
-            let query = 'SELECT * FROM tron_notifications';
+            // 兼容：为旧英文通知做汉化（并补充 walletName）
+            let query = `
+                SELECT 
+                    tn.*,
+                    pw.name as wallet_name
+                FROM tron_notifications tn
+                LEFT JOIN platform_wallets pw
+                  ON LOWER(pw.address) = LOWER(tn.address)
+            `;
             const params = [];
             let paramIndex = 1;
 
             if (resolved !== undefined && resolved !== '') {
-                query += ' WHERE resolved = $' + paramIndex;
+                query += ' WHERE tn.resolved = $' + paramIndex;
                 params.push(resolved === 'true');
                 paramIndex++;
             }
 
-            query += ' ORDER BY created_at DESC LIMIT $' + paramIndex;
+            query += ' ORDER BY tn.created_at DESC LIMIT $' + paramIndex;
             params.push(parseInt(limit, 10));
 
             const result = await db.query(query, params);
+            const shortAddress = (addr) => {
+                if (!addr || typeof addr !== 'string') return '';
+                if (addr.length <= 12) return addr;
+                return `${addr.slice(0, 6)}...${addr.slice(-4)}`;
+            };
+            const localized = result.rows.map((row) => {
+                const walletNameEnergy = row.wallet_name || '能量钱包';
+                const walletName = row.wallet_name || '钱包';
+                const addr = row.address || '';
+                const addrShort = shortAddress(addr);
 
-            sendSuccess(res, result.rows);
+                // 如果已经是新格式/中文，直接返回
+                const msg = row.message || '';
+                const looksChinese = /[\u4e00-\u9fa5]/.test(msg);
+                if (looksChinese) return row;
+
+                // 旧英文消息兼容（尽量解析出数值）
+                if (row.type === 'LOW_ENERGY') {
+                    const m = msg.match(/Only\s+([0-9]+(?:\.[0-9]+)?)\s+remaining/i);
+                    const remaining = m ? m[1] : '0';
+                    return {
+                        ...row,
+                        message: `[${walletNameEnergy}] 能量告警: 剩余能量仅 ${remaining} (地址: ${addrShort})`
+                    };
+                }
+                if (row.type === 'LOW_TRX') {
+                    const m = msg.match(/Only\s+([0-9]+(?:\.[0-9]+)?)\s+TRX\s+remaining/i);
+                    const balance = m ? m[1] : '0';
+                    return {
+                        ...row,
+                        message: `[${walletName}] TRX余额不足: 仅剩 ${balance} TRX (地址: ${addrShort})`
+                    };
+                }
+                return row;
+            });
+
+            // #region agent log
+            fetch('http://127.0.0.1:7242/ingest/14db9cbb-ee24-417b-9eeb-3494fd0c6cdc',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sessionId:'debug-session',runId:'run1',hypothesisId:'H2',location:'transactions.js:tron-notifications',message:'list localized',data:{count:localized.length,firstType:localized[0]?.type||null,firstMsg:(localized[0]?.message||'').slice(0,80)},timestamp:Date.now()})}).catch(()=>{});
+            // #endregion
+
+            sendSuccess(res, localized);
         } catch (error) {
             console.error('[Admin Tron Notifications] Error:', error);
             console.error('[Admin Tron Notifications] Error details:', error.stack);

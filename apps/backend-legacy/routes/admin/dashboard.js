@@ -28,9 +28,9 @@ function dashboardRoutes(router) {
             const betCountResult = await db.query('SELECT COUNT(*) FROM bets');
             const totalBets = betCountResult.rows[0].count;
 
-            // 不再有 prize_pending
-            const pendingWithdrawalsResult = await db.query("SELECT COUNT(*) FROM platform_transactions WHERE type = 'withdraw' AND status = 'pending'");
-            const pendingPayouts = pendingWithdrawalsResult.rows[0].count;
+            // 獲取待審核提款數量（從 withdrawals 表）
+            const withdrawalService = require('../../services/WithdrawalService');
+            const pendingPayouts = await withdrawalService.getPendingWithdrawalCount();
 
             // 即時線上人數
             const onlineUsers = connectedUsers ? Object.keys(connectedUsers).length : 0;

@@ -36,8 +36,8 @@ class KmsService {
         this.tronWeb.setEventServer(NILE_NODE_HOST);
         
         // (★★★ 修復：從環境變數讀取用戶起始索引，符合規則 3.1 ★★★)
-        // WALLET_START_INDEX 表示用戶起始索引（預設 1001），平台保留索引為其減 1
-        const walletStartIndex = parseInt(process.env.WALLET_START_INDEX || '1001', 10);
+        // WALLET_START_INDEX 表示用戶起始索引（預設 1000000），平台保留索引為其減 1
+        const walletStartIndex = parseInt(process.env.WALLET_START_INDEX || '1000000', 10);
         this.PLATFORM_RESERVED_INDEX_UNTIL = walletStartIndex - 1;
         
         console.log(`✅ [v7] KmsService initialized successfully. Wallet start index: ${walletStartIndex} (platform reserved until: ${this.PLATFORM_RESERVED_INDEX_UNTIL})`);

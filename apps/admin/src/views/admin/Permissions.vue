@@ -18,12 +18,14 @@
         </el-table-column>
         <el-table-column label="操作" width="150" fixed="right">
           <template #default="scope">
-            <el-button type="primary" link @click="handleEditRole(scope.row)" :disabled="scope.row.id === 1">
-              编辑
-            </el-button>
-            <el-button type="danger" link @click="handleDeleteRole(scope.row)" :disabled="[1, 2, 3].includes(scope.row.id)">
-              删除
-            </el-button>
+            <div class="action-buttons-container">
+              <el-button class="action-btn-edit" @click="handleEditRole(scope.row)" :disabled="scope.row.id === 1">
+                编辑
+              </el-button>
+              <el-button class="action-btn-delete" @click="handleDeleteRole(scope.row)" :disabled="[1, 2, 3].includes(scope.row.id)">
+                删除
+              </el-button>
+            </div>
           </template>
         </el-table-column>
       </el-table>
@@ -292,5 +294,53 @@ export default {
   width: 100%; /* 让每個 checkbox 占满一行 */
   margin-left: 0 !important;
   margin-right: 0 !important;
+}
+
+/* 操作欄位按鈕容器 - 參考用戶列表樣式 */
+.action-buttons-container {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: flex-start;
+}
+
+/* 操作欄位按鈕樣式 */
+.action-btn-edit {
+  background-color: #409eff !important;
+  border-color: #409eff !important;
+  color: #ffffff !important;
+  margin: 0 !important;
+}
+
+.action-btn-edit:hover {
+  background-color: #66b1ff !important;
+  border-color: #66b1ff !important;
+  color: #ffffff !important;
+}
+
+.action-btn-delete {
+  background-color: #f56c6c !important;
+  border-color: #f56c6c !important;
+  color: #ffffff !important;
+  margin: 0 !important;
+}
+
+.action-btn-delete:hover {
+  background-color: #f78989 !important;
+  border-color: #f78989 !important;
+  color: #ffffff !important;
+}
+
+.action-btn-collect {
+  background-color: #e6a23c !important;
+  border-color: #e6a23c !important;
+  color: #ffffff !important;
+  margin: 0 !important;
+}
+
+.action-btn-collect:hover {
+  background-color: #ebb563 !important;
+  border-color: #ebb563 !important;
+  color: #ffffff !important;
 }
 </style>

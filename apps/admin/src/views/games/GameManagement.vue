@@ -73,8 +73,10 @@
         </el-table-column>
         <el-table-column label="操作" width="200" fixed="right">
           <template #default="scope">
-            <el-button type="primary" size="small" @click="handleEdit(scope.row)">编辑</el-button>
-            <el-button type="warning" size="small" @click="handleEditPayout(scope.row)">游戏赔率</el-button>
+            <div class="action-buttons-container">
+              <el-button class="action-btn-edit" @click="handleEdit(scope.row)">编辑</el-button>
+              <el-button class="action-btn-collect" @click="handleEditPayout(scope.row)">游戏赔率</el-button>
+            </div>
           </template>
         </el-table-column>
       </el-table>
@@ -531,6 +533,54 @@ export default {
   margin-top: var(--spacing-md);
   display: flex;
   justify-content: flex-end;
+}
+
+/* 操作欄位按鈕容器 - 參考用戶列表樣式 */
+.action-buttons-container {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: flex-start;
+}
+
+/* 操作欄位按鈕樣式 */
+.action-btn-edit {
+  background-color: #409eff !important;
+  border-color: #409eff !important;
+  color: #ffffff !important;
+  margin: 0 !important;
+}
+
+.action-btn-edit:hover {
+  background-color: #66b1ff !important;
+  border-color: #66b1ff !important;
+  color: #ffffff !important;
+}
+
+.action-btn-delete {
+  background-color: #f56c6c !important;
+  border-color: #f56c6c !important;
+  color: #ffffff !important;
+  margin: 0 !important;
+}
+
+.action-btn-delete:hover {
+  background-color: #f78989 !important;
+  border-color: #f78989 !important;
+  color: #ffffff !important;
+}
+
+.action-btn-collect {
+  background-color: #e6a23c !important;
+  border-color: #e6a23c !important;
+  color: #ffffff !important;
+  margin: 0 !important;
+}
+
+.action-btn-collect:hover {
+  background-color: #ebb563 !important;
+  border-color: #ebb563 !important;
+  color: #ffffff !important;
 }
 </style>
 

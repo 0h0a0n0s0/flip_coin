@@ -276,6 +276,13 @@ function walletRoutes(router, passport, options = {}) {
                 io.to(socketId).emit('user_info_updated', updatedUser);
             }
 
+            // 9. 如果提款狀態為 pending，通知管理員
+            if (withdrawalStatus === 'pending') {
+                withdrawalService.notifyAdminPendingWithdrawalCount().catch(err => {
+                    console.error('[Wallet] Failed to notify admin pending withdrawal count:', err);
+                });
+            }
+
             // 9. 回應 HTTP 請求
             sendSuccess(res, { message: responseMessage }, 201);
             

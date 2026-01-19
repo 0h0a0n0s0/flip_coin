@@ -144,8 +144,16 @@ class CollectionRetryJob {
                         }
                     }
 
+                    // #region agent log
+                    fetch('http://127.0.0.1:7242/ingest/14db9cbb-ee24-417b-9eeb-3494fd0c6cdc',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'CollectionRetryJob.js:processRetryQueue',message:'Before retry transferFrom',data:{userId:user.user_id,userAddress:user.tron_deposit_address,collectionWallet:this.collectionService.collectionWallet.address,balance:balanceStr},timestamp:Date.now(),sessionId:'debug-session',runId:'pre-fix',hypothesisId:'E'})}).catch(()=>{});
+                    // #endregion
+                    
                     // 執行 transferFrom
                     const transferResult = await this.collectionService._transferFrom(user.tron_deposit_address, balanceStr);
+                    
+                    // #region agent log
+                    fetch('http://127.0.0.1:7242/ingest/14db9cbb-ee24-417b-9eeb-3494fd0c6cdc',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'CollectionRetryJob.js:processRetryQueue',message:'After retry transferFrom',data:{userId:user.user_id,txHash:transferResult.txHash,energyUsed:transferResult.energyUsed},timestamp:Date.now(),sessionId:'debug-session',runId:'pre-fix',hypothesisId:'E'})}).catch(()=>{});
+                    // #endregion
                     
                     // 記錄成功日誌
                     const balanceUSDT = Number(balance) / (10**6);
