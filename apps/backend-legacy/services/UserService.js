@@ -4,6 +4,7 @@
 const db = require('@flipcoin/database');
 const bcrypt = require('bcryptjs');
 const crypto = require('crypto');
+const { logBalanceChange, CHANGE_TYPES } = require('../utils/balanceChangeLogger');
 
 /**
  * 根據用戶名獲取用戶
@@ -195,6 +196,175 @@ async function insertUserLoginLog(userId, loginIp, loginCountry, deviceId, userA
     );
 }
 
+/**
+ * 檢查並升級用戶等級
+ * @param {string} userId - 用戶ID (user_id)
+ * @param {Object} [client] - 數據庫事務客戶端（可選）
+ * @returns {Promise<Object|null>} 返回升級後的等級信息，如果未升級則返回null
+ */
+async function checkAndUpgradeUserLevel(userId, client = null) {
+    const query = client ? client.query.bind(client) : db.query.bind(db);
+    
+    try {
+        // 1. 獲取用戶當前等級
+        const userResult = await query(
+            'SELECT level FROM users WHERE user_id = $1',
+            [userId]
+        );
+        
+        if (userResult.rows.length === 0) {
+            console.warn(`[UserService] User ${userId} not found for level upgrade check`);
+            return null;
+        }
+        
+        const currentLevel = userResult.rows[0].level;
+        
+        // 2. 獲取當前等級配置
+        const currentLevelResult = await query(
+            'SELECT * FROM user_levels WHERE level = $1',
+            [currentLevel]
+        );
+        
+        if (currentLevelResult.rows.length === 0) {
+            console.warn(`[UserService] Level ${currentLevel} configuration not found for user ${userId}`);
+            return null;
+        }
+        
+        const currentLevelConfig = currentLevelResult.rows[0];
+        
+        // 3. 如果 required_bets_for_upgrade = 0 且 required_total_bet_amount = 0，表示最高級，直接返回
+        const requiredTotalAmount = parseFloat(currentLevelConfig.required_total_bet_amount) || 0;
+        const requiredBets = parseInt(currentLevelConfig.required_bets_for_upgrade) || 0;
+        if (requiredBets === 0 && requiredTotalAmount === 0) {
+            return null;
+        }
+        
+        // 4. 獲取下一級配置
+        const nextLevel = currentLevel + 1;
+        const nextLevelResult = await query(
+            'SELECT * FROM user_levels WHERE level = $1',
+            [nextLevel]
+        );
+        
+        if (nextLevelResult.rows.length === 0) {
+            // 没有下一级配置，表示当前是最高级
+            return null;
+        }
+        
+        const nextLevelConfig = nextLevelResult.rows[0];
+        const nextRequiredTotalAmount = parseFloat(nextLevelConfig.required_total_bet_amount) || 0;
+        const nextRequiredBets = parseInt(nextLevelConfig.required_bets_for_upgrade) || 0;
+        
+        // 5. 獲取用戶當前累計值（使用累加字段，而非 COUNT(*) 查詢）
+        const userStatsResult = await query(
+            'SELECT total_valid_bet_amount, total_valid_bet_count FROM users WHERE user_id = $1',
+            [userId]
+        );
+        
+        if (userStatsResult.rows.length === 0) {
+            console.warn(`[UserService] User stats not found for user ${userId}`);
+            return null;
+        }
+        
+        const totalValidBetAmount = parseFloat(userStatsResult.rows[0].total_valid_bet_amount) || 0;
+        const totalValidBetCount = parseInt(userStatsResult.rows[0].total_valid_bet_count) || 0;
+        
+        // 6. 檢查是否滿足升級條件（使用累計值）
+        // 必須同時滿足：累計金額 >= 下一級要求金額 AND 累計數量 >= 下一級要求數量
+        if (totalValidBetAmount >= nextRequiredTotalAmount && totalValidBetCount >= nextRequiredBets) {
+            // 處理升級
+            return await processLevelUpgrade(userId, currentLevel, nextLevelConfig, client);
+        }
+        
+        return null;
+    } catch (error) {
+        console.error(`[UserService] Error checking level upgrade for user ${userId}:`, error);
+        throw error;
+    }
+}
+
+/**
+ * 處理用戶等級升級並發放獎勵
+ * @param {string} userId - 用戶ID (user_id)
+ * @param {number} currentLevel - 當前等級
+ * @param {Object} nextLevelConfig - 下一級配置
+ * @param {Object} [client] - 數據庫事務客戶端（可選）
+ * @returns {Promise<Object>} 返回升級後的用戶信息
+ */
+async function processLevelUpgrade(userId, currentLevel, nextLevelConfig, client = null) {
+    const query = client ? client.query.bind(client) : db.query.bind(db);
+    const nextLevel = nextLevelConfig.level;
+    const rewardAmount = parseFloat(nextLevelConfig.upgrade_reward_amount) || 0;
+    
+    try {
+        // 使用行鎖確保並發安全
+        await query(
+            'SELECT balance FROM users WHERE user_id = $1 FOR UPDATE NOWAIT',
+            [userId]
+        );
+        
+        // 更新用戶等級和餘額（如果有獎勵）
+        let updateQuery;
+        let updateParams;
+        
+        if (rewardAmount > 0) {
+            updateQuery = `
+                UPDATE users 
+                SET level = $1, balance = balance + $2, last_level_up_time = NOW()
+                WHERE user_id = $3
+                RETURNING *
+            `;
+            updateParams = [nextLevel, rewardAmount, userId];
+        } else {
+            updateQuery = `
+                UPDATE users 
+                SET level = $1, last_level_up_time = NOW()
+                WHERE user_id = $2
+                RETURNING *
+            `;
+            updateParams = [nextLevel, userId];
+        }
+        
+        const userResult = await query(updateQuery, updateParams);
+        
+        if (userResult.rows.length === 0) {
+            throw new Error(`User ${userId} not found for level upgrade`);
+        }
+        
+        const updatedUser = userResult.rows[0];
+        const newBalance = parseFloat(updatedUser.balance);
+        
+        // 如果有獎勵，記錄賬變
+        if (rewardAmount > 0) {
+            try {
+                await logBalanceChange({
+                    user_id: userId,
+                    change_type: CHANGE_TYPES.LEVEL_UP_REWARD,
+                    amount: rewardAmount,
+                    balance_after: newBalance,
+                    remark: `Level ${nextLevel} Upgrade Reward`,
+                    client: client
+                });
+            } catch (error) {
+                console.error(`[UserService] Failed to log balance change for level upgrade:`, error);
+                // 不阻止主流程，只記錄錯誤
+            }
+        }
+        
+        console.log(`[UserService] User ${userId} upgraded from level ${currentLevel} to level ${nextLevel}${rewardAmount > 0 ? ` with reward ${rewardAmount} USDT` : ''}`);
+        
+        return updatedUser;
+    } catch (error) {
+        // 如果是 NOWAIT 鎖定失敗，記錄但不拋出錯誤
+        if (error.code === '55P03') { // lock_not_available
+            console.warn(`[UserService] Could not acquire lock for user ${userId} level upgrade, will retry later`);
+            return null;
+        }
+        console.error(`[UserService] Error processing level upgrade for user ${userId}:`, error);
+        throw error;
+    }
+}
+
 module.exports = {
     getUserByUsername,
     getUserById,
@@ -212,6 +382,8 @@ module.exports = {
     checkIsFirstLogin,
     updateFirstLoginInfo,
     updateLastLoginInfo,
-    insertUserLoginLog
+    insertUserLoginLog,
+    checkAndUpgradeUserLevel,
+    processLevelUpgrade
 };
 

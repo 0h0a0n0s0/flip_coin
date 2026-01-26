@@ -48,6 +48,7 @@ const CHANGE_TYPES = {
     PAYOUT: 'payout',             // 派奖
     MANUAL_ADJUST: 'manual_adjust', // 人工调整
     ACTIVITY_BONUS: 'activity_bonus', // 活动奖金
+    LEVEL_UP_REWARD: 'level_up_reward', // 等级升级奖励
 };
 
 module.exports = {

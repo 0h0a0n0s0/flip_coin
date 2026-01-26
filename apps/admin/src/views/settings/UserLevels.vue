@@ -3,29 +3,35 @@
     <h2>用户等级设定</h2>
     <p class="page-description">管理用户等级及其升级条件和奖励。</p>
 
-    <el-card shadow="never" class="action-card">
-       <el-button type="primary" @click="handleAdd">新增等级</el-button>
-       <span class="action-tip">(等级必须从 1 开始連续设定)</span>
-    </el-card>
-
     <el-card shadow="never" class="table-card" v-loading="loading">
-       <template #header><div>等级列表</div></template>
-      <el-table :data="tableData" style="width: 100%" row-key="level">
+       <template #header>
+         <div style="display: flex; justify-content: space-between; align-items: center;">
+           <span>等级列表</span>
+           <div style="display: flex; align-items: center; gap: 12px;">
+             <el-button type="primary" @click="handleAdd">新增等级</el-button>
+             <span style="color: #909399; font-size: 13px;">(等级必须从 1 开始連续设定)</span>
+           </div>
+         </div>
+       </template>
+      <el-table :data="tableData" class="user-levels-table" style="width: 100%" row-key="level" :table-layout="'auto'">
         <el-table-column prop="level" label="等级" width="80" sortable />
         <el-table-column prop="name" label="等级名称" width="150" />
-        <el-table-column prop="max_bet_amount" label="投注限额 (ETH)" width="150" sortable>
+        <el-table-column prop="max_bet_amount" label="投注限额 (USDT)" width="170" sortable>
            <template #default="scope">{{ formatCurrency(scope.row.max_bet_amount) }}</template>
         </el-table-column>
-        <el-table-column prop="required_bets_for_upgrade" label="升级所需注单数" width="160" sortable>
+        <el-table-column prop="required_bets_for_upgrade" label="条件：最小投注数量（累计）" width="200" sortable>
            <template #default="scope">{{ scope.row.required_bets_for_upgrade > 0 ? scope.row.required_bets_for_upgrade : '最高级' }}</template>
         </el-table-column>
-        <el-table-column prop="min_bet_amount_for_upgrade" label="升级注单最小金额 (ETH)" width="200" sortable>
+        <el-table-column prop="required_total_bet_amount" label="条件：最小总投注金额（累计，USDT）" width="250" sortable>
+           <template #default="scope">{{ formatCurrency(scope.row.required_total_bet_amount) }}</template>
+        </el-table-column>
+        <el-table-column prop="min_bet_amount_for_upgrade" label="投注有效性阈值（单次，USDT）" width="220" sortable>
            <template #default="scope">{{ formatCurrency(scope.row.min_bet_amount_for_upgrade) }}</template>
         </el-table-column>
-        <el-table-column prop="upgrade_reward_amount" label="升级奖励金额 (ETH)" width="180" sortable>
+        <el-table-column prop="upgrade_reward_amount" label="奖励：升级奖励（USDT）" width="200" sortable>
            <template #default="scope">{{ formatCurrency(scope.row.upgrade_reward_amount) }}</template>
         </el-table-column>
-        <el-table-column label="操作" width="150" fixed="right">
+        <el-table-column label="操作" width="180" fixed="right">
           <template #default="scope">
             <div class="action-buttons-container">
               <el-button class="action-btn-edit" @click="handleEdit(scope.row)">编辑</el-button>
@@ -45,20 +51,24 @@
         <el-form-item label="等级名称" prop="name">
           <el-input v-model="levelForm.name" placeholder="例如: VIP 1, 新手"></el-input>
         </el-form-item>
-        <el-form-item label="投注限额 (ETH)" prop="max_bet_amount">
+        <el-form-item label="投注限额 (USDT)" prop="max_bet_amount">
           <el-input-number v-model="levelForm.max_bet_amount" :min="0" :precision="8" placeholder="此等级最高投注额" />
         </el-form-item>
-         <el-form-item label="升级所需注单数" prop="required_bets_for_upgrade">
-          <el-input-number v-model="levelForm.required_bets_for_upgrade" :min="0" step-strictly placeholder="升到下一级所需注单数" />
-           <div class="form-tip">设为 0 表示此等级为最高等级，無法再升级。</div>
+         <el-form-item label="条件：最小投注数量（累计）" prop="required_bets_for_upgrade">
+          <el-input-number v-model="levelForm.required_bets_for_upgrade" :min="0" step-strictly placeholder="达到此等级所需的最小投注数量（累计）" />
+           <div class="form-tip">达到此等级所需的最小投注数量（累计）。设为 0 表示此等级为最高等级，無法再升级。Level 1 必须为 0。</div>
         </el-form-item>
-         <el-form-item label="升级注单最小金额 (ETH)" prop="min_bet_amount_for_upgrade">
-          <el-input-number v-model="levelForm.min_bet_amount_for_upgrade" :min="0" :precision="8" placeholder="多少金额以上计入升级" />
-           <div class="form-tip">只有投注额大于等于此金额的注单，才会计入「升级所需注单数」。</div>
+         <el-form-item label="条件：最小总投注金额（累计，USDT）" prop="required_total_bet_amount">
+          <el-input-number v-model="levelForm.required_total_bet_amount" :min="0" :precision="8" placeholder="达到此等级所需的最小总投注金额（累计）" />
+           <div class="form-tip">达到此等级所需的最小总投注金额（累计，USDT）。Level 1 必须为 0。</div>
         </el-form-item>
-        <el-form-item label="升级奖励金额 (ETH)" prop="upgrade_reward_amount">
-          <el-input-number v-model="levelForm.upgrade_reward_amount" :min="0" :precision="8" placeholder="升到下一级的奖励" />
-           <div class="form-tip">用户从上一级升到此等级时获得的奖励。</div>
+         <el-form-item label="投注有效性阈值（单次，USDT）" prop="min_bet_amount_for_upgrade">
+          <el-input-number v-model="levelForm.min_bet_amount_for_upgrade" :min="0" :precision="8" placeholder="单个投注的最小金额阈值" />
+           <div class="form-tip">单个投注的有效性阈值（用于过滤垃圾投注）。只有金额大于等于此值的投注才会计入累加器。设为 0 表示不限制。</div>
+        </el-form-item>
+        <el-form-item label="奖励：升级奖励（USDT）" prop="upgrade_reward_amount">
+          <el-input-number v-model="levelForm.upgrade_reward_amount" :min="0" :precision="8" placeholder="达到此等级时的奖励" />
+           <div class="form-tip">用户达到此等级时获得的奖励（USDT）。</div>
         </el-form-item>
       </el-form>
       <template #footer>
@@ -107,6 +117,7 @@ export default {
                name: '',
                max_bet_amount: null,
                required_bets_for_upgrade: null,
+               required_total_bet_amount: null,
                min_bet_amount_for_upgrade: null,
                upgrade_reward_amount: null,
            },
@@ -115,6 +126,7 @@ export default {
                name: [{ required: true, message: '等级名称不能为空', trigger: 'blur' }],
                max_bet_amount: [{ required: true, validator: validateNumeric, trigger: 'blur' }],
                required_bets_for_upgrade: [{ required: true, validator: validateInteger, trigger: 'blur' }],
+               required_total_bet_amount: [{ required: true, validator: validateNumeric, trigger: 'blur' }],
                min_bet_amount_for_upgrade: [{ required: true, validator: validateNumeric, trigger: 'blur' }],
                upgrade_reward_amount: [{ required: true, validator: validateNumeric, trigger: 'blur' }],
            }
@@ -153,7 +165,15 @@ export default {
            this.dialogTitle = '新增用户等级';
            this.isEditMode = false;
            // 重置表单，建议等级填入 nextLevel
-           Object.assign(this.levelForm, { level: this.nextLevel, name: `Level ${this.nextLevel}`, max_bet_amount: null, required_bets_for_upgrade: null, min_bet_amount_for_upgrade: null, upgrade_reward_amount: null });
+           Object.assign(this.levelForm, { 
+               level: this.nextLevel, 
+               name: `Level ${this.nextLevel}`, 
+               max_bet_amount: null, 
+               required_bets_for_upgrade: null, 
+               required_total_bet_amount: null,
+               min_bet_amount_for_upgrade: null, 
+               upgrade_reward_amount: null 
+           });
            this.dialogVisible = true;
            this.$nextTick(() => { this.$refs.levelFormRef?.clearValidate(); });
        },
@@ -167,6 +187,7 @@ export default {
                // (後端返回的是 string 或 number? 我们假设是 string，需要 parseFloat)
                max_bet_amount: parseFloat(row.max_bet_amount) || 0, 
                required_bets_for_upgrade: parseInt(row.required_bets_for_upgrade) || 0, 
+               required_total_bet_amount: parseFloat(row.required_total_bet_amount) || 0,
                min_bet_amount_for_upgrade: parseFloat(row.min_bet_amount_for_upgrade) || 0, 
                upgrade_reward_amount: parseFloat(row.upgrade_reward_amount) || 0 
            });
@@ -178,6 +199,14 @@ export default {
            if (!formEl) return;
            await formEl.validate(async (valid) => {
                if (valid) {
+                   // Level 1 的升级条件必须为 0
+                   if (this.levelForm.level === 1) {
+                       if (this.levelForm.required_bets_for_upgrade > 0 || this.levelForm.required_total_bet_amount > 0) {
+                           ElMessage.error('Level 1 的升级条件必须为 0');
+                           return false;
+                       }
+                   }
+                   
                    this.submitLoading = true;
                    try {
                        // 准备提交的数据 (移除 level，因为 level 在 URL 中)
@@ -192,7 +221,10 @@ export default {
                        }
                        this.dialogVisible = false;
                        await this.fetchLevels(); // 刷新列表
-                   } catch (error) { console.error('Failed to submit user level:', error); }
+                   } catch (error) { 
+                       console.error('Failed to submit user level:', error);
+                       ElMessage.error(error.response?.data?.error || '操作失败');
+                   }
                    finally { this.submitLoading = false; }
                } else { return false; }
            });
@@ -219,20 +251,58 @@ export default {
 
 <style scoped>
 .page-description { color: #909399; font-size: 14px; margin-bottom: 20px; }
-.action-card { margin-bottom: 20px; display: flex; align-items: center; }
-.action-tip { color: #909399; font-size: 13px; margin-left: 15px; }
 .table-card { margin-bottom: 20px; }
+
+/* 减少卡片body的padding，让表格更贴近边界 */
+.table-card :deep(.el-card__body) {
+  padding: 20px !important;
+}
 .el-form-item { margin-bottom: 20px; } /* 增加弹窗内间距 */
 .form-tip { font-size: 12px; color: #909399; margin-top: 5px; line-height: 1.4; }
 /* 修正 input number 寬度 */
 .el-input-number { width: 100%; }
 
+/* 确保表格填满容器，减少右侧留白 */
+.user-levels-table {
+  width: 100% !important;
+  table-layout: auto;
+}
+
+.table-card :deep(.user-levels-table) {
+  width: 100% !important;
+  margin: 0;
+}
+
+.table-card :deep(.user-levels-table .el-table__inner-wrapper) {
+  width: 100% !important;
+}
+
+.table-card :deep(.user-levels-table .el-table__body-wrapper),
+.table-card :deep(.user-levels-table .el-table__header-wrapper) {
+  width: 100% !important;
+  overflow-x: visible;
+}
+
+/* 确保表格列能够自动扩展填充空间 */
+.table-card :deep(.user-levels-table .el-table__body),
+.table-card :deep(.user-levels-table .el-table__header) {
+  width: 100%;
+  table-layout: auto;
+}
+
+/* 确保使用min-width的列能够自动扩展填充剩余空间 */
+.table-card :deep(.user-levels-table colgroup col[min-width]) {
+  width: auto !important;
+  min-width: 240px;
+}
+
 /* 操作欄位按鈕容器 - 參考用戶列表樣式 */
 .action-buttons-container {
   display: flex;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   gap: 8px;
-  align-items: flex-start;
+  align-items: center;
+  justify-content: flex-start;
 }
 
 /* 操作欄位按鈕樣式 */

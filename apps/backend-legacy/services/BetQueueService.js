@@ -3,7 +3,8 @@
 const db = require('@flipcoin/database');
 // (★★★ v8.9 修正：从 server.js 改为 services/settingsCache ★★★)
 const { getSettingsCache } = require('./settingsCache.js');
-const { logBalanceChange, CHANGE_TYPES } = require('../utils/balanceChangeLogger'); 
+const { logBalanceChange, CHANGE_TYPES } = require('../utils/balanceChangeLogger');
+const { checkAndUpgradeUserLevel } = require('./UserService.js'); 
 
 class BetQueueService {
     /**
@@ -314,6 +315,40 @@ class BetQueueService {
                     );
                     updatedUser = userResult.rows[0];
                 }
+            }
+
+            // 3d-2. 累加有效投注统计（用于等级升级计算）
+            try {
+                // 获取用户当前等级配置，以确定单个投注的有效性阈值
+                const levelResult = await client.query(
+                    'SELECT min_bet_amount_for_upgrade FROM user_levels WHERE level = (SELECT level FROM users WHERE user_id = $1)',
+                    [userId]
+                );
+                const minValidBetAmount = levelResult.rows.length > 0 
+                    ? parseFloat(levelResult.rows[0].min_bet_amount_for_upgrade) || 0 
+                    : 0;
+                
+                // 只有金额 >= 阈值的投注才计入累加器
+                if (betAmount >= minValidBetAmount) {
+                    await client.query(
+                        `UPDATE users 
+                         SET total_valid_bet_amount = total_valid_bet_amount + $1,
+                             total_valid_bet_count = total_valid_bet_count + 1
+                         WHERE user_id = $2`,
+                        [betAmount, userId]
+                    );
+                }
+            } catch (error) {
+                console.error('[BetQueueService] Failed to accumulate bet statistics:', error);
+                // 不阻止主流程，只记录错误
+            }
+
+            // 3d-1. 檢查並處理用戶等級升級（在 COMMIT 之前，確保在同一事務中）
+            try {
+                await checkAndUpgradeUserLevel(userId, client);
+            } catch (error) {
+                console.error('[BetQueueService] Level upgrade check failed:', error);
+                // 不阻止主流程，只記錄錯誤
             }
 
             await client.query('COMMIT');
