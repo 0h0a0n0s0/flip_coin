@@ -219,27 +219,7 @@ async function checkAndUpgradeUserLevel(userId, client = null) {
         
         const currentLevel = userResult.rows[0].level;
         
-        // 2. 獲取當前等級配置
-        const currentLevelResult = await query(
-            'SELECT * FROM user_levels WHERE level = $1',
-            [currentLevel]
-        );
-        
-        if (currentLevelResult.rows.length === 0) {
-            console.warn(`[UserService] Level ${currentLevel} configuration not found for user ${userId}`);
-            return null;
-        }
-        
-        const currentLevelConfig = currentLevelResult.rows[0];
-        
-        // 3. 如果 required_bets_for_upgrade = 0 且 required_total_bet_amount = 0，表示最高級，直接返回
-        const requiredTotalAmount = parseFloat(currentLevelConfig.required_total_bet_amount) || 0;
-        const requiredBets = parseInt(currentLevelConfig.required_bets_for_upgrade) || 0;
-        if (requiredBets === 0 && requiredTotalAmount === 0) {
-            return null;
-        }
-        
-        // 4. 獲取下一級配置
+        // 2. 獲取下一級配置（若不存在，表示已是最高级）
         const nextLevel = currentLevel + 1;
         const nextLevelResult = await query(
             'SELECT * FROM user_levels WHERE level = $1',
@@ -253,11 +233,10 @@ async function checkAndUpgradeUserLevel(userId, client = null) {
         
         const nextLevelConfig = nextLevelResult.rows[0];
         const nextRequiredTotalAmount = parseFloat(nextLevelConfig.required_total_bet_amount) || 0;
-        const nextRequiredBets = parseInt(nextLevelConfig.required_bets_for_upgrade) || 0;
         
-        // 5. 獲取用戶當前累計值（使用累加字段，而非 COUNT(*) 查詢）
+        // 3. 獲取用戶當前累計值（使用累加字段，而非 COUNT(*) 查詢）
         const userStatsResult = await query(
-            'SELECT total_valid_bet_amount, total_valid_bet_count FROM users WHERE user_id = $1',
+            'SELECT total_valid_bet_amount FROM users WHERE user_id = $1',
             [userId]
         );
         
@@ -267,11 +246,9 @@ async function checkAndUpgradeUserLevel(userId, client = null) {
         }
         
         const totalValidBetAmount = parseFloat(userStatsResult.rows[0].total_valid_bet_amount) || 0;
-        const totalValidBetCount = parseInt(userStatsResult.rows[0].total_valid_bet_count) || 0;
         
-        // 6. 檢查是否滿足升級條件（使用累計值）
-        // 必須同時滿足：累計金額 >= 下一級要求金額 AND 累計數量 >= 下一級要求數量
-        if (totalValidBetAmount >= nextRequiredTotalAmount && totalValidBetCount >= nextRequiredBets) {
+        // 4. 檢查是否滿足升級條件（仅基于累计有效投注金额）
+        if (totalValidBetAmount >= nextRequiredTotalAmount) {
             // 處理升級
             return await processLevelUpgrade(userId, currentLevel, nextLevelConfig, client);
         }

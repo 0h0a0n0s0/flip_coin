@@ -361,26 +361,26 @@ function settingsRoutes(router) {
      * @description 新增用户等级设定
      * @route POST /api/admin/user-levels
      * @access Private
-     * @body { level, name, max_bet_amount, required_bets_for_upgrade, required_total_bet_amount, min_bet_amount_for_upgrade, upgrade_reward_amount }
+     * @body { level, name, required_total_bet_amount, min_bet_amount_for_upgrade, upgrade_reward_amount }
      */
     router.post('/user-levels', authMiddleware, checkPermission('settings_levels', 'cud'), async (req, res) => {
-        const { level, name, max_bet_amount, required_bets_for_upgrade, required_total_bet_amount, min_bet_amount_for_upgrade, upgrade_reward_amount } = req.body;
+        const { level, name, required_total_bet_amount, min_bet_amount_for_upgrade, upgrade_reward_amount } = req.body;
         // (简单验证)
-        if (!level || level <= 0 || !max_bet_amount || max_bet_amount < 0 || required_bets_for_upgrade < 0 || (required_total_bet_amount !== undefined && required_total_bet_amount < 0) || min_bet_amount_for_upgrade < 0 || upgrade_reward_amount < 0) {
+        if (!level || level <= 0 || (required_total_bet_amount !== undefined && required_total_bet_amount < 0) || min_bet_amount_for_upgrade < 0 || upgrade_reward_amount < 0) {
             return sendError(res, 400, 'Invalid input data.');
         }
 
         // Level 1 的升级条件必须为 0
-        if (level === 1 && (required_bets_for_upgrade > 0 || (required_total_bet_amount !== undefined && required_total_bet_amount > 0))) {
+        if (level === 1 && (required_total_bet_amount !== undefined && required_total_bet_amount > 0)) {
             return sendError(res, 400, 'Level 1 cannot have upgrade requirements.');
         }
 
         try {
             const result = await db.query(
-                `INSERT INTO user_levels (level, name, max_bet_amount, required_bets_for_upgrade, required_total_bet_amount, min_bet_amount_for_upgrade, upgrade_reward_amount, updated_at) 
-                 VALUES ($1, $2, $3, $4, $5, $6, $7, NOW()) 
+                `INSERT INTO user_levels (level, name, required_total_bet_amount, min_bet_amount_for_upgrade, upgrade_reward_amount, updated_at) 
+                 VALUES ($1, $2, $3, $4, $5, NOW()) 
                  RETURNING *`,
-                [level, name || `Level ${level}`, max_bet_amount, required_bets_for_upgrade, required_total_bet_amount || 0, min_bet_amount_for_upgrade, upgrade_reward_amount]
+                [level, name || `Level ${level}`, required_total_bet_amount || 0, min_bet_amount_for_upgrade, upgrade_reward_amount]
             );
             console.log(`[Admin UserLevels] Level ${level} created by ${req.user.username}`);
             sendSuccess(res, result.rows[0], 201);
@@ -397,27 +397,27 @@ function settingsRoutes(router) {
      * @description 更新用户等级设定
      * @route PUT /api/admin/user-levels/:level
      * @access Private
-     * @body { name, max_bet_amount, required_bets_for_upgrade, required_total_bet_amount, min_bet_amount_for_upgrade, upgrade_reward_amount }
+     * @body { name, required_total_bet_amount, min_bet_amount_for_upgrade, upgrade_reward_amount }
      */
     router.put('/user-levels/:level', authMiddleware, checkPermission('settings_levels', 'cud'), async (req, res) => {
         const level = parseInt(req.params.level, 10);
-        const { name, max_bet_amount, required_bets_for_upgrade, required_total_bet_amount, min_bet_amount_for_upgrade, upgrade_reward_amount } = req.body;
-        if (isNaN(level) || level <= 0 || !max_bet_amount || max_bet_amount < 0 || required_bets_for_upgrade < 0 || (required_total_bet_amount !== undefined && required_total_bet_amount < 0) || min_bet_amount_for_upgrade < 0 || upgrade_reward_amount < 0) {
+        const { name, required_total_bet_amount, min_bet_amount_for_upgrade, upgrade_reward_amount } = req.body;
+        if (isNaN(level) || level <= 0 || (required_total_bet_amount !== undefined && required_total_bet_amount < 0) || min_bet_amount_for_upgrade < 0 || upgrade_reward_amount < 0) {
              return sendError(res, 400, 'Invalid input data.');
         }
 
         // Level 1 的升级条件必须为 0
-        if (level === 1 && (required_bets_for_upgrade > 0 || (required_total_bet_amount !== undefined && required_total_bet_amount > 0))) {
+        if (level === 1 && (required_total_bet_amount !== undefined && required_total_bet_amount > 0)) {
             return sendError(res, 400, 'Level 1 cannot have upgrade requirements.');
         }
 
         try {
             const result = await db.query(
                 `UPDATE user_levels 
-                 SET name = $1, max_bet_amount = $2, required_bets_for_upgrade = $3, required_total_bet_amount = $4, min_bet_amount_for_upgrade = $5, upgrade_reward_amount = $6, updated_at = NOW() 
-                 WHERE level = $7 
+                 SET name = $1, required_total_bet_amount = $2, min_bet_amount_for_upgrade = $3, upgrade_reward_amount = $4, updated_at = NOW() 
+                 WHERE level = $5 
                  RETURNING *`,
-                [name || `Level ${level}`, max_bet_amount, required_bets_for_upgrade, required_total_bet_amount !== undefined ? required_total_bet_amount : 0, min_bet_amount_for_upgrade, upgrade_reward_amount, level]
+                [name || `Level ${level}`, required_total_bet_amount !== undefined ? required_total_bet_amount : 0, min_bet_amount_for_upgrade, upgrade_reward_amount, level]
             );
             if (result.rows.length === 0) {
                 return sendError(res, 404, `Level ${level} not found.`);

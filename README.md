@@ -520,14 +520,11 @@ flip_coin/
 #### 2.1 用户表字段 (`users`)
 - `level` (INT, DEFAULT 1): 用户当前等级
 - `total_valid_bet_amount` (NUMERIC(20,6), DEFAULT 0): **累计有效投注金额**（用于升级计算）
-- `total_valid_bet_count` (INT, DEFAULT 0): **累计有效投注数量**（用于升级计算）
 - `last_level_up_time` (TIMESTAMP): 最后升级时间
 
 #### 2.2 等级配置表 (`user_levels`)
 - `level` (INT, PRIMARY KEY): 等级编号（从 1 开始）
 - `name` (VARCHAR(50)): 等级名称（如 "VIP 1"、"新手"）
-- `max_bet_amount` (NUMERIC(20,6)): 此等级的最高投注限额
-- `required_bets_for_upgrade` (INT): **达到此等级所需的最小投注数量（累计）**
 - `required_total_bet_amount` (NUMERIC(20,6)): **达到此等级所需的最小总投注金额（累计，USDT）**
 - `min_bet_amount_for_upgrade` (NUMERIC(20,6)): **单个投注的有效性阈值**（用于过滤垃圾投注，与升级目标分离）
 - `upgrade_reward_amount` (NUMERIC(20,6)): 达到此等级时的奖励金额（USDT）
@@ -535,7 +532,7 @@ flip_coin/
 **重要说明**：
 - `min_bet_amount_for_upgrade`: 用于**过滤单个投注**（只有金额 >= 此值的投注才计入累加器）
 - `required_total_bet_amount`: 用于**判断累计值**（用户累计总投注金额是否达到升级目标）
-- 两者完全独立，互不干扰
+- 升级条件**仅基于累计投注金额**，简化了原有的"同时满足投注数量和金额"的复杂逻辑
 
 ### 3. 投注结算与累加流程
 
@@ -547,9 +544,7 @@ flip_coin/
 #### 3.2 有效性判断
 1. 获取用户当前等级的 `min_bet_amount_for_upgrade` 值
 2. 判断投注金额是否 >= 阈值
-3. 如果满足条件，累加：
-   - `total_valid_bet_amount += bet_amount`
-   - `total_valid_bet_count += 1`
+3. 如果满足条件，累加 `total_valid_bet_amount`
 
 **代码示例**：
 ```javascript
@@ -564,8 +559,7 @@ const minValidBetAmount = parseFloat(levelResult.rows[0].min_bet_amount_for_upgr
 if (betAmount >= minValidBetAmount) {
     await client.query(
         `UPDATE users 
-         SET total_valid_bet_amount = total_valid_bet_amount + $1,
-             total_valid_bet_count = total_valid_bet_count + 1
+         SET total_valid_bet_amount = total_valid_bet_amount + $1
          WHERE user_id = $2`,
         [betAmount, userId]
     );
@@ -582,17 +576,15 @@ if (betAmount >= minValidBetAmount) {
 #### 4.2 升级条件判断
 1. **获取用户当前等级**和等级配置
 2. **检查是否为最高级**:
-   - 如果 `required_bets_for_upgrade = 0` 且 `required_total_bet_amount = 0`，表示最高级，直接返回
+   - 如果 `required_total_bet_amount = 0`，表示最高级，直接返回
 3. **获取下一级配置**:
    - 下一级 = 当前等级 + 1
    - 如果下一级配置不存在，表示当前是最高级
 4. **获取用户累计值**:
-   - 从 `users` 表读取 `total_valid_bet_amount` 和 `total_valid_bet_count`
+   - 从 `users` 表读取 `total_valid_bet_amount`
    - **不再使用 COUNT(*) 查询**，直接使用累加字段
 5. **判断是否满足升级条件**:
-   - 必须**同时满足**：
-     - `total_valid_bet_amount >= next_level.required_total_bet_amount`
-     - `total_valid_bet_count >= next_level.required_bets_for_upgrade`
+   - **仅检查累计投注金额**：`total_valid_bet_amount >= next_level.required_total_bet_amount`
 
 #### 4.3 升级执行流程
 1. **获取行锁**: 使用 `SELECT ... FOR UPDATE NOWAIT` 确保并发安全
@@ -626,9 +618,6 @@ if (totalValidBetAmount >= nextRequiredTotalAmount &&
   - 删除等级（Level 1 不可删除）
 
 #### 5.2 配置字段说明
-- **条件：最小投注数量（累计）**: `required_bets_for_upgrade`
-  - 达到此等级所需的最小投注数量（累计）
-  - Level 1 必须为 0
 - **条件：最小总投注金额（累计，USDT）**: `required_total_bet_amount`
   - 达到此等级所需的最小总投注金额（累计，USDT）
   - Level 1 必须为 0
@@ -640,56 +629,36 @@ if (totalValidBetAmount >= nextRequiredTotalAmount &&
   - 用户达到此等级时获得的奖励（USDT）
 
 #### 5.3 验证规则
-- Level 1 的 `required_bets_for_upgrade` 和 `required_total_bet_amount` 必须为 0（默认等级）
+- Level 1 的 `required_total_bet_amount` 必须为 0（默认等级）
 - 等级必须从 1 开始连续设定（不能跳过等级）
 - 所有金额字段必须 >= 0
 
 ### 6. 数据迁移与回填
 
 #### 6.1 迁移文件
-- **文件**: `packages/database/migrations/add_user_level_accumulators.sql`
-- **内容**:
-  1. 添加 `total_valid_bet_amount` 和 `total_valid_bet_count` 字段到 `users` 表
-  2. 添加 `required_total_bet_amount` 字段到 `user_levels` 表
-  3. 创建索引以优化查询性能
-  4. 回填现有用户数据
+- **历史迁移**: `packages/database/migrations/add_user_level_accumulators.sql`
+  - 添加 `total_valid_bet_amount` 字段到 `users` 表
+  - 添加 `required_total_bet_amount` 字段到 `user_levels` 表
+- **重构迁移**: `packages/database/migrations/remove_bet_count_and_max_bet_limit.sql`
+  - 移除 `user_levels.max_bet_amount`（投注限额）
+  - 移除 `user_levels.required_bets_for_upgrade`（最小投注数量）
+  - 移除 `users.total_valid_bet_count`（累加器字段）
 
-#### 6.2 回填逻辑
-- **方法**: 使用优化的 CTE + UPDATE FROM（避免相关子查询的性能问题）
-- **回填规则**:
-  - 从 `bets` 表汇总所有已结算的投注（`status IN ('won', 'lost')`）
-  - 使用 Level 1 的 `min_bet_amount_for_upgrade` 作为历史数据的有效性阈值
-  - 计算每个用户的累计金额和数量
-  - 更新 `users` 表的累加字段
-
-**SQL 示例**：
-```sql
-WITH user_stats AS (
-    SELECT 
-        user_id,
-        COALESCE(SUM(amount), 0) as total_amt,
-        COALESCE(COUNT(*), 0) as total_cnt
-    FROM bets
-    WHERE status IN ('won', 'lost')
-    AND amount >= (SELECT COALESCE(MIN(min_bet_amount_for_upgrade), 0) FROM user_levels WHERE level = 1)
-    GROUP BY user_id
-)
-UPDATE users u
-SET 
-    total_valid_bet_amount = COALESCE(s.total_amt, 0),
-    total_valid_bet_count = COALESCE(s.total_cnt, 0)
-FROM user_stats s
-WHERE u.user_id = s.user_id;
-```
+#### 6.2 简化后的逻辑
+- **升级触发**: 仅基于 `total_valid_bet_amount`，无需再检查投注数量
+- **性能优化**: 减少了累加器字段和检查条件，降低了数据库负载
+- **业务逻辑**: 更符合实际业务需求（VIP 升级通常只看流水，不看次数）
 
 ### 7. 性能优化
 
 #### 7.1 累加器模式
 - **优势**: 从按需计算（每次 COUNT(*) 查询）改为实时累加，大幅提升性能
-- **实现**: 在投注结算时实时累加，升级检查时直接读取累加字段
+- **实现**: 在投注结算时实时累加 `total_valid_bet_amount`，升级检查时直接读取
 
-#### 7.2 索引优化
-- 在 `users.total_valid_bet_amount` 上创建索引，优化升级检查查询
+#### 7.2 简化后的优势
+- **减少字段**: 移除 `total_valid_bet_count` 累加器，减少每次结算的写入操作
+- **减少检查**: 升级条件从"双重判断"简化为"单一判断"，降低 CPU 开销
+- **索引优化**: 在 `users.total_valid_bet_amount` 上创建索引，优化升级检查查询
 
 #### 7.3 事务安全
 - 所有累加和升级操作在同一事务中执行，确保数据一致性
@@ -709,7 +678,9 @@ WHERE u.user_id = s.user_id;
 
 ### 9. 注意事项
 
-1. **Level 1 配置**: Level 1 是默认等级，所有新用户初始等级为 1，Level 1 的升级条件必须为 0
+1. **Level 1 配置**: Level 1 是默认等级，所有新用户初始等级为 1，Level 1 的 `required_total_bet_amount` 必须为 0
+2. **字段保留**: `min_bet_amount_for_upgrade` 字段必须保留，用于过滤垃圾投注（单次投注的有效性阈值）
+3. **升级逻辑**: 升级条件已简化为仅检查累计投注金额，不再检查投注数量
 2. **字段分离**: `min_bet_amount_for_upgrade`（单个投注阈值）和 `required_total_bet_amount`（累计升级目标）完全独立，不要混淆
 3. **并发安全**: 升级检查使用行锁确保并发安全，如果获取锁失败会记录警告但不阻止主流程
 4. **数据一致性**: 所有累加和升级操作在同一事务中执行，确保数据一致性

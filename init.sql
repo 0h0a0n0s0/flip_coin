@@ -190,8 +190,7 @@ CREATE TABLE blocked_regions (
 CREATE TABLE user_levels (
     level INT PRIMARY KEY CHECK (level > 0),
     name VARCHAR(50) NOT NULL DEFAULT '',
-    max_bet_amount NUMERIC NOT NULL DEFAULT 100,
-    required_bets_for_upgrade INT NOT NULL DEFAULT 0,
+    required_total_bet_amount NUMERIC NOT NULL DEFAULT 0,
     min_bet_amount_for_upgrade NUMERIC NOT NULL DEFAULT 0,
     upgrade_reward_amount NUMERIC NOT NULL DEFAULT 0,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
@@ -273,8 +272,8 @@ INSERT INTO admin_users (username, password_hash, role_id, status)
 VALUES ('admin', '$2b$10$AcqgPjrFH7EoZv6Fv0LJ4OMmPbiTom7QrSSTjE6oK92.2JgFs63Wq', 1, 'active'); 
 
 -- 2. 插入 Level 1
-INSERT INTO user_levels (level, name, max_bet_amount, required_bets_for_upgrade, min_bet_amount_for_upgrade, upgrade_reward_amount) 
-VALUES (1, 'Level 1', 100, 10, 0.01, 0.005); 
+INSERT INTO user_levels (level, name, required_total_bet_amount, min_bet_amount_for_upgrade, upgrade_reward_amount) 
+VALUES (1, 'Level 1', 0, 0.01, 0.005); 
 
 -- 3. 插入系統設定 (★★★ v8.1 修改 ★★★)
 INSERT INTO system_settings (key, value, description, category) 

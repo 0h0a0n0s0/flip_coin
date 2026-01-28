@@ -405,8 +405,6 @@ model BlockedRegion {
 model UserLevel {
   level                     Int       @id
   name                      String    @default("") @db.VarChar(50)
-  max_bet_amount            Decimal   @default(100) @db.Decimal(20, 6)
-  required_bets_for_upgrade Int       @default(0)
   min_bet_amount_for_upgrade Decimal @default(0) @db.Decimal(20, 6)
   upgrade_reward_amount     Decimal   @default(0) @db.Decimal(20, 6)
   created_at                DateTime  @default(now()) @db.Timestamptz(6)

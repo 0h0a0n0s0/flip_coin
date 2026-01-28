@@ -16,12 +16,6 @@
       <el-table :data="tableData" class="user-levels-table" style="width: 100%" row-key="level" :table-layout="'auto'">
         <el-table-column prop="level" label="等级" width="80" sortable />
         <el-table-column prop="name" label="等级名称" width="150" />
-        <el-table-column prop="max_bet_amount" label="投注限额 (USDT)" width="170" sortable>
-           <template #default="scope">{{ formatCurrency(scope.row.max_bet_amount) }}</template>
-        </el-table-column>
-        <el-table-column prop="required_bets_for_upgrade" label="条件：最小投注数量（累计）" width="200" sortable>
-           <template #default="scope">{{ scope.row.required_bets_for_upgrade > 0 ? scope.row.required_bets_for_upgrade : '最高级' }}</template>
-        </el-table-column>
         <el-table-column prop="required_total_bet_amount" label="条件：最小总投注金额（累计，USDT）" width="250" sortable>
            <template #default="scope">{{ formatCurrency(scope.row.required_total_bet_amount) }}</template>
         </el-table-column>
@@ -50,13 +44,6 @@
         </el-form-item>
         <el-form-item label="等级名称" prop="name">
           <el-input v-model="levelForm.name" placeholder="例如: VIP 1, 新手"></el-input>
-        </el-form-item>
-        <el-form-item label="投注限额 (USDT)" prop="max_bet_amount">
-          <el-input-number v-model="levelForm.max_bet_amount" :min="0" :precision="8" placeholder="此等级最高投注额" />
-        </el-form-item>
-         <el-form-item label="条件：最小投注数量（累计）" prop="required_bets_for_upgrade">
-          <el-input-number v-model="levelForm.required_bets_for_upgrade" :min="0" step-strictly placeholder="达到此等级所需的最小投注数量（累计）" />
-           <div class="form-tip">达到此等级所需的最小投注数量（累计）。设为 0 表示此等级为最高等级，無法再升级。Level 1 必须为 0。</div>
         </el-form-item>
          <el-form-item label="条件：最小总投注金额（累计，USDT）" prop="required_total_bet_amount">
           <el-input-number v-model="levelForm.required_total_bet_amount" :min="0" :precision="8" placeholder="达到此等级所需的最小总投注金额（累计）" />
@@ -115,8 +102,6 @@ export default {
            levelForm: { // 表单数据
                level: null,
                name: '',
-               max_bet_amount: null,
-               required_bets_for_upgrade: null,
                required_total_bet_amount: null,
                min_bet_amount_for_upgrade: null,
                upgrade_reward_amount: null,
@@ -124,8 +109,6 @@ export default {
            formRules: { // 表单验证规則
                level: [{ required: true, message: '等级不能为空', trigger: 'blur' }, { type: 'integer', min: 1, message: '等级必须是正整数', trigger: 'blur' }],
                name: [{ required: true, message: '等级名称不能为空', trigger: 'blur' }],
-               max_bet_amount: [{ required: true, validator: validateNumeric, trigger: 'blur' }],
-               required_bets_for_upgrade: [{ required: true, validator: validateInteger, trigger: 'blur' }],
                required_total_bet_amount: [{ required: true, validator: validateNumeric, trigger: 'blur' }],
                min_bet_amount_for_upgrade: [{ required: true, validator: validateNumeric, trigger: 'blur' }],
                upgrade_reward_amount: [{ required: true, validator: validateNumeric, trigger: 'blur' }],
@@ -168,8 +151,6 @@ export default {
            Object.assign(this.levelForm, { 
                level: this.nextLevel, 
                name: `Level ${this.nextLevel}`, 
-               max_bet_amount: null, 
-               required_bets_for_upgrade: null, 
                required_total_bet_amount: null,
                min_bet_amount_for_upgrade: null, 
                upgrade_reward_amount: null 
@@ -185,8 +166,6 @@ export default {
                level: row.level, 
                name: row.name, 
                // (後端返回的是 string 或 number? 我们假设是 string，需要 parseFloat)
-               max_bet_amount: parseFloat(row.max_bet_amount) || 0, 
-               required_bets_for_upgrade: parseInt(row.required_bets_for_upgrade) || 0, 
                required_total_bet_amount: parseFloat(row.required_total_bet_amount) || 0,
                min_bet_amount_for_upgrade: parseFloat(row.min_bet_amount_for_upgrade) || 0, 
                upgrade_reward_amount: parseFloat(row.upgrade_reward_amount) || 0 
@@ -201,7 +180,7 @@ export default {
                if (valid) {
                    // Level 1 的升级条件必须为 0
                    if (this.levelForm.level === 1) {
-                       if (this.levelForm.required_bets_for_upgrade > 0 || this.levelForm.required_total_bet_amount > 0) {
+                       if (this.levelForm.required_total_bet_amount > 0) {
                            ElMessage.error('Level 1 的升级条件必须为 0');
                            return false;
                        }

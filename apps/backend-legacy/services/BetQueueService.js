@@ -333,7 +333,6 @@ class BetQueueService {
                     await client.query(
                         `UPDATE users 
                          SET total_valid_bet_amount = total_valid_bet_amount + $1,
-                             total_valid_bet_count = total_valid_bet_count + 1
                          WHERE user_id = $2`,
                         [betAmount, userId]
                     );
