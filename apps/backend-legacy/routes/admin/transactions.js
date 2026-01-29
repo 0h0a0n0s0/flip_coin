@@ -9,6 +9,8 @@ const { maskAddress, maskTxHash } = require('../../utils/maskUtils');
 const { getClientIp } = require('../../utils/ipUtils');
 const { sendError, sendSuccess } = require('../../utils/safeResponse');
 const riskControlService = require('../../services/riskControlService');
+const riskAssessmentService = require('../../services/RiskAssessmentService');
+const { logBalanceChange, CHANGE_TYPES } = require('../../utils/balanceChangeLogger');
 
 /**
  * 交易管理相關路由
@@ -1900,6 +1902,282 @@ function transactionsRoutes(router) {
             sendSuccess(res, { payout_multiplier: result.rows[0].payout_multiplier });
         } catch (error) {
             console.error('[Admin Games] Error:', error);
+            sendError(res, 500, 'Internal server error');
+        }
+    });
+
+    // ========================================
+    // ★★★ Guardian 提現風控系統 API ★★★
+    // ========================================
+
+    /**
+     * @description 獲取提現的風險分析報告
+     * @route GET /api/admin/withdrawals/:id/risk-analysis
+     */
+    router.get('/withdrawals/:id/risk-analysis', authMiddleware, checkPermission('withdrawals', 'read'), async (req, res) => {
+        try {
+            const { id } = req.params;
+            
+            // 獲取提現單信息
+            const wdResult = await db.query('SELECT * FROM withdrawals WHERE id = $1', [id]);
+            if (wdResult.rows.length === 0) {
+                return sendError(res, 404, '提款单不存在');
+            }
+            
+            const withdrawal = wdResult.rows[0];
+            
+            // 獲取風險分析報告
+            const riskReport = await riskAssessmentService.getWithdrawalRiskReport(
+                withdrawal.user_id,
+                withdrawal.address,
+                withdrawal.chain_type
+            );
+            
+            return sendSuccess(res, riskReport);
+        } catch (error) {
+            console.error('[Admin Withdrawals] Error fetching risk analysis:', error);
+            sendError(res, 500, 'Internal server error');
+        }
+    });
+
+    /**
+     * @description 拒絕提款並凍結用戶
+     * @route POST /api/admin/withdrawals/:id/reject-and-freeze
+     */
+    router.post('/withdrawals/:id/reject-and-freeze', authMiddleware, checkPermission('withdrawals', 'update'), async (req, res) => {
+        const { id } = req.params;
+        const { reason } = req.body;
+        const reviewerId = req.user.id;
+
+        if (!reason) {
+            return sendError(res, 400, '拒绝理由为必填');
+        }
+
+        const client = await db.pool.connect();
+        try {
+            await client.query('BEGIN');
+
+            // 1. 查找并锁定提款单
+            const wdResult = await client.query("SELECT * FROM withdrawals WHERE id = $1 AND status = 'pending' FOR UPDATE", [id]);
+            if (wdResult.rows.length === 0) {
+                throw new Error('提款单不存在或狀态已变更');
+            }
+            const withdrawal = wdResult.rows[0];
+
+            // 2. 更新提款单狀态為拒絕
+            await client.query(
+                "UPDATE withdrawals SET status = 'rejected', rejection_reason = $1, reviewer_id = $2, review_time = NOW() WHERE id = $3",
+                [reason, reviewerId, id]
+            );
+
+            // 3. 凍結用戶（不退款，資金被沒收）
+            await client.query(
+                "UPDATE users SET status = 'frozen' WHERE user_id = $1",
+                [withdrawal.user_id]
+            );
+
+            // 4. 更新对应的 platform_transaction
+            await client.query(
+                "UPDATE platform_transactions SET status = 'cancelled' WHERE user_id = $1 AND type = 'withdraw_request' AND amount = $2 AND status = 'pending'",
+                [withdrawal.user_id, -Math.abs(withdrawal.amount)]
+            );
+
+            // 5. 記錄賬變（資金被沒收，不退回餘額）
+            try {
+                await logBalanceChange({
+                    user_id: withdrawal.user_id,
+                    change_type: CHANGE_TYPES.ADMIN_ADJUSTMENT,
+                    amount: -withdrawal.amount,  // 負數表示扣除
+                    balance_after: 0,  // 凍結後餘額為0
+                    remark: `提款拒絕並凍結用戶 (提款單ID: ${id}, 理由: ${reason}, 管理員: ${req.user.username})`,
+                    client: client
+                });
+            } catch (error) {
+                console.error('[Admin Withdrawals] Failed to log balance change (reject and freeze):', error);
+                // 不阻止主流程
+            }
+
+            await client.query('COMMIT');
+
+            // 6. 记录稽核日志
+            await recordAuditLog({
+                adminId: req.user.id,
+                adminUsername: req.user.username,
+                action: 'reject_withdrawal_and_freeze',
+                resource: 'withdrawals',
+                resourceId: id.toString(),
+                description: `拒絕提款並凍結用戶 (提款單ID: ${id}, 用戶ID: ${withdrawal.user_id}, 金額: ${withdrawal.amount} USDT, 理由: ${reason})`,
+                ipAddress: getClientIp(req),
+                userAgent: req.headers['user-agent']
+            });
+
+            sendSuccess(res, { message: '提款已拒绝，用户已冻结' });
+
+        } catch (error) {
+            await client.query('ROLLBACK');
+            console.error(`[Admin Withdrawals] Error rejecting and freezing ${id}:`, error);
+            return sendError(res, 400, error.message || '操作失败');
+        } finally {
+            client.release();
+        }
+    });
+
+    // ========================================
+    // ★★★ 提現地址黑名單管理 API ★★★
+    // ========================================
+
+    /**
+     * @description 獲取黑名單列表
+     * @route GET /api/admin/withdrawal-blacklist
+     */
+    router.get('/withdrawal-blacklist', authMiddleware, checkPermission('withdrawals', 'read'), async (req, res) => {
+        try {
+            const { page = 1, limit = 20, address, chain } = req.query;
+            
+            const params = [];
+            let whereClauses = [];
+            let paramIndex = 1;
+            
+            if (address) {
+                params.push(`%${address}%`);
+                whereClauses.push(`wab.address ILIKE $${paramIndex++}`);
+            }
+            
+            if (chain) {
+                params.push(chain);
+                whereClauses.push(`wab.chain = $${paramIndex++}`);
+            }
+            
+            const whereSql = whereClauses.length > 0 ? `WHERE ${whereClauses.join(' AND ')}` : '';
+            
+            // 獲取總數
+            const countSql = `SELECT COUNT(*) FROM withdrawal_address_blacklist wab ${whereSql}`;
+            const countResult = await db.query(countSql, params);
+            const total = parseInt(countResult.rows[0].count, 10);
+            
+            if (total === 0) {
+                return sendSuccess(res, { total: 0, list: [] });
+            }
+            
+            // 獲取列表
+            const dataSql = `
+                SELECT 
+                    wab.id,
+                    wab.address,
+                    wab.chain,
+                    wab.memo,
+                    wab.created_at,
+                    au.username as admin_username
+                FROM withdrawal_address_blacklist wab
+                LEFT JOIN admin_users au ON wab.admin_id = au.id
+                ${whereSql}
+                ORDER BY wab.created_at DESC
+                LIMIT $${paramIndex++} OFFSET $${paramIndex++}
+            `;
+            
+            const offset = (parseInt(page, 10) - 1) * parseInt(limit, 10);
+            params.push(parseInt(limit, 10));
+            params.push(offset);
+            
+            const dataResult = await db.query(dataSql, params);
+            
+            sendSuccess(res, {
+                total: total,
+                list: dataResult.rows
+            });
+            
+        } catch (error) {
+            console.error('[Admin Blacklist] Error fetching list:', error);
+            sendError(res, 500, 'Internal server error');
+        }
+    });
+
+    /**
+     * @description 添加地址到黑名單
+     * @route POST /api/admin/withdrawal-blacklist
+     */
+    router.post('/withdrawal-blacklist', authMiddleware, checkPermission('withdrawals', 'update'), async (req, res) => {
+        try {
+            const { address, chain, memo } = req.body;
+            const adminId = req.user.id;
+            
+            if (!address || !address.trim()) {
+                return sendError(res, 400, '地址不能为空');
+            }
+            
+            // 檢查是否已存在
+            const existingResult = await db.query(
+                'SELECT id FROM withdrawal_address_blacklist WHERE address = $1 AND (chain IS NULL OR chain = $2)',
+                [address.trim(), chain || null]
+            );
+            
+            if (existingResult.rows.length > 0) {
+                return sendError(res, 400, '该地址已在黑名单中');
+            }
+            
+            // 添加到黑名單
+            const result = await db.query(
+                `INSERT INTO withdrawal_address_blacklist (address, chain, memo, admin_id, created_at)
+                 VALUES ($1, $2, $3, $4, NOW())
+                 RETURNING *`,
+                [address.trim(), chain || null, memo || null, adminId]
+            );
+            
+            // 記錄稽核日誌
+            await recordAuditLog({
+                adminId: req.user.id,
+                adminUsername: req.user.username,
+                action: 'add_withdrawal_blacklist',
+                resource: 'withdrawal_blacklist',
+                resourceId: result.rows[0].id.toString(),
+                description: `添加黑名單地址 (地址: ${address}, 鏈: ${chain || '全部'}, 備註: ${memo || '無'})`,
+                ipAddress: getClientIp(req),
+                userAgent: req.headers['user-agent']
+            });
+            
+            sendSuccess(res, result.rows[0], 201);
+            
+        } catch (error) {
+            console.error('[Admin Blacklist] Error adding address:', error);
+            sendError(res, 500, 'Internal server error');
+        }
+    });
+
+    /**
+     * @description 從黑名單中移除地址
+     * @route DELETE /api/admin/withdrawal-blacklist/:id
+     */
+    router.delete('/withdrawal-blacklist/:id', authMiddleware, checkPermission('withdrawals', 'update'), async (req, res) => {
+        try {
+            const { id } = req.params;
+            
+            // 獲取地址信息（用於日誌）
+            const addressResult = await db.query('SELECT * FROM withdrawal_address_blacklist WHERE id = $1', [id]);
+            if (addressResult.rows.length === 0) {
+                return sendError(res, 404, '黑名单记录不存在');
+            }
+            
+            const blacklistEntry = addressResult.rows[0];
+            
+            // 刪除
+            await db.query('DELETE FROM withdrawal_address_blacklist WHERE id = $1', [id]);
+            
+            // 記錄稽核日誌
+            await recordAuditLog({
+                adminId: req.user.id,
+                adminUsername: req.user.username,
+                action: 'remove_withdrawal_blacklist',
+                resource: 'withdrawal_blacklist',
+                resourceId: id.toString(),
+                description: `移除黑名單地址 (地址: ${blacklistEntry.address}, 鏈: ${blacklistEntry.chain || '全部'})`,
+                ipAddress: getClientIp(req),
+                userAgent: req.headers['user-agent']
+            });
+            
+            sendSuccess(res, { message: '已从黑名单移除' });
+            
+        } catch (error) {
+            console.error('[Admin Blacklist] Error removing address:', error);
             sendError(res, 500, 'Internal server error');
         }
     });

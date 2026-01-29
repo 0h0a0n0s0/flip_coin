@@ -112,6 +112,7 @@
             <el-menu-item index="/finance/withdrawals" v-if="$permissions.has('withdrawals', 'read')">提款審核</el-menu-item>
             <el-menu-item index="/finance/deposits" v-if="$permissions.has('deposits', 'read')">充值记录</el-menu-item>
             <el-menu-item index="/finance/balance-changes" v-if="$permissions.has('balance_changes', 'read')">账变记录</el-menu-item>
+            <el-menu-item index="/finance/address-blacklist" v-if="$permissions.has('withdrawals', 'read')">地址黑名單</el-menu-item>
           </el-sub-menu>
           
           <el-sub-menu index="admin-management" v-if="$permissions.has('admin_accounts', 'read') || $permissions.has('admin_permissions', 'read') || $permissions.has('admin_ip_whitelist', 'read')" data-parent-name="後台管理">

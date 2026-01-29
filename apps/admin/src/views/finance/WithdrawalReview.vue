@@ -2,8 +2,8 @@
   <div class="page-container">
     <div class="page-header">
       <h2 class="page-title">
-        提款審核
-        <el-tooltip content="審核：批准改為出款中；拒绝退回余额；完成需填写TX Hash與Gas" placement="right">
+        提款審核 (Guardian 風控)
+        <el-tooltip content="Guardian 風控：自動檢測勝率異常、投注數過少、黑名單地址。審核時可查看完整風險分析。" placement="right">
           <el-icon style="margin-left: 8px; color: var(--text-tertiary); cursor: help;"><InfoFilled /></el-icon>
         </el-tooltip>
       </h2>
@@ -45,6 +45,14 @@
     <el-card shadow="never" class="table-card" v-loading="loading">
       <el-table :data="tableData" style="width: 100%">
         <el-table-column prop="id" label="ID" width="80" />
+        <el-table-column label="風控警示" width="100" fixed="left">
+          <template #default="scope">
+            <el-tooltip v-if="scope.row.rejection_reason && scope.row.rejection_reason.includes('風控')" :content="scope.row.rejection_reason" placement="top">
+              <el-tag type="danger" size="small">⚠️ 風控</el-tag>
+            </el-tooltip>
+            <span v-else>-</span>
+          </template>
+        </el-table-column>
         <el-table-column prop="username" label="用户名" width="130" />
         <el-table-column prop="user_id" label="用户ID" width="120" />
         <el-table-column prop="chain_type" label="区块链" width="100" />
@@ -85,12 +93,17 @@
           </template>
         </el-table-column>
 
-        <el-table-column label="操作" width="120" fixed="right">
+        <el-table-column label="操作" width="180" fixed="right">
           <template #default="scope">
             <div class="action-buttons-container">
               <div v-if="scope.row.status === 'pending'">
-                  <el-button class="action-btn-collect" @click="handleApprove(scope.row)" v-if="$permissions.has('withdrawals', 'update')">批准</el-button>
-                  <el-button class="action-btn-delete" @click="handleReject(scope.row)" v-if="$permissions.has('withdrawals', 'update')">拒绝</el-button>
+                  <el-button class="action-btn-info" size="small" @click="showRiskAnalysis(scope.row)" v-if="$permissions.has('withdrawals', 'read')">
+                    <el-icon><Warning /></el-icon>
+                    風控分析
+                  </el-button>
+                  <el-button class="action-btn-collect" size="small" @click="handleApprove(scope.row)" v-if="$permissions.has('withdrawals', 'update')">批准</el-button>
+                  <el-button class="action-btn-delete" size="small" @click="handleReject(scope.row)" v-if="$permissions.has('withdrawals', 'update')">拒绝</el-button>
+                  <el-button class="action-btn-freeze" size="small" @click="handleRejectAndFreeze(scope.row)" v-if="$permissions.has('withdrawals', 'update')">拒絕+凍結</el-button>
               </div>
               <div v-if="scope.row.status === 'processing'">
                   <el-button class="action-btn-edit" @click="handleComplete(scope.row)" v-if="$permissions.has('withdrawals', 'update')">手动完成</el-button>
@@ -115,12 +128,78 @@
         @current-change="handlePageChange"
       />
     </el-card>
+
+    <!-- 風險分析對話框 -->
+    <el-dialog v-model="riskDialogVisible" title="Guardian 風險分析報告" width="700px">
+      <div v-loading="riskLoading">
+        <el-alert v-if="riskData.is_blacklisted" type="error" :closable="false" style="margin-bottom: 20px;">
+          <template #title>
+            <strong>⚠️ 黑名單警告：此地址已被列入提現黑名單！</strong>
+          </template>
+        </el-alert>
+
+        <el-descriptions :column="2" border>
+          <el-descriptions-item label="用戶ID">{{ currentWithdrawal?.user_id }}</el-descriptions-item>
+          <el-descriptions-item label="用戶名">{{ currentWithdrawal?.username }}</el-descriptions-item>
+          <el-descriptions-item label="提現地址" :span="2">
+            <el-text class="address-text">{{ currentWithdrawal?.address }}</el-text>
+          </el-descriptions-item>
+          <el-descriptions-item label="提現金額">{{ formatCurrency(currentWithdrawal?.amount) }} USDT</el-descriptions-item>
+          <el-descriptions-item label="區塊鏈">{{ currentWithdrawal?.chain_type }}</el-descriptions-item>
+        </el-descriptions>
+
+        <el-divider content-position="left">投注統計</el-divider>
+        <el-descriptions :column="2" border>
+          <el-descriptions-item label="總投注數">
+            <el-tag :type="riskData.total_bet_count < 50 ? 'danger' : 'success'">
+              {{ riskData.total_bet_count }}
+            </el-tag>
+          </el-descriptions-item>
+          <el-descriptions-item label="勝率">
+            <el-tag :type="riskData.win_rate > 60 ? 'danger' : 'success'">
+              {{ riskData.win_rate }}%
+            </el-tag>
+          </el-descriptions-item>
+          <el-descriptions-item label="勝場數">{{ riskData.won_count }}</el-descriptions-item>
+          <el-descriptions-item label="敗場數">{{ riskData.lost_count }}</el-descriptions-item>
+        </el-descriptions>
+
+        <el-divider content-position="left">財務摘要</el-divider>
+        <el-descriptions :column="2" border>
+          <el-descriptions-item label="總充值">{{ formatCurrency(riskData.financial_summary?.total_deposit) }} USDT</el-descriptions-item>
+          <el-descriptions-item label="總提現">{{ formatCurrency(riskData.financial_summary?.total_withdrawal) }} USDT</el-descriptions-item>
+          <el-descriptions-item label="投注淨利">{{ formatCurrency(riskData.financial_summary?.net_profit_from_bets) }} USDT</el-descriptions-item>
+          <el-descriptions-item label="綜合淨利">
+            <el-tag :type="getRiskLevelType(riskData.financial_summary?.net_profit)">
+              {{ formatCurrency(riskData.financial_summary?.net_profit) }} USDT
+            </el-tag>
+          </el-descriptions-item>
+        </el-descriptions>
+
+        <el-divider content-position="left">關聯帳戶</el-divider>
+        <el-descriptions :column="2" border>
+          <el-descriptions-item label="關聯IP數">
+            <el-tag :type="riskData.related_ip_count > 5 ? 'warning' : 'info'">
+              {{ riskData.related_ip_count }}
+            </el-tag>
+          </el-descriptions-item>
+          <el-descriptions-item label="關聯設備數">
+            <el-tag :type="riskData.related_device_count > 5 ? 'warning' : 'info'">
+              {{ riskData.related_device_count }}
+            </el-tag>
+          </el-descriptions-item>
+        </el-descriptions>
+      </div>
+      <template #footer>
+        <el-button @click="riskDialogVisible = false">關閉</el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
 <script>
 import { ElMessage, ElMessageBox } from 'element-plus';
-import { InfoFilled } from '@element-plus/icons-vue';
+import { InfoFilled, Warning } from '@element-plus/icons-vue';
 
 // ★★★ 关键修改：让此函数直接返回 Date 对象，而不是字符串 ★★★
 const createTodayRange = () => {
@@ -133,7 +212,7 @@ const createTodayRange = () => {
 
 export default {
   name: 'WithdrawalReview',
-  components: { InfoFilled },
+  components: { InfoFilled, Warning },
   data() {
     return {
       loading: false,
@@ -149,6 +228,25 @@ export default {
         // 初始化为 Date 数组
         dateRange: createTodayRange()
       },
+      // Guardian 風控相關
+      riskDialogVisible: false,
+      riskLoading: false,
+      currentWithdrawal: null,
+      riskData: {
+        is_blacklisted: false,
+        win_rate: 0,
+        total_bet_count: 0,
+        won_count: 0,
+        lost_count: 0,
+        related_ip_count: 0,
+        related_device_count: 0,
+        financial_summary: {
+          total_deposit: 0,
+          total_withdrawal: 0,
+          net_profit: 0,
+          net_profit_from_bets: 0
+        }
+      }
     };
   },
   created() {
@@ -226,6 +324,61 @@ export default {
                 await this.fetchData();
             } catch (error) { console.error('Failed to reject:', error); }
         }).catch(() => {});
+    },
+
+    // (拒絕並凍結)
+    handleRejectAndFreeze(row) {
+        ElMessageBox.prompt(
+            '⚠️ 危險操作：此操作將拒絕提現並凍結用戶帳號，資金將被沒收。請輸入拒絕理由：',
+            '拒絕提現並凍結用戶',
+            {
+                confirmButtonText: '確認凍結',
+                cancelButtonText: '取消',
+                inputPattern: /.+/,
+                inputErrorMessage: '拒絕理由不能為空',
+                type: 'error'
+            }
+        ).then(async ({ value }) => {
+            try {
+                await this.$api.rejectWithdrawalAndFreeze(row.id, { reason: value });
+                ElMessage.success('提現已拒絕，用戶已凍結');
+                await this.fetchData();
+            } catch (error) {
+                console.error('Failed to reject and freeze:', error);
+                const errorMsg = error.response?.data?.error || '操作失敗';
+                ElMessage.error(errorMsg);
+            }
+        }).catch(() => {});
+    },
+
+    // (顯示風險分析)
+    async showRiskAnalysis(row) {
+        this.currentWithdrawal = row;
+        this.riskDialogVisible = true;
+        this.riskLoading = true;
+        
+        try {
+            const response = await this.$api.getWithdrawalRiskAnalysis(row.id);
+            if (response && response.success && response.data) {
+                this.riskData = response.data;
+            } else {
+                // 向後兼容
+                this.riskData = response;
+            }
+        } catch (error) {
+            console.error('Failed to fetch risk analysis:', error);
+            ElMessage.error('獲取風險分析失敗');
+        } finally {
+            this.riskLoading = false;
+        }
+    },
+
+    getRiskLevelType(netProfit) {
+      if (!netProfit) return 'info';
+      const profit = parseFloat(netProfit);
+      if (profit > 1000) return 'danger';
+      if (profit > 500) return 'warning';
+      return 'success';
     },
 
     // (手动完成)
@@ -377,5 +530,37 @@ export default {
   background-color: #ebb563 !important;
   border-color: #ebb563 !important;
   color: #ffffff !important;
+}
+
+.action-btn-freeze {
+  background-color: #ff4d4f !important;
+  border-color: #ff4d4f !important;
+  color: #ffffff !important;
+  margin: 0 !important;
+}
+
+.action-btn-freeze:hover {
+  background-color: #ff7875 !important;
+  border-color: #ff7875 !important;
+  color: #ffffff !important;
+}
+
+.action-btn-info {
+  background-color: #909399 !important;
+  border-color: #909399 !important;
+  color: #ffffff !important;
+  margin: 0 !important;
+}
+
+.action-btn-info:hover {
+  background-color: #a6a9ad !important;
+  border-color: #a6a9ad !important;
+  color: #ffffff !important;
+}
+
+.address-text {
+  font-family: 'Courier New', monospace;
+  font-size: 12px;
+  word-break: break-all;
 }
 </style>

@@ -14,7 +14,8 @@ Flip Coin 是一个基于区块链的投注游戏平台，采用 **Monorepo** �
 - ⚡ **自动充值监听** - TRON 链轮询监听用户充值
 - 🔄 **自动归集** - Approve + TransferFrom 双签名归集
 - 💸 **自动出款** - TRC20-USDT 自动出款
-- 🛡️ **安全防护** - IP 白名单、速率限制、风控系统
+- 🛡️ **Guardian 风控系统** - Casino-Grade 提现风控（勝率检测、黑名单、关联账户分析）
+- 🔒 **安全防护** - IP 白名单、速率限制、多重风控系统
 - 📊 **后台管理** - 完整的用户、财务、游戏、风控管理
 
 ## 📁 项目结构
@@ -107,8 +108,9 @@ flip_coin/
 │   │   │   │   │   └── AuditLogs.vue       # 审计日志
 │   │   │   │   ├── finance/           # 财务管理
 │   │   │   │   │   ├── DepositHistory.vue  # 充值记录
-│   │   │   │   │   ├── WithdrawalReview.vue # 提现审核
-│   │   │   │   │   └── BalanceChanges.vue  # 账变记录
+│   │   │   │   │   ├── WithdrawalReview.vue # 提现审核（Guardian 风控增强）
+│   │   │   │   │   ├── BalanceChanges.vue  # 账变记录
+│   │   │   │   │   └── AddressBlacklist.vue # 地址黑名单管理（Guardian）
 │   │   │   │   ├── games/             # 游戏管理
 │   │   │   │   │   └── GameManagement.vue  # 游戏列表和参数设置
 │   │   │   │   ├── risk/              # 风控管理
@@ -174,6 +176,7 @@ flip_coin/
 │       │   ├── WalletBalanceMonitor.js # 钱包余额监控服务
 │       │   ├── TronEnergyService.js   # TRON 能量租赁服务
 │       │   ├── riskControlService.js  # 风控服务（同 IP 检测）
+│       │   ├── RiskAssessmentService.js # Guardian 风控评估服务（勝率、黑名单、关联分析）
 │       │   ├── auditLogService.js     # 审计日志服务
 │       │   ├── settingsCache.js       # 系统设置缓存服务
 │       │   ├── UserService.js         # 用户服务（用户相关数据库操作）
@@ -221,6 +224,7 @@ flip_coin/
 │   │   │   ├── add_game_code_column.sql
 │   │   │   ├── add_platform_name_setting.sql
 │   │   │   ├── add_tron_system_upgrade.sql
+│   │   │   ├── add_withdrawal_risk_control.sql  # Guardian 风控系统
 │   │   │   ├── create_balance_changes_table.sql
 │   │   │   ├── create_games_table_manual.sql
 │   │   │   ├── create_tron_notifications_table.sql
@@ -333,11 +337,11 @@ flip_coin/
 ### 后台管理
 - ✅ **用户管理** - 用户列表、信息更新、状态管理、充值地址查询
 - ✅ **投注管理** - 投注列表、盈亏报表
-- ✅ **财务管理** - 充值记录、提现审核、账变记录
+- ✅ **财务管理** - 充值记录、提现审核（Guardian风控增强）、账变记录、地址黑名单管理
 - ✅ **钱包管理** - 平台钱包 CRUD、钱包监控
 - ✅ **游戏管理** - 游戏列表、游戏参数设置
-- ✅ **风控管理** - 同 IP 监控、IP 封禁
-- ✅ **系统设置** - 游戏参数、用户等级、多语系、地区屏蔽
+- ✅ **风控管理** - 同 IP 监控、IP 封禁、Guardian 提现风控（勝率检测、投注数检测、关联账户分析）
+- ✅ **系统设置** - 游戏参数、用户等级、多语系、地区屏蔽、风控参数
 - ✅ **管理员管理** - 账号管理、权限管理、IP 白名单、审计日志
 - ✅ **实时仪表板** - 统计数据、在线用户
 
@@ -456,21 +460,28 @@ flip_coin/
 
 #### 4.2 自动出款触发条件
 需同时满足以下条件:
-1. **系统设置**: `AUTO_WITHDRAW_THRESHOLD > 0` (在 `system_settings` 表中配置)
-2. **金额限制**: 提款金额 <= `AUTO_WITHDRAW_THRESHOLD`
-3. **链类型**: `chain_type = 'TRC20'` (目前仅支持 TRC20)
-4. **服务就绪**: `PayoutService` 已初始化且钱包已加载
+1. **Guardian 风控检查**: 未被风控系统拦截（勝率正常、投注数充足、不在黑名单）
+2. **系统设置**: `AUTO_WITHDRAW_THRESHOLD > 0` (在 `system_settings` 表中配置)
+3. **金额限制**: 提款金额 <= `AUTO_WITHDRAW_THRESHOLD`
+4. **链类型**: `chain_type = 'TRC20'` (目前仅支持 TRC20)
+5. **服务就绪**: `PayoutService` 已初始化且钱包已加载
 
 #### 4.3 出款流程
 1. **用户提交提款请求**:
    - 验证提款密码
    - 检查余额是否充足
+   - **Guardian 风控评估** (自动执行):
+     - 检查地址黑名单
+     - 计算用户勝率和投注数
+     - 检查关联账户（IP、设备ID）
+     - 生成风险指标
    - 扣除用户余额
    - 创建 `withdrawals` 记录
 
 2. **判断是否自动出款**:
-   - 符合条件 → `status = 'processing'`，异步执行链上出款
-   - 不符合条件 → `status = 'pending'`，等待人工审核
+   - 风控拦截 → `status = 'pending'`，记录风控原因，等待人工审核
+   - 金额超过阈值 → `status = 'pending'`，等待人工审核
+   - 符合所有条件 → `status = 'processing'`，异步执行链上出款
 
 3. **自动出款执行** (异步):
    - 调用 `PayoutService.sendTrc20Payout()`
@@ -693,7 +704,14 @@ if (totalValidBetAmount >= nextRequiredTotalAmount &&
 - ✅ **密码加密** - 使用 bcrypt 加密存储密码
 - ✅ **JWT 身份验证** - 无状态 Token 认证
 - ✅ **谷歌二次验证（2FA）** - 管理员可启用 Google Authenticator
-- ✅ **风控系统** - 同 IP 检测、IP 封禁
+- ✅ **Guardian 提现风控系统** - Casino-Grade 风控体系
+  - 自动勝率检测（可配置閾值）
+  - 投注数检测（过滤刷水用户）
+  - 地址黑名单管理（软拦截）
+  - 关联账户分析（IP、设备ID）
+  - 完整风险分析报告
+  - 拒绝并冻结功能
+- ✅ **同 IP 风控** - 同 IP 用户检测、自动/手动封禁
 - ✅ **审计日志** - 所有关键操作记录审计日志
 - ✅ **敏感数据脱敏** - 地址、交易哈希在日志中脱敏
 - ✅ **API 响应标准化** - 统一错误处理，不暴露内部错误
@@ -832,6 +850,9 @@ node test-runner.js
 - [项目宪法](./PROJECT_CONSTITUTION.md) - 开发规范（最高等级开发规范）
 - [变更日志](./CHANGELOG.md) - 版本变更记录
 - [测试文档](./apps/backend-legacy/tests/README.md) - 自动化测试说明
+- [Guardian 部署指南](./GUARDIAN_DEPLOYMENT_GUIDE.md) - Guardian 风控系统部署和使用指南
+- [Guardian 代码变更](./GUARDIAN_CODE_CHANGES.md) - Guardian 风控系统代码变更详情
+- [Guardian 实施总结](./GUARDIAN_IMPLEMENTATION_SUMMARY.md) - Guardian 风控系统实施完成报告
 
 ## ⚠️ 注意事项
 

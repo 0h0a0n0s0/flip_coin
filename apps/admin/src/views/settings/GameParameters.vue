@@ -53,7 +53,7 @@
         </el-tab-pane>
 
         <el-tab-pane label="风控参数" name="RiskControl">
-           <el-form v-if="formGroups.RiskControl" ref="riskControlFormRef" :model="formGroups.RiskControl" label-width="200px" class="settings-form">
+           <el-form v-if="formGroups.RiskControl" ref="riskcontrolFormRef" :model="formGroups.RiskControl" label-width="220px" class="settings-form">
             <el-form-item
               label="同IP最大用户数"
               prop="MAX_SAME_IP_USERS.value"
@@ -69,6 +69,42 @@
                 placeholder="请输入正整数"
               />
               <div class="form-tip">{{ formGroups.RiskControl.MAX_SAME_IP_USERS.description }}</div>
+            </el-form-item>
+
+            <el-divider content-position="left">Guardian 提現風控參數</el-divider>
+            
+            <el-form-item
+              label="勝率閾值 (%)"
+              prop="risk_max_win_rate_percent.value"
+              :rules="[{ required: true, message: '勝率閾值不能为空' }, { validator: validateInteger, trigger: 'blur' }]"
+            >
+              <el-input-number 
+                v-model="formGroups.RiskControl.risk_max_win_rate_percent.value" 
+                :min="0" 
+                :max="100"
+                :step="1"
+                step-strictly
+                style="width: 200px;" 
+                placeholder="0 = 停用"
+              />
+              <div class="form-tip">{{ formGroups.RiskControl.risk_max_win_rate_percent.description }}</div>
+            </el-form-item>
+
+            <el-form-item
+              label="最小投注數"
+              prop="risk_min_bet_count.value"
+              :rules="[{ required: true, message: '最小投注數不能为空' }, { validator: validateInteger, trigger: 'blur' }]"
+            >
+              <el-input-number 
+                v-model="formGroups.RiskControl.risk_min_bet_count.value" 
+                :min="0" 
+                :max="10000"
+                :step="1"
+                step-strictly
+                style="width: 200px;" 
+                placeholder="0 = 停用"
+              />
+              <div class="form-tip">{{ formGroups.RiskControl.risk_min_bet_count.description }}</div>
             </el-form-item>
             
             <el-form-item>

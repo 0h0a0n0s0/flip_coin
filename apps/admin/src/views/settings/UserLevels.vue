@@ -16,13 +16,13 @@
       <el-table :data="tableData" class="user-levels-table" style="width: 100%" row-key="level" :table-layout="'auto'">
         <el-table-column prop="level" label="等级" width="80" sortable />
         <el-table-column prop="name" label="等级名称" width="150" />
-        <el-table-column prop="required_total_bet_amount" label="条件：最小总投注金额（累计，USDT）" width="250" sortable>
+        <el-table-column prop="required_total_bet_amount" label="累计投注金额(USDT)" width="200" sortable>
            <template #default="scope">{{ formatCurrency(scope.row.required_total_bet_amount) }}</template>
         </el-table-column>
-        <el-table-column prop="min_bet_amount_for_upgrade" label="投注有效性阈值（单次，USDT）" width="220" sortable>
+        <el-table-column prop="min_bet_amount_for_upgrade" label="注单有效阈值(USDT)" width="180" sortable>
            <template #default="scope">{{ formatCurrency(scope.row.min_bet_amount_for_upgrade) }}</template>
         </el-table-column>
-        <el-table-column prop="upgrade_reward_amount" label="奖励：升级奖励（USDT）" width="200" sortable>
+        <el-table-column prop="upgrade_reward_amount" label="升级奖励(USDT)" width="160" sortable>
            <template #default="scope">{{ formatCurrency(scope.row.upgrade_reward_amount) }}</template>
         </el-table-column>
         <el-table-column label="操作" width="180" fixed="right">
@@ -45,15 +45,15 @@
         <el-form-item label="等级名称" prop="name">
           <el-input v-model="levelForm.name" placeholder="例如: VIP 1, 新手"></el-input>
         </el-form-item>
-         <el-form-item label="条件：最小总投注金额（累计，USDT）" prop="required_total_bet_amount">
-          <el-input-number v-model="levelForm.required_total_bet_amount" :min="0" :precision="8" placeholder="达到此等级所需的最小总投注金额（累计）" />
-           <div class="form-tip">达到此等级所需的最小总投注金额（累计，USDT）。Level 1 必须为 0。</div>
+         <el-form-item label="累计投注金额(USDT)" prop="required_total_bet_amount">
+          <el-input-number v-model="levelForm.required_total_bet_amount" :min="0" :precision="8" placeholder="达到此等级所需的累计投注金额" />
+           <div class="form-tip">达到此等级所需的累计投注金额（USDT）。Level 1 必须为 0。</div>
         </el-form-item>
-         <el-form-item label="投注有效性阈值（单次，USDT）" prop="min_bet_amount_for_upgrade">
+         <el-form-item label="注单有效阈值(USDT)" prop="min_bet_amount_for_upgrade">
           <el-input-number v-model="levelForm.min_bet_amount_for_upgrade" :min="0" :precision="8" placeholder="单个投注的最小金额阈值" />
            <div class="form-tip">单个投注的有效性阈值（用于过滤垃圾投注）。只有金额大于等于此值的投注才会计入累加器。设为 0 表示不限制。</div>
         </el-form-item>
-        <el-form-item label="奖励：升级奖励（USDT）" prop="upgrade_reward_amount">
+        <el-form-item label="升级奖励(USDT)" prop="upgrade_reward_amount">
           <el-input-number v-model="levelForm.upgrade_reward_amount" :min="0" :precision="8" placeholder="达到此等级时的奖励" />
            <div class="form-tip">用户达到此等级时获得的奖励（USDT）。</div>
         </el-form-item>

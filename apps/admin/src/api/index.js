@@ -391,6 +391,25 @@ export function rejectWithdrawal(id, reason) { // reason: { reason: '...' }
     });
 }
 /**
+ * @description Guardian 風控：獲取提現風險分析報告
+ */
+export function getWithdrawalRiskAnalysis(id) {
+    return request({
+        url: `/api/admin/withdrawals/${id}/risk-analysis`,
+        method: 'get',
+    });
+}
+/**
+ * @description Guardian 風控：拒絕提現並凍結用戶
+ */
+export function rejectWithdrawalAndFreeze(id, reason) {
+    return request({
+        url: `/api/admin/withdrawals/${id}/reject-and-freeze`,
+        method: 'post',
+        data: reason,
+    });
+}
+/**
  * @description (手动完成提款)
  * @param {number} id - 提款单 ID
  * @param {object} data - { tx_hash, gas_fee }
@@ -562,5 +581,38 @@ export function updateI18nLanguage(lang, data) {
         url: `/api/admin/i18n/${lang}`,
         method: 'post',
         data: data,
+    });
+}
+
+// --- Guardian: Withdrawal Address Blacklist ---
+/**
+ * @description 獲取提現地址黑名單列表
+ */
+export function getWithdrawalBlacklist(params) {
+    return request({
+        url: '/api/admin/withdrawal-blacklist',
+        method: 'get',
+        params: params,
+    });
+}
+
+/**
+ * @description 添加地址到黑名單
+ */
+export function addWithdrawalBlacklist(data) {
+    return request({
+        url: '/api/admin/withdrawal-blacklist',
+        method: 'post',
+        data: data,
+    });
+}
+
+/**
+ * @description 從黑名單中移除地址
+ */
+export function deleteWithdrawalBlacklist(id) {
+    return request({
+        url: `/api/admin/withdrawal-blacklist/${id}`,
+        method: 'delete',
     });
 }

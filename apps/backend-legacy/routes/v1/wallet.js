@@ -6,6 +6,7 @@ const bcrypt = require('bcryptjs');
 const { sendError, sendSuccess } = require('../../utils/safeResponse');
 const { maskAddress, maskTxHash } = require('../../utils/maskUtils');
 const withdrawalService = require('../../services/WithdrawalService');
+const riskAssessmentService = require('../../services/RiskAssessmentService');
 const { withdrawRateLimiter } = require('../../middleware/rateLimiter');
 const { validateWithdrawalInput } = require('../../validators/authValidators');
 const { logBalanceChange, CHANGE_TYPES } = require('../../utils/balanceChangeLogger');
@@ -181,11 +182,15 @@ function walletRoutes(router, passport, options = {}) {
              return sendError(res, 400, `最小提款金额为 ${MIN_WITHDRAWAL} USDT。`);
         }
 
-        // 2. 检查自动出款资格
+            // 2. 執行風險評估（Guardian 風控系統）
+        const riskAssessment = await riskAssessmentService.assessWithdrawalRisk(user.user_id, address, chain_type);
+        
+        // 3. 检查自动出款资格（必須同時滿足：未被風控攔截 + 金額符合閾值）
         const settingsCache = settingsCacheModule.getSettingsCache();
         const threshold = parseFloat(settingsCache['AUTO_WITHDRAW_THRESHOLD']?.value || '0');
         
-        const isAutoPayoutEligible = payoutService && 
+        const isAutoPayoutEligible = !riskAssessment.requiresManualReview &&
+                                     payoutService && 
                                      payoutService.isReady() &&
                                      threshold > 0 && 
                                      withdrawalAmount <= threshold && 
@@ -195,7 +200,7 @@ function walletRoutes(router, passport, options = {}) {
         try {
             await client.query('BEGIN');
             
-            // 3. 锁定用户并检查所有条件
+            // 4. 锁定用户并检查所有条件
             const userResult = await client.query(
                 'SELECT balance, withdrawal_password_hash, has_withdrawal_password FROM users WHERE id = $1 FOR UPDATE',
                 [user.id]
@@ -214,7 +219,7 @@ function walletRoutes(router, passport, options = {}) {
                 throw new Error('提款密码错误');
             }
 
-            // 4. 扣款
+            // 5. 扣款
             const updatedUserResult = await client.query(
                 'UPDATE users SET balance = balance - $1 WHERE id = $2 RETURNING *',
                 [withdrawalAmount, user.id]
@@ -231,11 +236,17 @@ function walletRoutes(router, passport, options = {}) {
             } else {
                 withdrawalStatus = 'pending';
                 platformTxStatus = 'pending';
-                responseMessage = '提款请求已提交，待審核';
-                rejectionReason = null;
+                // 如果是風控攔截，記錄原因
+                if (riskAssessment.requiresManualReview) {
+                    responseMessage = '提款请求已提交，需人工审核';
+                    rejectionReason = `風控攔截: ${riskAssessment.reason}`;
+                } else {
+                    responseMessage = '提款请求已提交，待審核';
+                    rejectionReason = null;
+                }
             }
 
-            // 5. 創建 withdrawals 提款单
+            // 6. 創建 withdrawals 提款单
             const wdResult = await client.query(
                 `INSERT INTO withdrawals (user_id, chain_type, address, amount, status, rejection_reason)
                  VALUES ($1, $2, $3, $4, $5, $6) RETURNING *`,
@@ -243,7 +254,7 @@ function walletRoutes(router, passport, options = {}) {
             );
             const withdrawalRequest = wdResult.rows[0];
             
-            // 6. 創建 platform_transactions 资金流水
+            // 7. 創建 platform_transactions 资金流水
             await client.query(
                 `INSERT INTO platform_transactions (user_id, type, chain, amount, status)
                  VALUES ($1, 'withdraw_request', $2, $3, $4)`,
@@ -265,10 +276,10 @@ function walletRoutes(router, passport, options = {}) {
                 console.error('[Server] Failed to log balance change (withdrawal):', error);
             }
 
-            // 7. 提交事务
+            // 8. 提交事务
             await client.query('COMMIT');
             
-            // 8. 通知前台余额变动
+            // 9. 通知前台余额变动
             delete updatedUser.password_hash;
             delete updatedUser.withdrawal_password_hash;
             const socketId = connectedUsers[user.user_id];
@@ -276,17 +287,17 @@ function walletRoutes(router, passport, options = {}) {
                 io.to(socketId).emit('user_info_updated', updatedUser);
             }
 
-            // 9. 如果提款狀態為 pending，通知管理員
+            // 10. 如果提款狀態為 pending，通知管理員
             if (withdrawalStatus === 'pending') {
                 withdrawalService.notifyAdminPendingWithdrawalCount().catch(err => {
                     console.error('[Wallet] Failed to notify admin pending withdrawal count:', err);
                 });
             }
 
-            // 9. 回應 HTTP 請求
+            // 11. 回應 HTTP 請求
             sendSuccess(res, { message: responseMessage }, 201);
             
-            // 10. 異步執行鏈上出款（在回應後）
+            // 12. 異步執行鏈上出款（在回應後）
             if (isAutoPayoutEligible && payoutService) {
                 // 使用 setImmediate 確保回應已發送
                 setImmediate(() => {
