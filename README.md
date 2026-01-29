@@ -216,26 +216,31 @@ flip_coin/
 ├── packages/                          # 共享包目录
 │   ├── database/                      # 数据库连接和迁移包 (@flipcoin/database)
 │   │   ├── index.js                   # 数据库连接（PostgreSQL）
-│   │   ├── migrations/                # 数据库迁移脚本
-│   │   │   ├── add_admin_ip_125_229_37_48.sql
-│   │   │   ├── add_admin_last_login_ip.sql
-│   │   │   ├── add_admin_profile_fields.sql
-│   │   │   ├── add_energy_rental_support.sql
-│   │   │   ├── add_game_code_column.sql
-│   │   │   ├── add_platform_name_setting.sql
-│   │   │   ├── add_tron_system_upgrade.sql
-│   │   │   ├── add_withdrawal_risk_control.sql  # Guardian 风控系统
-│   │   │   ├── create_balance_changes_table.sql
-│   │   │   ├── create_games_table_manual.sql
-│   │   │   ├── create_tron_notifications_table.sql
-│   │   │   ├── create_tron_notifications_table_manual.sql
-│   │   │   ├── fix_collection_cursor_schema.sql
-│   │   │   ├── init_i18n_settings.sql
-│   │   │   ├── migrate_flipcoin_to_games.sql
-│   │   │   ├── update_admin_ip_whitelist_local_only.sql
-│   │   │   ├── update_bets_payout_multiplier_to_decimal.sql
-│   │   │   ├── update_payout_multiplier_to_decimal_simple.sql
-│   │   │   └── update_payout_multiplier_to_decimal.sql
+│   │   ├── migrations/                # 数据库迁移脚本目录
+│   │   │   └── archive_v1/            # 历史迁移归档（v2.0 整合前，共 23 个文件）
+│   │   │       ├── add_admin_ip_125_229_37_48.sql
+│   │   │       ├── add_admin_last_login_ip.sql
+│   │   │       ├── add_admin_profile_fields.sql
+│   │   │       ├── add_energy_rental_support.sql
+│   │   │       ├── add_game_code_column.sql
+│   │   │       ├── add_platform_name_setting.sql
+│   │   │       ├── add_streak_multipliers.sql      # 连胜倍数系统
+│   │   │       ├── add_tron_system_upgrade.sql
+│   │   │       ├── add_user_level_accumulators.sql
+│   │   │       ├── add_withdrawal_risk_control.sql # Guardian 风控系统
+│   │   │       ├── create_balance_changes_table.sql
+│   │   │       ├── create_games_table_manual.sql
+│   │   │       ├── create_tron_notifications_table.sql
+│   │   │       ├── create_tron_notifications_table_manual.sql
+│   │   │       ├── fix_collection_cursor_schema.sql
+│   │   │       ├── fix_payout_multiplier_type.sql
+│   │   │       ├── init_i18n_settings.sql
+│   │   │       ├── migrate_flipcoin_to_games.sql
+│   │   │       ├── remove_bet_count_and_max_bet_limit.sql
+│   │   │       ├── update_admin_ip_whitelist_local_only.sql
+│   │   │       ├── update_bets_payout_multiplier_to_decimal.sql
+│   │   │       ├── update_payout_multiplier_to_decimal_simple.sql
+│   │   │       └── update_payout_multiplier_to_decimal.sql
 │   │   └── package.json
 │   │
 │   └── ui/                            # 共享 UI 组件包 (@flipcoin/ui)
@@ -263,16 +268,30 @@ flip_coin/
 │   ├── ui.js                          # 旧版 UI 模块
 │   └── wallet.js                      # 旧版钱包模块
 │
-├── migrations/                        # 根目录迁移文件（历史遗留）
-│   ├── add_streak_multipliers.sql
-│   └── fix_payout_multiplier_type.sql
-│
 ├── docker-compose.yml                 # Docker Compose 配置
-├── init.sql                           # 数据库初始化脚本
+│
+├── init.sql                           # 🗄️ 数据库初始化脚本（v2.0 统一架构）
+│                                      #   - 包含所有表结构定义（26 张表）
+│                                      #   - 整合了所有历史迁移的最终状态
+│                                      #   - 支持小数派彩倍数（DECIMAL）
+│                                      #   - 支持连胜倍数系统（streak_multipliers）
+│                                      #   - 包含 RBAC 权限系统、Guardian 风控
+│
+├── prisma.schema                      # 📄 数据库架构文档（Prisma Schema）
+│                                      #   - 仅用于文档目的，帮助 AI 理解数据库结构
+│                                      #   - 与 init.sql 保持 100% 同步
+│
+├── check-wallet-config.sql            # 🔧 运维工具：钱包配置诊断脚本
+├── fix-wallet-config.sql              # 🔧 运维工具：钱包配置修复脚本
+├── dry-run-validation.sql             # ✅ 测试工具：架构验证脚本
+│
 ├── pnpm-workspace.yaml                # pnpm workspace 配置
 ├── turbo.json                         # Turbo 构建配置
 ├── package.json                       # 根 package.json（Monorepo 配置）
 ├── PROJECT_CONSTITUTION.md            # 项目开发宪法（开发规范）
+├── DATABASE_MIGRATION_SUMMARY.md      # 📊 数据库迁移整合详细报告
+├── MIGRATION_QUICK_GUIDE.md           # 📋 数据库迁移快速指南
+├── COMPLETED_CHECKLIST.md             # ✅ 整合完成清单
 └── CHANGELOG.md                       # 变更日志
 ```
 
@@ -646,14 +665,19 @@ if (totalValidBetAmount >= nextRequiredTotalAmount &&
 
 ### 6. 数据迁移与回填
 
-#### 6.1 迁移文件
-- **历史迁移**: `packages/database/migrations/add_user_level_accumulators.sql`
-  - 添加 `total_valid_bet_amount` 字段到 `users` 表
-  - 添加 `required_total_bet_amount` 字段到 `user_levels` 表
-- **重构迁移**: `packages/database/migrations/remove_bet_count_and_max_bet_limit.sql`
-  - 移除 `user_levels.max_bet_amount`（投注限额）
-  - 移除 `user_levels.required_bets_for_upgrade`（最小投注数量）
-  - 移除 `users.total_valid_bet_count`（累加器字段）
+#### 6.1 架构整合状态
+> **注意**: 所有历史迁移已整合到 `init.sql` v2.0 中。以下变更已包含在最新架构中：
+
+- ✅ **等级系统累加器**（已整合）
+  - `users.total_valid_bet_amount` - 累计有效投注金额
+  - `user_levels.required_total_bet_amount` - 升级所需累计投注额
+  - 历史文件：`packages/database/migrations/archive_v1/add_user_level_accumulators.sql`
+
+- ✅ **等级系统重构**（已整合）
+  - 已移除 `user_levels.max_bet_amount`（投注限额）
+  - 已移除 `user_levels.required_bets_for_upgrade`（最小投注数量）
+  - 已移除 `users.total_valid_bet_count`（累加器字段）
+  - 历史文件：`packages/database/migrations/archive_v1/remove_bet_count_and_max_bet_limit.sql`
 
 #### 6.2 简化后的逻辑
 - **升级触发**: 仅基于 `total_valid_bet_amount`，无需再检查投注数量
@@ -749,6 +773,113 @@ if (totalValidBetAmount >= nextRequiredTotalAmount &&
 
 详细规范请参考 [PROJECT_CONSTITUTION.md](./PROJECT_CONSTITUTION.md)
 
+---
+
+## 🗄️ 数据库架构统一整合（v2.0）
+
+**整合日期**: 2026-01-29  
+**状态**: ✅ 已完成并通过验证
+
+### 📋 整合概述
+
+为了简化数据库初始化和维护，我们将所有历史数据库迁移整合到单一的 `init.sql` 文件中。
+
+### 🎯 整合成果
+
+| 项目 | 说明 |
+|-----|------|
+| **统一初始化** | `init.sql` 现在是唯一的数据库架构定义 |
+| **历史归档** | 23 个历史迁移文件已归档到 `packages/database/migrations/archive_v1/` |
+| **文档同步** | `prisma.schema` 与 init.sql 保持 100% 同步 |
+| **测试验证** | 通过 Docker Dry Run 测试，100% 通过所有验证 |
+
+### 📂 文件说明
+
+#### 核心文件
+
+```
+📁 根目录
+├── init.sql                          ✅ 统一初始化脚本（v2.0）
+│                                        - 26 张表的完整定义
+│                                        - 支持小数派彩倍数
+│                                        - 支持连胜倍数系统
+│                                        - Guardian 风控系统
+│
+├── prisma.schema                     📄 架构文档（与 init.sql 同步）
+│
+├── check-wallet-config.sql           🔧 钱包配置诊断工具
+├── fix-wallet-config.sql             🔧 钱包配置修复工具
+└── dry-run-validation.sql            ✅ 架构验证测试脚本
+```
+
+#### 历史归档
+
+```
+📁 packages/database/migrations/
+└── archive_v1/                       📦 历史迁移归档（23 个文件）
+    ├── add_streak_multipliers.sql       # 连胜倍数系统
+    ├── add_withdrawal_risk_control.sql  # Guardian 风控
+    ├── fix_payout_multiplier_type.sql   # 小数派彩倍数
+    └── ... （其他 20 个文件）
+```
+
+### ✨ 关键特性
+
+#### 1. 小数派彩倍数支持
+```sql
+-- bets 和 games 表现在支持小数倍数
+payout_multiplier DECIMAL(10, 2)  -- 例如：1.95, 2.5, 3.0
+```
+
+#### 2. 连胜倍数系统
+```sql
+-- games 表支持连胜模式多赔率设定
+streak_multipliers JSONB  -- 格式：{"0": 2.0, "1": 2.5, "2": 3.0, ...}
+```
+
+#### 3. Guardian 风控系统
+- 提款地址黑名单（`withdrawal_address_blacklist`）
+- 勝率检测阈值（`risk_max_win_rate_percent`）
+- 最小投注数检测（`risk_min_bet_count`）
+
+#### 4. 账变记录系统
+```sql
+-- 完整记录所有余额变动
+balance_changes 表（记录充值、提款、下注、派奖等）
+```
+
+### 🚀 使用指南
+
+#### 全新部署
+```bash
+# Docker Compose 会自动执行 init.sql
+docker-compose up -d
+```
+
+#### 测试验证
+```bash
+# 在临时容器中测试 init.sql
+./test-init-sql.sh
+
+# 验证现有数据库架构
+psql -U game_user -d flipcoin_db -f dry-run-validation.sql
+```
+
+#### 未来新迁移
+当需要新增数据库变更时：
+1. 修改 `init.sql`（添加最终状态）
+2. 创建新的迁移文件到 `packages/database/migrations/`
+3. 更新 `prisma.schema`
+4. 测试验证
+
+### 📚 详细文档
+
+- 📊 [完整报告](./DATABASE_MIGRATION_SUMMARY.md) - 详细的整合报告
+- 📋 [快速指南](./MIGRATION_QUICK_GUIDE.md) - 快速参考指南
+- ✅ [完成清单](./COMPLETED_CHECKLIST.md) - 验证清单
+
+---
+
 ## 🚀 快速开始
 
 ### 前置要求
@@ -825,13 +956,35 @@ pnpm start
 
 ### 数据库迁移
 
+> **注意**: 数据库架构已统一整合到 `init.sql` v2.0（2026-01-29）。历史迁移已归档。
+
+#### 全新部署
 ```bash
-# 使用 Node.js 脚本
+# Docker Compose 会自动执行 init.sql 初始化
+docker-compose up -d
+
+# 验证架构
+./test-init-sql.sh
+```
+
+#### 未来新迁移（如需要）
+```bash
+# 1. 创建新的迁移文件
+vim packages/database/migrations/new_feature.sql
+
+# 2. 在开发环境测试
+docker exec -i flipcoin-db psql -U game_user -d flipcoin_db < packages/database/migrations/new_feature.sql
+
+# 3. 更新 init.sql（添加最终状态）
+# 4. 更新 prisma.schema
+# 5. 运行验证测试
+./test-init-sql.sh
+```
+
+#### 使用 Node.js 脚本（传统方式，仅供参考）
+```bash
 cd apps/backend-legacy
 node scripts/run-migration.js <migration-file.sql>
-
-# 或直接使用 Docker
-docker exec -i flipcoin-db psql -U game_user -d flipcoin_db < packages/database/migrations/<migration-file.sql>
 ```
 
 ### 运行测试
@@ -1025,8 +1178,22 @@ node test-runner.js
 
 **说明**:
 - 提供数据库连接和迁移工具
-- 包含所有数据库迁移脚本 (`migrations/`)
+- **数据库架构已统一整合**：
+  - 主初始化脚本：`/init.sql`（v2.0，位于根目录）
+  - 历史迁移已归档：`migrations/archive_v1/`（23 个文件）
+  - `migrations/` 文件夹已清空，保留用于未来新迁移
+- **架构文档**：`/prisma.schema`（与 init.sql 100% 同步）
+- **运维工具**：根目录的 `check-wallet-config.sql`、`fix-wallet-config.sql`
 - 被 `@flipcoin/backend-legacy` 引用
+
+**数据库架构亮点**（v2.0）:
+- ✅ 26 张表，包含完整的业务逻辑
+- ✅ 支持小数派彩倍数（DECIMAL(10,2)）
+- ✅ 支持连胜倍数系统（streak_multipliers JSONB）
+- ✅ Guardian 风控系统（地址黑名单、勝率检测）
+- ✅ 高精度金额字段（DECIMAL(20,6)）
+- ✅ 完整的 RBAC 权限系统
+- ✅ 账变记录系统（balance_changes）
 
 ---
 
