@@ -27,8 +27,10 @@ services/*/dist/
 .cache/
 **/.cache/
 node_modules/.cache/
+.pnpm-store/
 
-# Lock 文件 (項目使用 pnpm，這些不應該被跟踪)
+# Lock 文件（僅忽略非 pnpm 的 lockfile）
+# 注意：pnpm-lock.yaml 應該被跟踪以確保依賴版本穩定
 package-lock.json
 yarn.lock
 **/package-lock.json
