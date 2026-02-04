@@ -12,6 +12,32 @@ if (!NILE_NODE_HOST) {
     throw new Error("CRITICAL: NILE_NODE_HOST is not set in .env file!");
 }
 
+// (安全地提取错误消息 - 防止 undefined.substring 错误)
+function safeErrorMessage(error, maxLength = 500) {
+    if (!error) return 'Unknown error';
+    if (typeof error === 'string') {
+        return error.length > maxLength ? error.substring(0, maxLength) : error;
+    }
+    if (error.message) {
+        const msg = String(error.message);
+        return msg.length > maxLength ? msg.substring(0, maxLength) : msg;
+    }
+    if (error.toString && typeof error.toString === 'function') {
+        try {
+            const msg = error.toString();
+            return msg.length > maxLength ? msg.substring(0, maxLength) : msg;
+        } catch (e) {
+            // toString 失败，继续尝试其他方法
+        }
+    }
+    try {
+        const msg = JSON.stringify(error);
+        return msg.length > maxLength ? msg.substring(0, maxLength) : msg;
+    } catch (e) {
+        return 'Error object could not be serialized';
+    }
+}
+
 // (日志辅助函数)
 function logError(error, context, address) {
     console.error(`[EnergyRental] ${context} for address ${address}. Details:`);
@@ -246,7 +272,7 @@ class TronEnergyService {
                     `INSERT INTO energy_rentals 
                      (provider_address, receiver_address, energy_amount, status, error_message, related_task_id) 
                      VALUES ($1, $2, $3, 'FAILED', $4, $5)`,
-                    [provider.address, receiverAddress, energyAmount, error.message.substring(0, 500), taskId]
+                    [provider.address, receiverAddress, energyAmount, safeErrorMessage(error, 500), taskId]
                 );
             } catch (dbError) {
                 console.error('[EnergyRental] Failed to record failed rental:', dbError);

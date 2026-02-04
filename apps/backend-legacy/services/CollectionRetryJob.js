@@ -8,6 +8,32 @@ const { getAlertInstance } = require('./AlertService');
 // 最大重試次數
 const MAX_RETRY_COUNT = 5;
 
+// (安全地提取错误消息 - 防止 undefined.substring 错误)
+function safeErrorMessage(error, maxLength = 500) {
+    if (!error) return 'Unknown error';
+    if (typeof error === 'string') {
+        return error.length > maxLength ? error.substring(0, maxLength) : error;
+    }
+    if (error.message) {
+        const msg = String(error.message);
+        return msg.length > maxLength ? msg.substring(0, maxLength) : msg;
+    }
+    if (error.toString && typeof error.toString === 'function') {
+        try {
+            const msg = error.toString();
+            return msg.length > maxLength ? msg.substring(0, maxLength) : msg;
+        } catch (e) {
+            // toString 失败，继续尝试其他方法
+        }
+    }
+    try {
+        const msg = JSON.stringify(error);
+        return msg.length > maxLength ? msg.substring(0, maxLength) : msg;
+    } catch (e) {
+        return 'Error object could not be serialized';
+    }
+}
+
 class CollectionRetryJob {
     constructor() {
         this.collectionService = getTronCollectionInstance();
@@ -181,7 +207,8 @@ class CollectionRetryJob {
                     successCount++;
 
                 } catch (error) {
-                    console.error(`[CollectionRetry] ❌ Failed to retry collection for user ${item.user_id}:`, error.message);
+                    const errorMsg = safeErrorMessage(error);
+                    console.error(`[CollectionRetry] ❌ Failed to retry collection for user ${item.user_id}:`, errorMsg);
 
                     const newRetryCount = item.retry_count + 1;
                     
@@ -193,7 +220,7 @@ class CollectionRetryJob {
                                  error_reason = $2,
                                  updated_at = NOW()
                              WHERE id = $3`,
-                            [newRetryCount, `Max retries exceeded: ${error.message.substring(0, 400)}`, item.id]
+                            [newRetryCount, `Max retries exceeded: ${safeErrorMessage(error, 400)}`, item.id]
                         );
                         
                         // 發送關鍵警報
@@ -201,7 +228,7 @@ class CollectionRetryJob {
                             `歸集重試失敗（已達最大次數）！\n\n` +
                             `用戶 ID: ${item.user_id}\n` +
                             `重試次數: ${newRetryCount}/${MAX_RETRY_COUNT}\n` +
-                            `錯誤: ${error.message}\n\n` +
+                            `錯誤: ${errorMsg}\n\n` +
                             `請手動處理此用戶的歸集！`
                         );
                         
@@ -216,7 +243,7 @@ class CollectionRetryJob {
                                  error_reason = $3,
                                  updated_at = NOW()
                              WHERE id = $4`,
-                            [newRetryCount, nextRetryDelay, error.message.substring(0, 500), item.id]
+                            [newRetryCount, nextRetryDelay, safeErrorMessage(error, 500), item.id]
                         );
                         failureCount++;
                     }

@@ -91,6 +91,11 @@ app.use(express.json());
 app.set('trust proxy', true);
 app.use(passport.initialize());
 
+// --- 健康檢查端點（用於 Docker healthcheck）---
+app.get('/health', (req, res) => {
+    res.status(200).json({ status: 'ok', timestamp: new Date().toISOString() });
+});
+
 // --- Passport.js 策略设定 ---
 // 策略 1：本地注册 (local-signup)
 passport.use('local-signup', new LocalStrategy({
@@ -494,24 +499,23 @@ httpServer.listen(PORT, async () => {
         console.error("[WalletBalanceMonitor] Error starting:", error);
     }
 
-    // 6. 启动 Collection Service (每日执行一次)
+    // 6. 启动 Collection Service（每 1 小时执行一次，高吞吐量配置）
     if (tronCollectionService) {
-        // 计算到明天凌晨的时间
-        const now = new Date();
-        const tomorrow = new Date(now);
-        tomorrow.setDate(tomorrow.getDate() + 1);
-        tomorrow.setHours(0, 0, 0, 0);
-        const msUntilTomorrow = tomorrow.getTime() - now.getTime();
+        console.log('[Collection] Scheduling high-throughput collection service (every 1 hour)');
+        console.log('[Collection] Target: 500 users/hour, 10,000+ users/day');
         
-        // 第一次执行：明天凌晨
-        setTimeout(() => {
-            tronCollectionService.collectFunds().catch(err => console.error("[Collection] Initial run failed:", err));
-            
-            // 之後每天执行一次
-            setInterval(() => {
-                tronCollectionService.collectFunds().catch(err => console.error("[Collection] Daily run failed:", err));
-            }, 24 * 60 * 60 * 1000); // 24小时
-        }, msUntilTomorrow);
+        // 立即执行第一次
+        tronCollectionService.collectFunds().catch(err => 
+            console.error("[Collection] Initial run failed:", err)
+        );
+        
+        // 之后每小时执行一次
+        setInterval(() => {
+            console.log('[Collection] Starting scheduled collection sweep...');
+            tronCollectionService.collectFunds().catch(err => 
+                console.error("[Collection] Scheduled run failed:", err)
+            );
+        }, 60 * 60 * 1000); // 1小时
     }
 
     // 7. 启动 Collection Retry Job (每 30 分钟执行一次)

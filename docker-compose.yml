@@ -32,6 +32,13 @@ services:
       - .env    
     environment:
       - DATABASE_URL=postgres://game_user:game_password@db:5432/flipcoin_db
+    healthcheck:
+      # 檢查 API 服務是否就緒（使用 node 內建模組測試）
+      test: ["CMD", "node", "-e", "require('http').get('http://localhost:3000/health', (r) => process.exit(r.statusCode === 200 ? 0 : 1)).on('error', () => process.exit(1))"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
     restart: unless-stopped
 
   # 資料庫服務
@@ -81,9 +88,12 @@ services:
     ports:
       - "${NGINX_PORT:-8080}:80" # 使用環境變數，預設 8080
     depends_on:
-      - api        # 確保 Nginx 在 api 之後啟動
-      - admin-ui   # 確保 Nginx 在 admin-ui 之後啟動
-      - frontend-vue3  # 確保 Nginx 在 frontend-vue3 之後啟動
+      api:
+        condition: service_healthy  # 等待 api 健康檢查通過
+      admin-ui:
+        condition: service_started  # 前端服務只需啟動即可
+      frontend-vue3:
+        condition: service_started  # 前端服務只需啟動即可
     env_file:
       - .env       # 讀取環境變數
     environment:

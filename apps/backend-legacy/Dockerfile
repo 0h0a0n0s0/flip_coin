@@ -9,35 +9,43 @@ RUN npm install -g pnpm --registry=https://registry.npmmirror.com
 # 3. 在容器中設定工作目錄（從根目錄開始，因為需要 workspace）
 WORKDIR /usr/src/app
 
-# 4. 複製 workspace 配置文件
+# ===== 第一層：複製 workspace 配置和 lockfile (如果存在) =====
+# 這一層只在 workspace 配置或依賴版本變化時才會失效
 COPY pnpm-workspace.yaml ./
 COPY package.json ./
+# 如果有 pnpm-lock.yaml 則複製（使用通配符避免檔案不存在時構建失敗）
+COPY pnpm-lock.yaml* ./
 
-# 5. 複製 packages/database（backend-legacy 的依賴）
+# ===== 第二層：複製所有 package.json（但不複製源碼）=====
+# 這一層只在依賴聲明變化時才會失效
 COPY packages/database/package.json ./packages/database/package.json
-COPY packages/database/index.js ./packages/database/index.js
-COPY packages/database/migrations ./packages/database/migrations
-
-# 6. 複製 apps/backend-legacy
 COPY apps/backend-legacy/package.json ./apps/backend-legacy/package.json
+
+# ===== 第三層：安裝依賴（這是最耗時的操作）=====
+# 設置 CI 環境變數，避免 pnpm 在 Docker 中的 TTY 問題
+ENV CI=true
+
+# 使用 pnpm fetch + install 組合以優化速度
+# --frozen-lockfile: 確保使用 lockfile 中的精確版本（如果存在）
+# --shamefully-hoist: 確保所有依賴都在根 node_modules 中
+RUN pnpm fetch --registry=https://registry.npmmirror.com || true
+RUN pnpm install --shamefully-hoist --frozen-lockfile --prefer-offline --registry=https://registry.npmmirror.com
+
+# ===== 第四層：複製源碼（這一層會頻繁變動，但不會影響上面的緩存）=====
+COPY packages/database ./packages/database
 COPY apps/backend-legacy ./apps/backend-legacy
 
-# 7. 安裝依賴（pnpm 會處理 workspace 依賴）
-# 使用 --shamefully-hoist 確保所有依賴都在根 node_modules 中，方便 Node.js 解析
-RUN pnpm install --shamefully-hoist --registry=https://registry.npmmirror.com
-
-# 7.1 為 packages/database 創建 node_modules 符號鏈接，指向根目錄的 node_modules
-# 這樣 Node.js 在 packages/database 中 require 時能找到模組
+# 4. 為 packages/database 創建 node_modules 符號鏈接（如果需要）
 RUN ln -s /usr/src/app/node_modules /usr/src/app/packages/database/node_modules || true
 
-# 8. 設定工作目錄到 backend-legacy
+# 5. 設定工作目錄到 backend-legacy
 WORKDIR /usr/src/app/apps/backend-legacy
 
-# 9. 設定 NODE_PATH 環境變數，讓 Node.js 能夠找到根目錄的 node_modules
+# 6. 設定 NODE_PATH 環境變數，讓 Node.js 能夠找到根目錄的 node_modules
 ENV NODE_PATH=/usr/src/app/node_modules
 
-# 10. 向 Docker 聲明容器在執行時會監聽的網路 port
+# 7. 向 Docker 聲明容器在執行時會監聽的網路 port
 EXPOSE 3000
 
-# 11. 定義容器啟動時要執行的命令
+# 8. 定義容器啟動時要執行的命令
 CMD [ "node", "server.js" ]

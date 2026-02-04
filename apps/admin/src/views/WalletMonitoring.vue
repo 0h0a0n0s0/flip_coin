@@ -144,17 +144,23 @@
         <el-divider v-if="walletForm.is_collection" />
         <div v-if="walletForm.is_collection" class="collection-settings-block">
           <h4>归集参数设定</h4>
-          <el-form-item label="每x天扫描一次" prop="scan_interval_days">
+          
+          <el-divider content-position="left">扫描策略（系统每小时自动执行）</el-divider>
+          
+          <el-form-item label="每次执行扫描用户数量" prop="batch_size" label-width="180px">
             <el-input-number 
-              v-model="walletForm.scan_interval_days" 
-              :min="1" 
-              :max="30" 
+              v-model="walletForm.batch_size" 
+              :min="50" 
+              :max="2000" 
+              :step="50"
               style="width: 200px;"
-              placeholder="天数"
+              placeholder="批次大小"
+              disabled
             />
-            <div class="form-tip">每隔多少天执行一次归集扫描</div>
+            <div class="form-tip">每次归集任务扫描的用户数量（固定配置：500 用户/次）</div>
           </el-form-item>
-          <el-form-item label="用户n天無充值时归集" prop="days_without_deposit">
+          
+          <el-form-item label="用户多少天无充值时触发归集" prop="days_without_deposit" label-width="220px">
             <el-input-number 
               v-model="walletForm.days_without_deposit" 
               :min="1" 
@@ -162,7 +168,34 @@
               style="width: 200px;"
               placeholder="天数"
             />
-            <div class="form-tip">用户最後一笔充值後多少天無新充值，則执行归集</div>
+            <div class="form-tip">用户最后一笔充值后多少天无新充值，则执行归集</div>
+          </el-form-item>
+          
+          <el-divider content-position="left">能量管理</el-divider>
+          
+          <el-form-item label="归集钱包最低能量阈值" prop="min_energy" label-width="200px">
+            <el-input-number 
+              v-model="walletForm.min_energy" 
+              :min="10000" 
+              :max="100000" 
+              :step="5000"
+              style="width: 200px;"
+              placeholder="能量值"
+            />
+            <div class="form-tip">当归集钱包能量低于此值时停止归集（建议：30000-40000）</div>
+          </el-form-item>
+          
+          <el-divider content-position="left">性能参数（预留）</el-divider>
+          
+          <el-form-item label="最大并发归集交易数" prop="max_concurrency" label-width="180px">
+            <el-input-number 
+              v-model="walletForm.max_concurrency" 
+              :min="1" 
+              :max="20" 
+              style="width: 200px;"
+              placeholder="并发数"
+            />
+            <div class="form-tip">同时执行的最大归集交易数（当前版本暂未启用）</div>
           </el-form-item>
         </div>
 
@@ -204,7 +237,10 @@ export default {
            is_energy_provider: false,
            is_active: true,
            scan_interval_days: 1,
-           days_without_deposit: 7
+           days_without_deposit: 7,
+           batch_size: 500,
+           min_energy: 35000,
+           max_concurrency: 1
          },
          
          formRules: {
@@ -285,7 +321,10 @@ export default {
            is_energy_provider: false,
            is_active: true,
            scan_interval_days: 1,
-           days_without_deposit: 7
+           days_without_deposit: 7,
+           batch_size: 500,
+           min_energy: 35000,
+           max_concurrency: 1
          };
       },
       handleAdd() {
@@ -307,7 +346,10 @@ export default {
              is_active: row.is_active,
              // 直接從 row 獲取 collection settings（後端已 JOIN）
              scan_interval_days: row.scan_interval_days || 1,
-             days_without_deposit: row.days_without_deposit || 7
+             days_without_deposit: row.days_without_deposit || 7,
+             batch_size: row.batch_size || 500,
+             min_energy: row.min_energy || 35000,
+             max_concurrency: row.max_concurrency || 1
           });
           
           this.dialogVisible = true;

@@ -64,6 +64,9 @@ function walletsRoutes(router) {
                 pw.*,
                 cs.scan_interval_days,
                 cs.days_without_deposit,
+                cs.batch_size,
+                cs.min_energy,
+                cs.max_concurrency,
                 cs.is_active as collection_settings_active
             FROM platform_wallets pw
             LEFT JOIN collection_settings cs ON pw.address = cs.collection_wallet_address AND pw.is_collection = true
@@ -93,8 +96,11 @@ function walletsRoutes(router) {
      * @description 新增平台钱包 
      */
     router.post('/wallets', authMiddleware, checkPermission('wallets', 'cud'), async (req, res) => {
-        // 获取新栏位
-        const { name, chain_type, address, is_gas_reserve, is_collection, is_opener_a, is_opener_b, is_active, is_payout, is_energy_provider } = req.body;
+        // 获取新栏位（包含归集配置）
+        const { 
+            name, chain_type, address, is_gas_reserve, is_collection, is_opener_a, is_opener_b, is_active, is_payout, is_energy_provider,
+            scan_interval_days, days_without_deposit, batch_size, min_energy, max_concurrency
+        } = req.body;
         if (!name || !chain_type || !address) {
             return sendError(res, 400, 'Name, chain_type, and address are required.');
         }
@@ -132,8 +138,11 @@ function walletsRoutes(router) {
      */
     router.put('/wallets/:id', authMiddleware, checkPermission('wallets', 'cud'), async (req, res) => {
         const { id } = req.params;
-        // 获取新栏位
-        const { name, chain_type, address, is_gas_reserve, is_collection, is_opener_a, is_opener_b, is_active, is_payout, is_energy_provider, scan_interval_days, days_without_deposit } = req.body;
+        // 获取新栏位（包含高吞吐量归集配置）
+        const { 
+            name, chain_type, address, is_gas_reserve, is_collection, is_opener_a, is_opener_b, is_active, is_payout, is_energy_provider, 
+            scan_interval_days, days_without_deposit, batch_size, min_energy, max_concurrency 
+        } = req.body;
         if (!name || !chain_type || !address) { return sendError(res, 400, 'Fields are required.'); }
 
         const client = await db.pool.connect();
@@ -158,18 +167,29 @@ function walletsRoutes(router) {
             const updatedWallet = result.rows[0];
 
             // 如果是歸集錢包且有歸集設定參數，則更新或插入 collection_settings
-            if (!!is_collection && address && scan_interval_days !== undefined && days_without_deposit !== undefined) {
+            if (!!is_collection && address) {
                 await client.query(
                     `INSERT INTO collection_settings 
-                     (collection_wallet_address, scan_interval_days, days_without_deposit, is_active, updated_at) 
-                     VALUES ($1, $2, $3, $4, NOW())
+                     (collection_wallet_address, scan_interval_days, days_without_deposit, batch_size, min_energy, max_concurrency, is_active, updated_at) 
+                     VALUES ($1, $2, $3, $4, $5, $6, $7, NOW())
                      ON CONFLICT (collection_wallet_address) 
                      DO UPDATE SET 
                          scan_interval_days = $2, 
                          days_without_deposit = $3, 
-                         is_active = $4, 
+                         batch_size = $4,
+                         min_energy = $5,
+                         max_concurrency = $6,
+                         is_active = $7, 
                          updated_at = NOW()`,
-                    [address, scan_interval_days, days_without_deposit, true]
+                    [
+                        address, 
+                        scan_interval_days !== undefined ? scan_interval_days : 1, 
+                        days_without_deposit !== undefined ? days_without_deposit : 7,
+                        batch_size !== undefined ? batch_size : 500,
+                        min_energy !== undefined ? min_energy : 35000,
+                        max_concurrency !== undefined ? max_concurrency : 1,
+                        true
+                    ]
                 );
                 console.log(`[Admin Wallets] Collection settings updated for wallet ${address} by ${req.user.username}`);
             }

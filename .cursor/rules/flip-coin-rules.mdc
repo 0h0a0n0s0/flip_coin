@@ -27,6 +27,18 @@ Cursor Must Not:
 * Import `@flipcoin/database` directly into Frontend apps.
 * Create circular dependencies between packages.
 
+### 2.3 Time & Date Standards (Strict)
+* **Storage (Single Source of Truth):**
+    * Database columns MUST use `timestamptz` (PostgreSQL).
+    * All data MUST be stored in **UTC** (Coordinated Universal Time).
+    * NEVER store local time strings (e.g., "2023-01-01 10:00") without timezone info.
+* **Business Logic (Execution):**
+    * "Daily" cycles (e.g., Aggregation, Reports, Reset) MUST align with **UTC+8 (Asia/Taipei)**.
+    * Example: A daily job for "2024-01-01" covers `2023-12-31 16:00 UTC` to `2024-01-01 16:00 UTC`.
+* **Presentation (Frontend):**
+    * Admin UI MUST support Dynamic Timezone Switching (Default: UTC+8).
+    * Conversion happens ONLY at the frontend layer (using Day.js).
+
 ## 3. Financial & Blockchain Rules (CRITICAL - FROM README)
 
 **Violation of this section is a Critical Security Failure.**

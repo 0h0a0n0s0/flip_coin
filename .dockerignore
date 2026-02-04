@@ -1,15 +1,76 @@
-# 忽略 Python 虛擬環境
-venv
-.venv
+# ===== Node.js 相關 =====
+node_modules
+npm-debug.log
+yarn-error.log
+pnpm-debug.log*
+.pnpm-debug.log*
+lerna-debug.log*
 
-# 忽略 Git 相關檔案
+# ===== 構建產物 =====
+dist
+dist-ssr
+build
+.next
+out
+*.local
+
+# ===== 環境變數與配置 =====
+.env
+.env.local
+.env.*.local
+.env.development
+.env.production
+*.key
+*.pem
+credentials.json
+
+# ===== Git 相關 =====
 .git
 .gitignore
+.gitattributes
 
-# 忽略 Python 快取
+# ===== IDE 與編輯器 =====
+.vscode
+.idea
+*.swp
+*.swo
+*~
+.DS_Store
+
+# ===== 測試與覆蓋率 =====
+coverage
+.nyc_output
+*.lcov
+
+# ===== 日誌檔案 =====
+logs
+*.log
+
+# ===== 臨時檔案 =====
+tmp
+temp
+*.tmp
+
+# ===== Docker 相關 =====
+Dockerfile
+.dockerignore
+docker-compose*.yml
+
+# ===== CI/CD =====
+.github
+.gitlab-ci.yml
+.circleci
+
+# ===== 文檔與 Markdown =====
+README.md
+CHANGELOG.md
+docs
+
+# ===== Python 相關 (保留原有) =====
+venv
+.venv
 __pycache__
 *.pyc
 
-# 忽略 Docker 相關檔案
-Dockerfile
-.dockerignore
+# ===== Cursor 相關 =====
+.cursor

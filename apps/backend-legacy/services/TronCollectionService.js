@@ -18,6 +18,32 @@ const DEFAULT_USDT_CONTRACT = 'TXYZopYRdj2D9XRtbG411XZZ3kM5VkAeBf';
 const USDT_CONTRACT_ADDRESS = process.env.USDT_CONTRACT_ADDRESS || DEFAULT_USDT_CONTRACT; 
 const USDT_DECIMALS = 6;
 
+// (安全地提取错误消息 - 防止 undefined.substring 错误)
+function safeErrorMessage(error, maxLength = 500) {
+    if (!error) return 'Unknown error';
+    if (typeof error === 'string') {
+        return error.length > maxLength ? error.substring(0, maxLength) : error;
+    }
+    if (error.message) {
+        const msg = String(error.message);
+        return msg.length > maxLength ? msg.substring(0, maxLength) : msg;
+    }
+    if (error.toString && typeof error.toString === 'function') {
+        try {
+            const msg = error.toString();
+            return msg.length > maxLength ? msg.substring(0, maxLength) : msg;
+        } catch (e) {
+            // toString 失败，继续尝试其他方法
+        }
+    }
+    try {
+        const msg = JSON.stringify(error);
+        return msg.length > maxLength ? msg.substring(0, maxLength) : msg;
+    } catch (e) {
+        return 'Error object could not be serialized';
+    }
+}
+
 // (日志辅助函数)
 function logError(error, context, address) {
     console.error(`[Collection] ${context} for address ${address}. Details:`);
@@ -397,7 +423,7 @@ class TronCollectionService {
                     user.tron_deposit_address,
                     this.collectionWallet.address,
                     0,
-                    errorMessage.substring(0, 500)
+                    safeErrorMessage(errorMessage, 500)
                 ]
             );
         } catch (logError) {
@@ -465,8 +491,9 @@ class TronCollectionService {
                     await new Promise(resolve => setTimeout(resolve, 5000));
                 } catch (approveError) {
                     // approve 失敗，添加到重試隊列
-                    await this._addToRetryQueue(user.user_id, `Approve failed: ${approveError.message.substring(0, 400)}`);
-                    return { success: false, error: approveError.message };
+                    const errorMsg = `Approve failed: ${safeErrorMessage(approveError, 400)}`;
+                    await this._addToRetryQueue(user.user_id, errorMsg);
+                    return { success: false, error: safeErrorMessage(approveError) };
                 }
             }
             
@@ -495,15 +522,16 @@ class TronCollectionService {
                 energyUsed: transferResult.energyUsed 
             };
         } catch (error) {
-            console.error(`[Collection] ❌ Failed to collect from user ${user.user_id}:`, error.message);
+            const errorMsg = safeErrorMessage(error);
+            console.error(`[Collection] ❌ Failed to collect from user ${user.user_id}:`, errorMsg);
             
             // 記錄失敗日誌
-            await this._logCollectionFailure(user, error.message);
+            await this._logCollectionFailure(user, errorMsg);
             
             // 添加到重試隊列
-            await this._addToRetryQueue(user.user_id, error.message.substring(0, 500));
+            await this._addToRetryQueue(user.user_id, safeErrorMessage(error, 500));
             
-            return { success: false, error: error.message };
+            return { success: false, error: errorMsg };
         }
     }
 
@@ -528,6 +556,31 @@ class TronCollectionService {
         } catch (error) {
             console.warn('[Collection] Error getting average energy usage, using default:', error.message);
             return 35000; // 预设值
+        }
+    }
+
+    /**
+     * @description 从 system_settings 读取配置值
+     * @param {string} key - 配置键
+     * @param {any} defaultValue - 默认值
+     * @returns {Promise<any>} 配置值（如果是数字会自动转换）
+     */
+    async _getSystemSetting(key, defaultValue) {
+        try {
+            const result = await db.query(
+                `SELECT value FROM system_settings WHERE key = $1`,
+                [key]
+            );
+            if (result.rows.length > 0) {
+                const value = result.rows[0].value;
+                // 尝试转换为数字（如果可能）
+                const numValue = Number(value);
+                return isNaN(numValue) ? value : numValue;
+            }
+            return defaultValue;
+        } catch (error) {
+            console.warn(`[Collection] Failed to read setting ${key}, using default:`, error.message);
+            return defaultValue;
         }
     }
 
@@ -837,15 +890,17 @@ class TronCollectionService {
     }
 
     /**
-     * @description 执行归集流程（自動模式）
+     * @description 执行归集流程（配置驱动的高吞吐量版本）
      */
     async collectFunds() {
         if (!this.collectionWallet) {
-            console.warn("[Collection] Skipping collection: Collection wallet not configured.");
+            console.warn("[Collection] Skipping: Collection wallet not configured.");
             return;
         }
+
+        const startTime = Date.now();
         
-        // 检查是否应该执行扫描（根据 scan_interval_days）
+        // 1. 从 collection_settings 表加载配置（与钱包关联）
         const settingsResult = await db.query(
             `SELECT * FROM collection_settings 
              WHERE collection_wallet_address = $1 AND is_active = true`,
@@ -853,57 +908,156 @@ class TronCollectionService {
         );
         
         if (settingsResult.rows.length === 0) {
-            console.warn("[Collection] No active collection settings found.");
+            console.warn("[Collection] No active collection settings found for this wallet.");
             return;
         }
         
         const settings = settingsResult.rows[0];
-        const scanIntervalDays = settings.scan_interval_days;
-        const daysWithoutDeposit = settings.days_without_deposit;
+        const batchSize = settings.batch_size || 500;
+        const minEnergy = settings.min_energy || 35000;
+        const maxConcurrency = settings.max_concurrency || 1;
+        const daysWithoutDeposit = settings.days_without_deposit || 7;
         
-        // TODO: 實現時間間隔檢查（如果需要）
-        // 當前代碼讀取了 scanIntervalDays 但沒有使用
+        console.log(`[Collection] 🚀 Starting collection sweep`);
+        console.log(`[Collection] Wallet: ${this.collectionWallet.address}`);
+        console.log(`[Collection] Config: batchSize=${batchSize}, minEnergy=${minEnergy}, maxConcurrency=${maxConcurrency}, daysWithoutDeposit=${daysWithoutDeposit}`);
         
-        // 使用共享的批量執行方法
         try {
-            const result = await this._executeCollectionBatch({ skipTimeCheck: false });
-            console.log(`[Collection] ✅ Collection sweep finished: ${result.collectedCount} collected, ${result.skippedCount} skipped, ${result.processedCount} processed`);
+            // 2. 获取游标
+            const cursorResult = await db.query(`SELECT last_processed_user_id FROM collection_cursor LIMIT 1`);
+            const lastProcessedId = cursorResult.rows[0]?.last_processed_user_id || 0;
             
-            // 檢查連續失敗
-            if (result.collectedCount === 0 && result.processedCount > 0) {
-                // 所有處理都失敗
-                this.consecutiveFailures++;
-                if (this.consecutiveFailures >= 3) {
-                    await this.alertService.sendCritical(
-                        `歸集服務連續失敗！\n\n` +
-                        `連續失敗次數: ${this.consecutiveFailures}\n` +
-                        `本次處理: ${result.processedCount} 個地址\n` +
-                        `成功: ${result.collectedCount}\n` +
-                        `跳過: ${result.skippedCount}\n\n` +
-                        `請檢查歸集服務狀態和日誌！`
-                    );
+            // 3. 获取总用户数（用于进度显示）
+            const totalResult = await db.query(
+                `SELECT COUNT(*) as total FROM users WHERE tron_deposit_address IS NOT NULL`
+            );
+            const totalUsers = parseInt(totalResult.rows[0].total);
+            
+            // 4. 查询用户批次
+            const usersResult = await db.query(
+                `SELECT id, user_id, deposit_path_index, tron_deposit_address 
+                 FROM users 
+                 WHERE tron_deposit_address IS NOT NULL AND id > $1
+                 ORDER BY id ASC 
+                 LIMIT $2`,
+                [lastProcessedId, batchSize]
+            );
+            
+            if (usersResult.rows.length === 0) {
+                console.log('[Collection] Reached end of user list, resetting cursor');
+                await db.query(`UPDATE collection_cursor SET last_processed_user_id = 0, updated_at = NOW()`);
+                return {
+                    collectedCount: 0,
+                    skippedCount: 0,
+                    failedCount: 0,
+                    cursorReset: true
+                };
+            }
+            
+            console.log(`[Collection] Fetched ${usersResult.rows.length} users (cursor: ${lastProcessedId} → ${usersResult.rows[usersResult.rows.length - 1].id})`);
+            console.log(`[Collection] Progress: ${((lastProcessedId / totalUsers) * 100).toFixed(2)}% (${lastProcessedId}/${totalUsers})`);
+            
+            // 5. 分块处理用户
+            const users = usersResult.rows;
+            const chunkSize = 10;
+            let collectedCount = 0;
+            let skippedCount = 0;
+            let failedCount = 0;
+            let energyStopCount = 0;
+            let shouldStopDueToEnergy = false;
+            
+            for (let i = 0; i < users.length; i += chunkSize) {
+                if (shouldStopDueToEnergy) {
+                    console.log(`[Collection] Energy circuit breaker triggered, stopping batch processing`);
+                    break;
                 }
-            } else if (result.collectedCount > 0) {
-                // 有成功，重置計數
+                
+                const chunk = users.slice(i, Math.min(i + chunkSize, users.length));
+                console.log(`[Collection] Processing chunk ${Math.floor(i / chunkSize) + 1}/${Math.ceil(users.length / chunkSize)} (${chunk.length} users)`);
+                
+                // 处理当前块中的每个用户
+                for (const user of chunk) {
+                    try {
+                        // Step A: 检查是否应该归集
+                        const shouldCollectResult = await this._shouldCollect(user);
+                        if (!shouldCollectResult.shouldCollect) {
+                            skippedCount++;
+                            continue;
+                        }
+                        
+                        // Step B: 能量熔断检查
+                        const currentEnergy = await this._getCollectionWalletEnergy();
+                        if (currentEnergy < minEnergy) {
+                            console.warn(`[Collection] ⚠️ Energy below minimum (${currentEnergy} < ${minEnergy}), stopping execution`);
+                            energyStopCount++;
+                            shouldStopDueToEnergy = true;
+                            
+                            // 将此用户加入重试队列
+                            await this._addToRetryQueue(user.user_id, `Energy below minimum: ${currentEnergy} < ${minEnergy}`);
+                            break;
+                        }
+                        
+                        // Step C: 执行归集
+                        const result = await this._processUserCollection(user, shouldCollectResult.balance);
+                        
+                        if (result.success) {
+                            collectedCount++;
+                            console.log(`[Collection] ✅ Collected ${shouldCollectResult.balance} USDT from user ${user.user_id}`);
+                        } else {
+                            failedCount++;
+                            console.error(`[Collection] ❌ Failed to collect from user ${user.user_id}: ${result.error}`);
+                        }
+                        
+                        // 交易间延迟
+                        await new Promise(resolve => setTimeout(resolve, 2000));
+                        
+                    } catch (error) {
+                        failedCount++;
+                        console.error(`[Collection] ❌ Error processing user ${user.user_id}:`, safeErrorMessage(error));
+                        await this._logCollectionFailure(user, safeErrorMessage(error));
+                        await this._addToRetryQueue(user.user_id, safeErrorMessage(error, 500));
+                    }
+                }
+                
+                // 块间非阻塞延迟（让出事件循环）
+                await new Promise(resolve => setTimeout(resolve, 100));
+            }
+            
+            // 6. 更新游标（即使因能量停止，也要移动游标）
+            const newCursor = users[users.length - 1].id;
+            await db.query(
+                `UPDATE collection_cursor SET last_processed_user_id = $1, updated_at = NOW()`,
+                [newCursor]
+            );
+            
+            // 7. 输出统计
+            const elapsed = ((Date.now() - startTime) / 1000).toFixed(2);
+            console.log(`[Collection] ✅ Sweep completed in ${elapsed}s`);
+            console.log(`[Collection] Summary:`);
+            console.log(`  - Batch Size: ${usersResult.rows.length}`);
+            console.log(`  - Collected: ${collectedCount}`);
+            console.log(`  - Skipped: ${skippedCount}`);
+            console.log(`  - Failed: ${failedCount}`);
+            console.log(`  - Energy Stopped: ${energyStopCount}`);
+            console.log(`  - New Cursor: ${newCursor}`);
+            console.log(`  - Progress: ${((newCursor / totalUsers) * 100).toFixed(2)}% (${newCursor}/${totalUsers})`);
+            
+            // 如果有成功归集，重置连续失败计数
+            if (collectedCount > 0) {
                 this.consecutiveFailures = 0;
             }
+            
+            return {
+                collectedCount,
+                skippedCount,
+                failedCount,
+                energyStopCount,
+                processedCount: usersResult.rows.length
+            };
+            
         } catch (error) {
-            console.error('[Collection] Collection failed:', error.message);
-            // 處理能量不足等錯誤
-            if (error.message && error.message.includes('能量不足')) {
-                const now = Date.now();
-                if (!this.lastEnergyExhaustedAlertTime || (now - this.lastEnergyExhaustedAlertTime) > 3600000) {
-                    const avgEnergy = await this._getAverageEnergyUsage();
-                    await this.alertService.sendCritical(
-                        `歸集能量耗盡！\n\n` +
-                        `歸集錢包: ${this.collectionWallet.address}\n` +
-                        `錯誤: ${error.message}\n` +
-                        `平均每筆消耗: ${avgEnergy}\n\n` +
-                        `請立即租賃能量或檢查能量提供者！`
-                    );
-                    this.lastEnergyExhaustedAlertTime = now;
-                }
-            }
+            console.error('[Collection] Fatal error:', safeErrorMessage(error));
+            throw error;
         }
     }
 
