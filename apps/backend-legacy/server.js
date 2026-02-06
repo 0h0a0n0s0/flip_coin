@@ -504,10 +504,16 @@ httpServer.listen(PORT, async () => {
         console.log('[Collection] Scheduling high-throughput collection service (every 1 hour)');
         console.log('[Collection] Target: 500 users/hour, 10,000+ users/day');
         
-        // 立即执行第一次
-        tronCollectionService.collectFunds().catch(err => 
-            console.error("[Collection] Initial run failed:", err)
-        );
+        // 等待錢包加載後執行第一次歸集
+        (async () => {
+            try {
+                await tronCollectionService.ensureWalletsLoaded();
+                console.log('[Collection] Wallets loaded, starting initial collection...');
+                await tronCollectionService.collectFunds();
+            } catch (err) {
+                console.error("[Collection] Initial run failed:", err);
+            }
+        })();
         
         // 之后每小时执行一次
         setInterval(() => {

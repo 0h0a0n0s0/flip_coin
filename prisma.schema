@@ -352,6 +352,8 @@ model CollectionLog {
   amount                    Decimal   @db.Decimal(20, 6)
   tx_hash                   String?   @db.VarChar(255)
   energy_used               Int?
+  bandwidth_used            Int?
+  energy_fee                BigInt?
   status                    String    @default("pending") @db.VarChar(20)
   error_message             String?   @db.Text
   created_at                DateTime  @default(now()) @db.Timestamptz(6)

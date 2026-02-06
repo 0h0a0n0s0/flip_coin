@@ -55,8 +55,6 @@
       <el-table 
         :data="tableData" 
         style="width: 100%"
-        show-summary
-        :summary-method="renderSummary"
       >
         <el-table-column prop="user_id" label="用户ID" width="120" />
         <el-table-column prop="username" label="用户名" width="150" />
@@ -70,7 +68,7 @@
             {{ scope.row.collection_wallet_address_masked || scope.row.collection_wallet_address }}
           </template>
         </el-table-column>
-        <el-table-column prop="amount" label="归集金额" width="120">
+        <el-table-column prop="amount" label="归集金额" width="120" align="right">
           <template #default="scope">
             {{ formatCurrency(scope.row.amount) }} USDT
           </template>
@@ -106,6 +104,18 @@
           </template>
         </el-table-column>
       </el-table>
+      
+      <!-- 總計行 -->
+      <div class="summary-container">
+        <div class="summary-row page-summary">
+          <span class="summary-label">頁面總計：</span>
+          <span class="summary-value">{{ formatCurrency(pageTotalAmount) }} USDT</span>
+        </div>
+        <div class="summary-row total-summary">
+          <span class="summary-label">全部查詢結果總計：</span>
+          <span class="summary-value">{{ formatCurrency(totalAmount) }} USDT</span>
+        </div>
+      </div>
       
       <el-pagination 
         class="pagination-container" 
@@ -244,19 +254,6 @@ export default {
         'pending': '处理中'
       };
       return statusMap[status] || status;
-    },
-    renderSummary({ columns }) {
-      const sums = [];
-      columns.forEach((column, index) => {
-        if (column.property === 'amount') {
-          const pageSum = `${this.formatCurrency(this.pageTotalAmount)} USDT`;
-          const totalSum = `${this.formatCurrency(this.totalAmount)} USDT`;
-          sums[index] = `页面总计：${pageSum}\n全部查询结果总计：${totalSum}`;
-        } else {
-          sums[index] = '';
-        }
-      });
-      return sums;
     }
   }
 };
@@ -304,13 +301,42 @@ export default {
   color: #f56c6c;
   font-size: 12px;
 }
-:deep(.el-table__footer .cell) {
-  white-space: pre-line;
-  font-weight: 600;
-  color: #303133;
+
+/* 總計區域樣式 */
+.summary-container {
+  margin-top: 16px;
+  padding: 10px 0;
+  background-color: #f5f7fa;
+  border-top: 1px solid #dcdfe6;
 }
-:deep(.el-table__footer .cell)::before {
-  content: '';
+
+.summary-row {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  padding: 4px 0;
+  font-size: 14px;
+  color: #303133;
+  /* 固定對齊到歸集金額列 */
+  padding-right: 418px;
+}
+
+.summary-row + .summary-row {
+  margin-top: 4px;
+}
+
+.summary-label {
+  white-space: nowrap;
+  text-align: right;
+  margin-right: 8px;
+}
+
+.summary-value {
+  font-weight: 500;
+  white-space: nowrap;
+  text-align: right;
+  width: 120px;
+  padding-right: 12px;
 }
 </style>
 

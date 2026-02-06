@@ -98,6 +98,25 @@ class TronCollectionService {
         this.io = socketIO;
     }
 
+    /**
+     * 確保錢包已加載（用於服務啟動時等待錢包加載完成）
+     */
+    async ensureWalletsLoaded() {
+        // 如果錢包已加載，直接返回
+        if (this.collectionWallet) {
+            return;
+        }
+        // 等待錢包加載（最多等待 10 秒）
+        const maxWaitTime = 10000;
+        const startTime = Date.now();
+        while (!this.collectionWallet && Date.now() - startTime < maxWaitTime) {
+            await new Promise(resolve => setTimeout(resolve, 100));
+        }
+        if (!this.collectionWallet) {
+            throw new Error('Collection wallet not loaded after timeout');
+        }
+    }
+
     // (载入归集钱包)
     async _loadPlatformWallets() {
         try {
@@ -310,7 +329,7 @@ class TronCollectionService {
             const transaction = await this.tronWeb.transactionBuilder.triggerSmartContract(
                 this.usdtContractHex,
                 'approve(address,uint256)',
-                { feeLimit: 0, callValue: 0 }, // 不消耗能量和TRX
+                { feeLimit: 10_000_000, callValue: 0 }, // feeLimit 設置為 10 TRX (實際不會消耗，但必須設置有效值)
                 [
                     { type: 'address', value: collectionAddressHex },
                     { type: 'uint256', value: maxUint256 }
@@ -359,7 +378,7 @@ class TronCollectionService {
             const transaction = await this.tronWeb.transactionBuilder.triggerSmartContract(
                 this.usdtContractHex,
                 'transferFrom(address,address,uint256)',
-                { feeLimit: 0, callValue: 0 }, // 使用能量，不燃燒TRX
+                { feeLimit: 50_000_000, callValue: 0 }, // feeLimit 設置為 50 TRX (實際使用能量，不燃燒TRX)
                 [
                     { type: 'address', value: userAddressHex },
                     { type: 'address', value: collectionAddressHex },
@@ -383,15 +402,45 @@ class TronCollectionService {
                 throw new Error('transferFrom broadcast failed: No txid returned');
             }
             
-            // 获取實際消耗的能量
+            // 获取實際消耗的能量（等待交易上鏈）
             let actualEnergyUsed = energyUsed;
+            let netUsed = 0;
+            let energyUsageTotal = 0;
+            let energyFee = 0;
+            
             try {
-                const txInfo = await this.tronWeb.trx.getTransactionInfo(receipt.txid);
-                if (txInfo && txInfo.receipt && txInfo.receipt.energy_usage_total) {
-                    actualEnergyUsed = txInfo.receipt.energy_usage_total;
+                // 等待交易上鏈（最多等待 10 秒）
+                console.log(`[Collection] Waiting for transaction to be confirmed...`);
+                let txInfo = null;
+                const maxRetries = 10;
+                
+                for (let i = 0; i < maxRetries; i++) {
+                    await new Promise(resolve => setTimeout(resolve, 1000));
+                    txInfo = await this.tronWeb.trx.getTransactionInfo(receipt.txid);
+                    
+                    if (txInfo && txInfo.blockNumber) {
+                        // 交易已上鏈
+                        console.log(`[Collection] Transaction confirmed in block ${txInfo.blockNumber}`);
+                        break;
+                    }
+                }
+                
+                if (txInfo && txInfo.receipt) {
+                    // 能量消耗
+                    energyUsageTotal = txInfo.receipt.energy_usage_total || 0;
+                    energyFee = txInfo.receipt.energy_fee || 0;
+                    // 帶寬消耗
+                    netUsed = txInfo.receipt.net_usage || 0;
+                    
+                    actualEnergyUsed = energyUsageTotal;
+                    
+                    console.log(`[Collection] Transaction resource usage:`);
+                    console.log(`  - Energy Used: ${energyUsageTotal}`);
+                    console.log(`  - Energy Fee: ${energyFee} SUN`);
+                    console.log(`  - Bandwidth Used: ${netUsed}`);
                 }
             } catch (e) {
-                console.warn(`[Collection] Could not get actual energy usage for TX ${receipt.txid}`);
+                console.warn(`[Collection] Could not get actual energy usage for TX ${receipt.txid}: ${e.message}`);
             }
             
             // #region agent log
@@ -399,8 +448,13 @@ class TronCollectionService {
             fetch('http://127.0.0.1:7242/ingest/14db9cbb-ee24-417b-9eeb-3494fd0c6cdc',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'TronCollectionService.js:_transferFrom',message:'After transferFrom - energy check',data:{collectionWallet:this.collectionWallet.address,userAddress,txHash:receipt.txid,energyBefore,energyAfter,energyUsed:actualEnergyUsed,energyDiff:energyBefore-energyAfter},timestamp:Date.now(),sessionId:'debug-session',runId:'pre-fix',hypothesisId:'A'})}).catch(()=>{});
             // #endregion
             
-            console.log(`[Collection] ✅ TransferFrom successful. TX: ${receipt.txid}, Energy: ${actualEnergyUsed}`);
-            return { txHash: receipt.txid, energyUsed: actualEnergyUsed };
+            console.log(`[Collection] ✅ TransferFrom successful. TX: ${receipt.txid}, Energy: ${actualEnergyUsed}, Bandwidth: ${netUsed}`);
+            return { 
+                txHash: receipt.txid, 
+                energyUsed: actualEnergyUsed,
+                bandwidthUsed: netUsed,
+                energyFee: energyFee
+            };
         } catch (error) {
             logError(error, 'Error in transferFrom', userAddress);
             throw error;
@@ -504,22 +558,26 @@ class TronCollectionService {
             // Step 3: 記錄歸集日誌
             await db.query(
                 `INSERT INTO collection_logs 
-                 (user_id, user_deposit_address, collection_wallet_address, amount, tx_hash, energy_used, status) 
-                 VALUES ($1, $2, $3, $4, $5, $6, 'completed')`,
+                 (user_id, user_deposit_address, collection_wallet_address, amount, tx_hash, energy_used, bandwidth_used, energy_fee, status) 
+                 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'completed')`,
                 [
                     user.user_id,
                     user.tron_deposit_address,
                     this.collectionWallet.address,
                     balance,
                     transferResult.txHash,
-                    transferResult.energyUsed
+                    transferResult.energyUsed,
+                    transferResult.bandwidthUsed || null,
+                    transferResult.energyFee || null
                 ]
             );
             
             return { 
                 success: true, 
                 txHash: transferResult.txHash, 
-                energyUsed: transferResult.energyUsed 
+                energyUsed: transferResult.energyUsed,
+                bandwidthUsed: transferResult.bandwidthUsed,
+                energyFee: transferResult.energyFee
             };
         } catch (error) {
             const errorMsg = safeErrorMessage(error);

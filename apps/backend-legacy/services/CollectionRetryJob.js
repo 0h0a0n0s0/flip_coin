@@ -185,15 +185,17 @@ class CollectionRetryJob {
                     const balanceUSDT = Number(balance) / (10**6);
                     await db.query(
                         `INSERT INTO collection_logs 
-                         (user_id, user_deposit_address, collection_wallet_address, amount, tx_hash, energy_used, status) 
-                         VALUES ($1, $2, $3, $4, $5, $6, 'completed')`,
+                         (user_id, user_deposit_address, collection_wallet_address, amount, tx_hash, energy_used, bandwidth_used, energy_fee, status) 
+                         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'completed')`,
                         [
                             user.user_id,
                             user.tron_deposit_address,
                             this.collectionService.collectionWallet.address,
                             balanceUSDT,
                             transferResult.txHash,
-                            transferResult.energyUsed
+                            transferResult.energyUsed || null,
+                            transferResult.bandwidthUsed || null,
+                            transferResult.energyFee || null
                         ]
                     );
 
