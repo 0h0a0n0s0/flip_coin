@@ -25,7 +25,7 @@ function accountsRoutes(router) {
             // (★★★ Y-6: JOIN admin_roles 获取角色名称，添加谷歌验证状态 ★★★)
             const result = await db.query(`
                 SELECT u.id, u.username, u.status, u.created_at, u.role_id, r.name as role_name,
-                       CASE WHEN u.google_auth_secret IS NOT NULL THEN true ELSE false END as has_google_auth
+                       CASE WHEN u.encrypted_google_auth_secret IS NOT NULL THEN true ELSE false END as has_google_auth
                 FROM admin_users u
                 LEFT JOIN admin_roles r ON u.role_id = r.id
                 ORDER BY u.id ASC
@@ -214,58 +214,48 @@ function accountsRoutes(router) {
             const operatorId = req.user.id; // 操作者ID
             
             if (!googleAuthCode) {
-                return sendError(res, 400, 'Google Authenticator code is required.');
+                return sendError(res, 400, '请输入谷歌验证码');
             }
             
-            // 1. 獲取操作者的谷歌驗證密鑰（驗證操作者的身份）
-            const operatorResult = await db.query(
-                'SELECT google_auth_secret FROM admin_users WHERE id = $1',
-                [operatorId]
-            );
-            
-            if (operatorResult.rows.length === 0) {
-                return sendError(res, 404, 'Operator not found');
-            }
-            
-            const operatorSecret = operatorResult.rows[0].google_auth_secret;
+            // 1. 獲取操作者的谷歌驗證密鑰（驗證操作者的身份）- 使用加密字段
+            const operatorSecret = await AdminService.getAdminGoogleAuthSecret(operatorId);
             
             // 必須驗證操作者的谷歌驗證碼
             if (!operatorSecret) {
-                return sendError(res, 400, 'You must have Google Authenticator bound to perform this operation.');
+                return sendError(res, 400, '您必须绑定谷歌验证器才能执行此操作');
             }
             
             const verified = speakeasy.totp.verify({
                 secret: operatorSecret,
                 encoding: 'base32',
                 token: googleAuthCode,
-                window: 2
+                window: 1 // 使用更严格的时间窗口（90秒）
             });
             
             if (!verified) {
-                return sendError(res, 401, 'Invalid Google Authenticator code.');
+                return sendError(res, 401, '谷歌验证码错误');
             }
             
             // 2. 檢查目標帳號是否存在且已綁定谷歌驗證
+            const targetSecret = await AdminService.getAdminGoogleAuthSecret(targetUserId);
+            
+            if (!targetSecret) {
+                return sendError(res, 400, '目标账号未绑定谷歌验证器');
+            }
+            
             const targetResult = await db.query(
-                'SELECT id, username, google_auth_secret FROM admin_users WHERE id = $1',
+                'SELECT id, username FROM admin_users WHERE id = $1',
                 [targetUserId]
             );
             
             if (targetResult.rows.length === 0) {
-                return sendError(res, 404, 'Target account not found');
+                return sendError(res, 404, '目标账号不存在');
             }
             
             const targetUser = targetResult.rows[0];
             
-            if (!targetUser.google_auth_secret) {
-                return sendError(res, 400, 'Target account does not have Google Authenticator bound');
-            }
-            
-            // 3. 解綁目標帳號的谷歌驗證
-            await db.query(
-                'UPDATE admin_users SET google_auth_secret = NULL WHERE id = $1',
-                [targetUserId]
-            );
+            // 3. 解綁目標帳號的谷歌驗證 - 使用 AdminService 方法
+            await AdminService.clearAdminGoogleAuthSecret(targetUserId);
             
             // 4. 記錄審計日誌
             try {

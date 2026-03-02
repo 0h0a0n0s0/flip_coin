@@ -81,6 +81,22 @@ services:
     # 不直接暴露端口，由 nginx 代理
     restart: unless-stopped
 
+  # Cyber Gain Web H5 獨立站（開發模式）
+  cyber-gain-web:
+    build:
+      context: .
+      dockerfile: ./apps/cyber-gain-web/Dockerfile.dev
+    container_name: flipcoin-cyber-gain-web
+    ports:
+      - "3001:3001"  # 直接暴露 3001 端口
+    volumes:
+      # 掛載源碼，支援熱重載
+      - ./apps/cyber-gain-web:/usr/src/app/apps/cyber-gain-web
+      - /usr/src/app/apps/cyber-gain-web/node_modules  # 保護 node_modules
+    environment:
+      - NODE_ENV=development
+    restart: unless-stopped
+
   # Nginx 代理服務
   nginx:
     build: ./nginx # 指向我們剛才建立的 nginx 資料夾

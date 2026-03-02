@@ -9,6 +9,7 @@ const { maskAddress } = require('../../utils/maskUtils');
 const { getClientIp } = require('../../utils/ipUtils');
 const { logBalanceChange, CHANGE_TYPES } = require('../../utils/balanceChangeLogger');
 const { sendError, sendSuccess } = require('../../utils/safeResponse');
+const { decrypt } = require('../../utils/encryptionUtils');
 
 /**
  * 用戶管理相關路由
@@ -56,6 +57,7 @@ function usersRoutes(router) {
         if (status) { params.push(status); whereClauses.push(`status = $${paramIndex++}`); }
         if (inviteCode) { params.push(inviteCode); whereClauses.push(`invite_code = $${paramIndex++}`); }
         if (referrerCode) { params.push(referrerCode); whereClauses.push(`referrer_code = $${paramIndex++}`); }
+        // IP 搜尋：優先使用明文欄位（舊資料 + 向後兼容）
         if (lastLoginIp) { params.push(lastLoginIp); whereClauses.push(`last_login_ip = $${paramIndex++}`); }
 
         if (activityDateRange) {
@@ -80,8 +82,9 @@ function usersRoutes(router) {
                 id, user_id, username, balance,
                 current_streak, max_streak, created_at,
                 nickname, level, invite_code, referrer_code, status,
-                last_login_ip, last_activity_at, user_agent,
-                tron_deposit_address, evm_deposit_address
+                last_activity_at, user_agent,
+                tron_deposit_address, evm_deposit_address,
+                last_login_ip, encrypted_last_login_ip
             FROM users 
             ${whereSql}
             ORDER BY created_at DESC
@@ -92,11 +95,30 @@ function usersRoutes(router) {
         params.push(limit);
         params.push(offset);
         const dataResult = await db.query(dataSql, params);
-        const list = dataResult.rows.map(row => ({
-            ...row,
-            tron_deposit_address_masked: maskAddress(row.tron_deposit_address || ''),
-            evm_deposit_address_masked: maskAddress(row.evm_deposit_address || '')
-        }));
+        
+        // 解密 IP 地址（完整顯示，不遮罩）
+        const encryptionKey = process.env.ENCRYPTION_KEY_PII;
+        const list = dataResult.rows.map(row => {
+            let lastLoginIp = row.last_login_ip; // 優先使用明文欄位（舊資料）
+            
+            // 如果明文欄位為空，嘗試解密加密欄位
+            if (!lastLoginIp && encryptionKey && row.encrypted_last_login_ip) {
+                try {
+                    lastLoginIp = decrypt(row.encrypted_last_login_ip, encryptionKey);
+                } catch (error) {
+                    console.error('[Admin Users] Failed to decrypt IP:', error);
+                    lastLoginIp = null;
+                }
+            }
+            
+            return {
+                ...row,
+                last_login_ip: lastLoginIp,
+                encrypted_last_login_ip: undefined, // 移除加密欄位
+                tron_deposit_address_masked: maskAddress(row.tron_deposit_address || ''),
+                evm_deposit_address_masked: maskAddress(row.evm_deposit_address || '')
+            };
+        });
 
         sendSuccess(res, { total: total, list });
     } catch (error) {

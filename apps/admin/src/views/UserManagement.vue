@@ -238,7 +238,6 @@
 </template>
 
 <script>
-// ( ... <script> 标签内的逻辑保持不变 ... )
 import { ElMessage } from 'element-plus';
 
 export default {

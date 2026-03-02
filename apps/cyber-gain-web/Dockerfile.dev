@@ -1,0 +1,32 @@
+# apps/cyber-gain-web/Dockerfile.dev
+# 開發環境 Dockerfile（支援熱重載）
+
+FROM node:18-alpine
+
+# 安裝 pnpm
+RUN npm install -g pnpm --registry=https://registry.npmmirror.com
+
+# 從根目錄開始（workspace 需要）
+WORKDIR /usr/src/app
+
+# 複製 workspace 配置
+COPY pnpm-workspace.yaml ./
+COPY package.json ./
+COPY pnpm-lock.yaml* ./
+
+# 複製 cyber-gain-web 的 package.json
+COPY apps/cyber-gain-web/package.json ./apps/cyber-gain-web/package.json
+
+# 安裝依賴（開發環境，不使用 frozen-lockfile）
+ENV CI=true
+RUN pnpm fetch --registry=https://registry.npmmirror.com || true
+RUN pnpm install --no-frozen-lockfile --prefer-offline --registry=https://registry.npmmirror.com
+
+# 切換到 cyber-gain-web 目錄
+WORKDIR /usr/src/app/apps/cyber-gain-web
+
+# 暴露開發端口
+EXPOSE 3001
+
+# 啟動開發服務器
+CMD ["pnpm", "dev", "--host", "0.0.0.0"]

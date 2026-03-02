@@ -6,6 +6,7 @@ const userRoutes = require('./user');
 const betRoutes = require('./bet');
 const walletRoutes = require('./wallet');
 const gameRoutes = require('./game');
+const gdprRoutes = require('./gdpr');
 
 /**
  * 註冊所有 v1 API 路由
@@ -20,6 +21,9 @@ function v1ApiRouter(router, passport, options = {}) {
     betRoutes(router, passport, options);
     walletRoutes(router, passport, options);
     gameRoutes(router);
+    
+    // GDPR 用戶權利路由
+    router.use('/api/v1/gdpr', gdprRoutes);
 }
 
 module.exports = v1ApiRouter;

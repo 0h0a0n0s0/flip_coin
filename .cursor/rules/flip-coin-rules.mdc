@@ -59,6 +59,12 @@ Cursor Must Not:
     * Step 2: Collection Wallet `transferFrom()` -> Cold Wallet.
 * **Concurrency:** Any balance update MUST use `SELECT ... FOR UPDATE NOWAIT` (Row Locking).
 
+### 3.3 Environment & Key Security (CRITICAL)
+* **Production .env:** MUST use cloud platform env vars (AWS ECS/EKS, GCP Cloud Run, Azure). **NO local plaintext `.env`**.
+* **Development .env:** Allowed, but MUST use testnet (Nile) keys only.
+* **Hot Wallet Cap:** Withdrawal wallet MUST hold < 50,000 USDT. Excess → manual transfer to cold wallet.
+* **Git Protection:** `.env` MUST be in `.gitignore` (✅ already enforced).
+
 ## 4. Backend Rules (API & Logic)
 
 Cursor Must:
@@ -113,6 +119,15 @@ Cursor Must maintain **Structural Parity** (H5 is a scaled version of Web, not a
 1.  **Format:** Does output match `{ "success": true, "data": ... }`?
 2.  **Handshake:** Does the Frontend payload match Backend Validator expectations?
 
+### 8.4 Security Check
+1.  **PII Leakage:** Am I logging Email/IP/Device ID? → Use `maskUtils`.
+2.  **Encryption:** Am I storing plaintext 2FA Secret/PII? → Use `encryptionUtils.encrypt()`.
+3.  **Hardcoded Keys:** Am I hardcoding secrets? → Load from env.
+4.  **Token Exposure:** Am I passing Token in URL? → Use `Authorization` header.
+5.  **SQL Injection:** Am I concatenating user input? → Use parameterized queries.
+6.  **Failed Login Logging:** Am I logging failed login attempts? → MUST log with masked IP.
+7.  **2FA Window:** Am I using `window > 1` for TOTP? → Use `window: 1` only.
+
 ## 9. Language Protocol (Strict)
 
 Cursor Must enforce:
@@ -123,3 +138,111 @@ Cursor Must enforce:
     * Frontend UI: Prioritize `zh-CN` i18n entries. If hardcoding strings is necessary/requested, use **Simplified Chinese**.
 
 **If any violation is detected: STOP and ask the user.**
+
+## 10. Data Classification & Encryption (CRITICAL)
+
+### 10.1 Sensitivity Levels
+| Level | Type | Examples | Storage | Transit |
+|-------|------|----------|---------|---------|
+| L4 | Keys | Mnemonic, Private Keys, JWT Secret | 🔒 Cloud KMS/HSM | ❌ NO API transit |
+| L3 | Auth | Password Hash, 2FA Secret, Session Token | 🔒 AES-256-GCM | 🔒 TLS 1.3 |
+| L2 | PII | Email, IP, Device ID, User Agent | 🔒 AES-256-GCM | 🔒 TLS 1.3 |
+| L1 | Business | Tx Amount, Bet Records, Wallet Address | 📝 Plaintext | 🔒 TLS 1.3 |
+| L0 | Public | Nickname, Game Name, Public Stats | 📝 Plaintext | ✅ Any |
+
+### 10.2 Encryption Methods
+| Data Type | Method | Algorithm | Key Source | Location |
+|-----------|--------|-----------|------------|----------|
+| Password | Adaptive Hash | bcrypt (cost=10) | Auto-salt | `UserService.hashPassword()` |
+| 2FA Secret | Symmetric | AES-256-GCM | `ENCRYPTION_KEY_2FA` | 🆕 TBD |
+| Email | Symmetric + HMAC | AES-256-GCM + HMAC-SHA256 | `ENCRYPTION_KEY_PII` | 🆕 TBD |
+| IP Address | Symmetric | AES-256-GCM | `ENCRYPTION_KEY_PII` | 🆕 TBD |
+| Device ID | One-way Hash | SHA-256 | N/A | 🆕 TBD |
+
+### 10.3 Key Management
+**Cursor Must enforce:**
+* **App Keys:** Generate via `openssl rand -hex 32`. Store in cloud platform env (not local `.env`).
+* **Rotation:** Rotate `ENCRYPTION_KEY_*` every 90 days. Keep `*_OLD` for migration.
+* **Access:** Dev env uses testnet keys. Prod keys → Ops team only.
+* **Logging:** NEVER log keys (even partial).
+
+## 11. Database Encryption
+
+### 11.1 Fields Requiring Encryption
+| Table | Field | Status | Action |
+|-------|-------|--------|--------|
+| `admin_users` | `google_auth_secret` | ❌ Plaintext | ✅ AES-256-GCM |
+| `users` | `profile_email` | ❌ Plaintext | ✅ AES-256-GCM + HMAC index |
+| `users` | `*_ip` (registration/login) | ❌ Plaintext | ✅ AES-256-GCM |
+| `users` | `device_id` | ❌ Plaintext | ✅ SHA-256 hash |
+| `users` | `user_agent` | ❌ Plaintext | ✅ AES-256-GCM |
+
+### 11.2 Implementation Pattern
+**Cursor Must follow:**
+1. Create `utils/encryptionUtils.js` with `encrypt()`, `decrypt()`, `hashForIndex()`.
+2. Add encrypted columns: `encrypted_<field>`, `<field>_hash` (for lookups).
+3. Use HMAC-SHA256 for searchable fields (email lookup).
+4. Migration: Encrypt existing data, then drop plaintext columns.
+
+## 12. Transport Security
+
+### 12.1 TLS/SSL (Mandatory)
+**Cursor Must check:**
+* Nginx: TLS 1.3 only (disable TLS 1.0/1.1).
+* HSTS: `Strict-Transport-Security: max-age=31536000; includeSubDomains`.
+* Frontend: HTTPS only (except dev env).
+
+### 12.2 API Security
+* **JWT:** Set expiry (15min access, 7d refresh).
+* **Sensitive Ops:** Withdrawal/password change → Re-auth (password or 2FA).
+* **Token Location:** `Authorization: Bearer <token>` header. **NO URL query string**.
+* **2FA Validation:** TOTP `window: 1` (90s validity). **NO `window: 2` or higher** (replay attack risk).
+
+## 13. Logging & Audit
+
+### 13.1 Masking Rules
+**Cursor Must mask:**
+* **Email:** `a***@domain.com` (show first char + domain).
+* **IP:** `192.168.***.***` (mask last 2 octets).
+* **Device ID:** `abc12345***` (show first 8 chars).
+* **Address:** Use `maskUtils.maskAddress()` (show first 6 + last 4).
+* **Tx Hash:** Use `maskUtils.maskTxHash()`.
+
+**Log Levels:**
+| Level | Allowed | Forbidden |
+|-------|---------|-----------|
+| ERROR | Error type, User ID (masked), timestamp | Stack trace (prod), keys, passwords |
+| WARN | Anomaly, IP (masked), request ID | Full SQL with params |
+| INFO | Flow, Tx Hash (masked), status | PII plaintext, Session Token |
+| DEBUG | **Dev only** | **Disabled in prod** |
+
+### 13.2 Audit Requirements
+**Must log to `admin_audit_logs`:**
+* Admin login/logout.
+* User data change (balance, status, password reset).
+* System config change (game params, IP whitelist).
+* Sensitive access (query user key, export user list).
+* Financial ops (manual withdrawal, collection, deposit correction).
+
+**Retention:**
+* Audit logs: 7 years (financial compliance).
+* App logs: 90 days.
+* Debug logs: 7 days.
+
+## 14. Privacy Compliance (GDPR/CCPA)
+
+### 14.1 PII Inventory
+| Data | Purpose | Legal Basis | Retention | Deletion |
+|------|---------|-------------|-----------|----------|
+| Registration IP | Risk control, geo-blocking | Legitimate Interest | Account lifetime + 1y | Auto-delete 1y after closure |
+| Device ID | Multi-account detection | Legitimate Interest | Account lifetime + 1y | Auto-delete 1y after closure |
+| Email | Recovery, notification | Contract Performance | Account lifetime + 5y | User request or legal limit |
+| Tx Records | Financial audit | Legal Obligation | 7 years (immutable) | N/A |
+
+### 14.2 User Rights (Must Implement)
+1. **Data Export:** `GET /api/v1/user/export-data` → JSON (all PII, decrypted).
+2. **Account Deletion:** `POST /api/v1/user/delete-account`:
+   * Delete: PII (IP, Device ID, Email).
+   * Anonymize: Tx records (User ID → `DELETED_<timestamp>`).
+   * Prevent: Active balance or disputes.
+3. **Data Correction:** Allow email update (requires verification). **DO NOT** allow: registration IP, first login time (audit integrity).

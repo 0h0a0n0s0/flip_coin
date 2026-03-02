@@ -5,6 +5,7 @@ const db = require('@flipcoin/database');
 const bcrypt = require('bcryptjs');
 const crypto = require('crypto');
 const { logBalanceChange, CHANGE_TYPES } = require('../utils/balanceChangeLogger');
+const { encrypt, decrypt, hashForIndex } = require('../utils/encryptionUtils');
 
 /**
  * 根據用戶名獲取用戶
@@ -159,40 +160,99 @@ async function checkIsFirstLogin(userId) {
 }
 
 /**
- * 更新用戶首次登錄信息
+ * 更新用戶首次登錄信息（支援 PII 加密）
  */
 async function updateFirstLoginInfo(userId, clientIp, country, userAgent, deviceId) {
+    const encryptionKey = process.env.ENCRYPTION_KEY_PII;
+    
+    if (!encryptionKey) {
+        console.warn('[UserService] ENCRYPTION_KEY_PII not configured, storing PII in plaintext (insecure!)');
+        // 降級方案：如果未配置加密密鑰，保持舊欄位（明文）
+        await db.query(
+            `UPDATE users 
+             SET first_login_ip = $1, first_login_country = $2, first_login_at = NOW(),
+                 last_login_ip = $1, last_activity_at = NOW(), user_agent = $3,
+                 device_id = COALESCE(device_id, $4)
+             WHERE id = $5`,
+            [clientIp, country, userAgent, deviceId, userId]
+        );
+        return;
+    }
+    
+    // 加密 PII 資料
+    const encryptedFirstLoginIp = encrypt(clientIp, encryptionKey);
+    const encryptedLastLoginIp = encrypt(clientIp, encryptionKey);
+    const encryptedUserAgent = encrypt(userAgent || '', encryptionKey);
+    const hashedDeviceId = deviceId ? crypto.createHash('sha256').update(deviceId).digest('hex') : null;
+    
     await db.query(
         `UPDATE users 
-         SET first_login_ip = $1, first_login_country = $2, first_login_at = NOW(),
-             last_login_ip = $1, last_activity_at = NOW(), user_agent = $3,
-             device_id = COALESCE(device_id, $4)
+         SET encrypted_first_login_ip = $1, first_login_country = $2, first_login_at = NOW(),
+             encrypted_last_login_ip = $1, last_activity_at = NOW(), 
+             encrypted_user_agent = $3, hashed_device_id = COALESCE(hashed_device_id, $4)
          WHERE id = $5`,
-        [clientIp, country, userAgent, deviceId, userId]
+        [encryptedFirstLoginIp, country, encryptedUserAgent, hashedDeviceId, userId]
     );
 }
 
 /**
- * 更新用戶最後登錄信息
+ * 更新用戶最後登錄信息（支援 PII 加密）
  */
 async function updateLastLoginInfo(userId, clientIp, userAgent, deviceId) {
+    const encryptionKey = process.env.ENCRYPTION_KEY_PII;
+    
+    if (!encryptionKey) {
+        console.warn('[UserService] ENCRYPTION_KEY_PII not configured, storing PII in plaintext (insecure!)');
+        // 降級方案：如果未配置加密密鑰，保持舊欄位（明文）
+        await db.query(
+            `UPDATE users 
+             SET last_login_ip = $1, last_activity_at = NOW(), user_agent = $2,
+                 device_id = COALESCE(device_id, $3)
+             WHERE id = $4`,
+            [clientIp, userAgent, deviceId, userId]
+        );
+        return;
+    }
+    
+    // 加密 PII 資料
+    const encryptedLastLoginIp = encrypt(clientIp, encryptionKey);
+    const encryptedUserAgent = encrypt(userAgent || '', encryptionKey);
+    const hashedDeviceId = deviceId ? crypto.createHash('sha256').update(deviceId).digest('hex') : null;
+    
     await db.query(
         `UPDATE users 
-         SET last_login_ip = $1, last_activity_at = NOW(), user_agent = $2,
-             device_id = COALESCE(device_id, $3)
+         SET encrypted_last_login_ip = $1, last_activity_at = NOW(), 
+             encrypted_user_agent = $2, hashed_device_id = COALESCE(hashed_device_id, $3)
          WHERE id = $4`,
-        [clientIp, userAgent, deviceId, userId]
+        [encryptedLastLoginIp, encryptedUserAgent, hashedDeviceId, userId]
     );
 }
 
 /**
- * 插入用戶登錄日誌
+ * 插入用戶登錄日誌（支援 PII 加密）
  */
 async function insertUserLoginLog(userId, loginIp, loginCountry, deviceId, userAgent) {
+    const encryptionKey = process.env.ENCRYPTION_KEY_PII;
+    
+    if (!encryptionKey) {
+        console.warn('[UserService] ENCRYPTION_KEY_PII not configured, storing PII in plaintext (insecure!)');
+        // 降級方案：使用舊欄位
+        await db.query(
+            `INSERT INTO user_login_logs (user_id, login_ip, login_country, device_id, user_agent) 
+             VALUES ($1, $2, $3, $4, $5)`,
+            [userId, loginIp, loginCountry, deviceId, userAgent]
+        );
+        return;
+    }
+    
+    // 加密 PII 資料
+    const encryptedLoginIp = encrypt(loginIp, encryptionKey);
+    const hashedDeviceId = deviceId ? crypto.createHash('sha256').update(deviceId).digest('hex') : null;
+    
     await db.query(
-        `INSERT INTO user_login_logs (user_id, login_ip, login_country, device_id, user_agent) 
+        `INSERT INTO user_login_logs (user_id, encrypted_login_ip, login_country, hashed_device_id, user_agent) 
          VALUES ($1, $2, $3, $4, $5)`,
-        [userId, loginIp, loginCountry, deviceId, userAgent]
+        [userId, encryptedLoginIp, loginCountry, hashedDeviceId, userAgent]
     );
 }
 
@@ -342,6 +402,101 @@ async function processLevelUpgrade(userId, currentLevel, nextLevelConfig, client
     }
 }
 
+/**
+ * 解密用戶 PII 資料（用於管理後台展示或 GDPR 資料匯出）
+ * @param {Object} user - 用戶記錄
+ * @returns {Object} 解密後的用戶資料
+ */
+function decryptUserPII(user) {
+    const encryptionKey = process.env.ENCRYPTION_KEY_PII;
+    
+    if (!encryptionKey) {
+        console.warn('[UserService] ENCRYPTION_KEY_PII not configured, cannot decrypt PII');
+        return user;
+    }
+    
+    const decryptedUser = { ...user };
+    
+    try {
+        // 解密 Email
+        if (user.encrypted_email) {
+            decryptedUser.email = decrypt(user.encrypted_email, encryptionKey);
+        }
+        
+        // 解密 IP 地址
+        if (user.encrypted_registration_ip) {
+            decryptedUser.registration_ip = decrypt(user.encrypted_registration_ip, encryptionKey);
+        }
+        if (user.encrypted_first_login_ip) {
+            decryptedUser.first_login_ip = decrypt(user.encrypted_first_login_ip, encryptionKey);
+        }
+        if (user.encrypted_last_login_ip) {
+            decryptedUser.last_login_ip = decrypt(user.encrypted_last_login_ip, encryptionKey);
+        }
+        
+        // 解密 User Agent
+        if (user.encrypted_user_agent) {
+            decryptedUser.user_agent = decrypt(user.encrypted_user_agent, encryptionKey);
+        }
+        
+        // Device ID 為單向雜湊，無法還原
+        decryptedUser.device_id = '[HASHED]';
+        
+    } catch (error) {
+        console.error('[UserService] Failed to decrypt user PII:', error);
+    }
+    
+    return decryptedUser;
+}
+
+/**
+ * 根據 Email 查詢用戶（使用 HMAC 索引）
+ * @param {string} email - 用戶 Email
+ * @returns {Promise<Object|null>} 用戶記錄（已解密）
+ */
+async function getUserByEmail(email) {
+    const encryptionKey = process.env.ENCRYPTION_KEY_PII;
+    
+    if (!encryptionKey) {
+        console.warn('[UserService] ENCRYPTION_KEY_PII not configured, falling back to plaintext query');
+        // 降級方案：查詢舊欄位（如果存在）
+        const result = await db.query('SELECT * FROM users WHERE profile_email = $1', [email]);
+        return result.rows[0] || null;
+    }
+    
+    const emailHash = hashForIndex(email, encryptionKey);
+    const result = await db.query('SELECT * FROM users WHERE email_hash = $1', [emailHash]);
+    
+    if (result.rows[0]) {
+        return decryptUserPII(result.rows[0]);
+    }
+    
+    return null;
+}
+
+/**
+ * 更新用戶 Email（加密儲存）
+ * @param {number} userId - 用戶 ID
+ * @param {string} email - 新 Email
+ */
+async function updateUserEmail(userId, email) {
+    const encryptionKey = process.env.ENCRYPTION_KEY_PII;
+    
+    if (!encryptionKey) {
+        console.warn('[UserService] ENCRYPTION_KEY_PII not configured, storing email in plaintext (insecure!)');
+        await db.query('UPDATE users SET profile_email = $1 WHERE id = $2', [email, userId]);
+        return;
+    }
+    
+    const encryptedEmail = encrypt(email, encryptionKey);
+    const emailHash = hashForIndex(email, encryptionKey);
+    
+    await db.query(
+        'UPDATE users SET encrypted_email = $1, email_hash = $2 WHERE id = $3',
+        [encryptedEmail, emailHash, userId]
+    );
+}
+
 module.exports = {
     getUserByUsername,
     getUserById,
@@ -361,6 +516,9 @@ module.exports = {
     updateLastLoginInfo,
     insertUserLoginLog,
     checkAndUpgradeUserLevel,
-    processLevelUpgrade
+    processLevelUpgrade,
+    decryptUserPII,
+    getUserByEmail,
+    updateUserEmail
 };
 

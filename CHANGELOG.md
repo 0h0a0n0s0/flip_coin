@@ -2,7 +2,51 @@
 
 本文档记录项目的重要版本更新和功能变更。
 
-## 重构版本 (当前)
+## 安全强化版本 (当前)
+
+### Phase 1 - 数据加密与审计日志强化 (2026-02-12)
+
+#### 🔐 数据加密
+- **2FA Secret 加密**: 使用 AES-256-GCM 加密管理员 Google Authenticator 密钥
+  - 新增 `encryptionUtils.js` 工具（加密/解密/索引哈希）
+  - 新增 `encrypted_google_auth_secret` 字段（`admin_users` 表）
+  - 数据库迁移：`packages/database/migrations/add_encrypted_2fa.sql`
+  - 迁移脚本：`apps/backend-legacy/scripts/migrate-2fa-secrets.js`
+  - 环境变量：`ENCRYPTION_KEY_2FA`（64 位十六进制密钥）
+
+#### 📋 审计日志强化
+- **失败登入记录**: 记录所有登入失败场景（Phase 1 新增）
+  - 用户不存在
+  - 密码错误
+  - 2FA 验证码错误
+- **IP 遮罩**: 所有审计日志中的 IP 地址自动遮罩（如 `192.168.***.***`）
+- **敏感数据遮罩**: 扩展 `maskUtils.js` 支持 12 种类型
+  - Email、IP、Device ID、Phone、Sensitive（密码/密钥）、地址、交易哈希、用户 ID
+
+#### 🔒 2FA 安全强化
+- **时间窗口缩减**: TOTP 验证窗口从 `2`（150秒）缩减至 `1`（90秒）
+- **更严格验证**: 降低过期验证码被接受的风险
+
+#### 🌏 本地化改进
+- **中文错误消息**: 所有 admin 登入接口错误消息改为简体中文
+  - `"Invalid credentials."` → `"用户名或密码错误"`
+  - `"2FA verification failed"` → `"二次验证失败"`
+  - 符合宪法 `.cursor/rules/flip-coin-rules.mdc` 第 9 章规范
+
+#### 📚 文档新增
+- **部署指南**: `apps/backend-legacy/docs/2FA_ENCRYPTION_GUIDE.md`（详细部署流程）
+- **日志指南**: `apps/backend-legacy/docs/LOGGING_GUIDE.md`（日志规范与最佳实践）
+- **宪法更新**: 新增第 10-14 章（数据分类、加密、传输安全、日志审计、隐私合规）
+
+#### 🛠️ 开发体验改进
+- **自动化部署脚本**: `deploy-phase1.sh`（一键部署 Phase 1）
+- **测试工具**:
+  - `test-login.sh`（交互式登入测试）
+  - `reset-admin-password.sh`（密码重置工具）
+
+---
+
+## 重构版本
 
 ### 前端重构 - 单页应用布局重构
 - **单页应用架构**: 重构为单页应用（SPA）架构

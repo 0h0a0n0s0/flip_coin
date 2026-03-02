@@ -30,6 +30,7 @@ import CollectionLogs from '../views/CollectionLogs.vue'
 import LoginQuery from '../views/LoginQuery.vue'
 import GameManagement from '../views/games/GameManagement.vue'
 import I18nManagement from '../views/settings/I18nManagement.vue'
+import DataRetentionPolicy from '../views/settings/DataRetentionPolicy.vue'
 
 const routes = [
   { path: '/login', name: 'Login', component: Login },
@@ -56,6 +57,7 @@ const routes = [
       { path: '/settings/i18n', name: 'I18nManagement', component: I18nManagement, meta: { requiresAuth: true, permission: 'settings_game:read', title: '多语系设定' } },
       { path: '/settings/blocked-regions', name: 'BlockedRegions', component: BlockedRegions, meta: { requiresAuth: true, permission: 'settings_regions:read', title: '阻挡地区设定' } },
       { path: '/settings/user-levels', name: 'UserLevels', component: UserLevels, meta: { requiresAuth: true, permission: 'settings_levels:read', title: '用户等级设定' } },
+      { path: '/settings/data-retention', name: 'DataRetentionPolicy', component: DataRetentionPolicy, meta: { requiresAuth: true, permission: 'settings_game:read', title: '資料保存規範' } },
       { path: '/risk/same-ip', name: 'SameIpMonitor', component: SameIpMonitor, meta: { requiresAuth: true, permission: 'users:update_status', title: '同IP风控监控' } },
       { path: '/admin/accounts', name: 'AccountManagement', component: AccountManagement, meta: { requiresAuth: true, permission: 'admin_accounts:read', title: '帐号管理' } },
       { path: '/admin/permissions', name: 'Permissions', component: Permissions, meta: { requiresAuth: true, permission: 'admin_permissions:read', title: '权限组设定' } },

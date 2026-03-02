@@ -128,6 +128,7 @@
             <el-menu-item index="/settings/game-parameters" v-if="$permissions.has('settings_game', 'read')">系统参数</el-menu-item>
             <el-menu-item index="/settings/blocked-regions" v-if="$permissions.has('settings_regions', 'read')">阻挡地区</el-menu-item>
             <el-menu-item index="/settings/user-levels" v-if="$permissions.has('settings_levels', 'read')">用户等级</el-menu-item>
+            <el-menu-item index="/settings/data-retention" v-if="$permissions.has('settings_game', 'read')">資料保存規範</el-menu-item>
           </el-sub-menu>
         </el-menu>
       </el-aside> 

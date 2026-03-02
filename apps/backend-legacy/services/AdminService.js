@@ -3,6 +3,7 @@
 
 const db = require('@flipcoin/database');
 const bcrypt = require('bcryptjs');
+const { encrypt, decrypt } = require('../utils/encryptionUtils');
 
 /**
  * 根據用戶名獲取管理員
@@ -66,10 +67,15 @@ async function hashAdminPassword(password) {
  */
 async function getAdminProfile(adminId) {
     const result = await db.query(
-        'SELECT id, username, nickname, google_auth_secret FROM admin_users WHERE id = $1',
+        'SELECT id, username, nickname, encrypted_google_auth_secret FROM admin_users WHERE id = $1',
         [adminId]
     );
-    return result.rows[0] || null;
+    const admin = result.rows[0];
+    if (admin && admin.encrypted_google_auth_secret) {
+        // 前端只需要知道是否已綁定，不需要實際密鑰
+        admin.google_auth_secret = '[ENCRYPTED]';
+    }
+    return admin || null;
 }
 
 /**
@@ -90,13 +96,14 @@ async function updateAdminProfile(adminId, updates, params) {
 
 /**
  * 檢查管理員是否已綁定 Google Auth
+ * @returns {boolean} 是否已綁定（返回 true/false，不返回實際密鑰）
  */
 async function checkAdminGoogleAuthBound(adminId) {
     const result = await db.query(
-        'SELECT google_auth_secret FROM admin_users WHERE id = $1',
+        'SELECT encrypted_google_auth_secret FROM admin_users WHERE id = $1',
         [adminId]
     );
-    return result.rows[0]?.google_auth_secret || null;
+    return !!(result.rows[0]?.encrypted_google_auth_secret);
 }
 
 /**
@@ -121,24 +128,50 @@ async function getPlatformName() {
 }
 
 /**
- * 更新管理員 Google Auth 密鑰
+ * 更新管理員 Google Auth 密鑰（加密存儲）
+ * @param {number} adminId - 管理員 ID
+ * @param {string} secret - Base32 格式的 2FA 密鑰
  */
 async function updateAdminGoogleAuthSecret(adminId, secret) {
+    const encryptionKey = process.env.ENCRYPTION_KEY_2FA;
+    if (!encryptionKey) {
+        throw new Error('ENCRYPTION_KEY_2FA not found in environment variables');
+    }
+    
+    const encryptedSecret = encrypt(secret, encryptionKey);
     await db.query(
-        'UPDATE admin_users SET google_auth_secret = $1 WHERE id = $2',
-        [secret, adminId]
+        'UPDATE admin_users SET encrypted_google_auth_secret = $1 WHERE id = $2',
+        [encryptedSecret, adminId]
     );
 }
 
 /**
- * 獲取管理員 Google Auth 密鑰
+ * 獲取管理員 Google Auth 密鑰（解密）
+ * @param {number} adminId - 管理員 ID
+ * @returns {string|null} Base32 格式的明文密鑰
  */
 async function getAdminGoogleAuthSecret(adminId) {
     const result = await db.query(
-        'SELECT google_auth_secret FROM admin_users WHERE id = $1',
+        'SELECT encrypted_google_auth_secret FROM admin_users WHERE id = $1',
         [adminId]
     );
-    return result.rows[0]?.google_auth_secret || null;
+    
+    const encryptedSecret = result.rows[0]?.encrypted_google_auth_secret;
+    if (!encryptedSecret) {
+        return null;
+    }
+    
+    const encryptionKey = process.env.ENCRYPTION_KEY_2FA;
+    if (!encryptionKey) {
+        throw new Error('ENCRYPTION_KEY_2FA not found in environment variables');
+    }
+    
+    try {
+        return decrypt(encryptedSecret, encryptionKey);
+    } catch (error) {
+        console.error(`[AdminService] Failed to decrypt 2FA secret for admin ${adminId}:`, error.message);
+        throw new Error('Failed to decrypt 2FA secret');
+    }
 }
 
 /**
@@ -146,7 +179,7 @@ async function getAdminGoogleAuthSecret(adminId) {
  */
 async function clearAdminGoogleAuthSecret(adminId) {
     await db.query(
-        'UPDATE admin_users SET google_auth_secret = NULL WHERE id = $1',
+        'UPDATE admin_users SET encrypted_google_auth_secret = NULL WHERE id = $1',
         [adminId]
     );
 }

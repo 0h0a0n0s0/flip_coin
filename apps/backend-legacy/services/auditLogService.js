@@ -1,4 +1,5 @@
 const db = require('@flipcoin/database');
+const { encrypt } = require('../utils/encryptionUtils');
 
 async function recordAuditLog({
     adminId,
@@ -11,9 +12,23 @@ async function recordAuditLog({
     userAgent
 }) {
     try {
+        const encryptionKey = process.env.ENCRYPTION_KEY_PII;
+        
+        // 如果配置了加密密鑰，則加密 IP 地址
+        let encryptedIp = null;
+        if (encryptionKey && ipAddress) {
+            try {
+                encryptedIp = encrypt(ipAddress, encryptionKey);
+            } catch (encryptError) {
+                console.error('[AuditLog] Failed to encrypt IP address:', encryptError);
+                // 降級：如果加密失敗，不記錄 IP（安全優先）
+                encryptedIp = null;
+            }
+        }
+        
         await db.query(
             `INSERT INTO admin_audit_logs
-             (admin_id, admin_username, action, resource, resource_id, description, ip_address, user_agent)
+             (admin_id, admin_username, action, resource, resource_id, description, encrypted_ip_address, user_agent)
              VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
             [
                 adminId || null,
@@ -22,7 +37,7 @@ async function recordAuditLog({
                 resource || null,
                 resourceId || null,
                 description || null,
-                ipAddress || null,
+                encryptedIp,
                 userAgent || null
             ]
         );
