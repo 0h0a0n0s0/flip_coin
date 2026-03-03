@@ -1,7 +1,5 @@
 <template>
-  <!-- Banner 輪播容器：375:220 比例 -->
   <div class="relative w-full aspect-[375/220] overflow-hidden">
-    <!-- 圖片層：淡入淡出過渡效果 -->
     <transition-group name="fade">
       <img
         v-for="(banner, index) in banners"
@@ -13,10 +11,8 @@
       />
     </transition-group>
 
-    <!-- 底部漸層融合層：完美過渡到設計圖底色 -->
     <div class="absolute bottom-0 left-0 w-full h-1/3 bg-gradient-to-t from-[#0B132B] to-transparent pointer-events-none z-10"></div>
 
-    <!-- 分頁指示器 (Pagination Dots) - 距離 Tab 區上邊 10px -->
     <div class="absolute bottom-[26px] w-full flex justify-center gap-1.5 z-20">
       <button
         v-for="(banner, index) in banners"

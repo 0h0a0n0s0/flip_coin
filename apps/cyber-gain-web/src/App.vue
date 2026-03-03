@@ -1,7 +1,5 @@
 <template>
-  <!-- 最外層容器：滿寬滿高，深灰背景，Flexbox 水平置中 -->
   <div class="min-h-screen w-full bg-[#121212] flex justify-center">
-    <!-- APP 主容器：限制最大寬度 500px，設計圖底色，相對定位 -->
     <div class="w-full max-w-[500px] min-h-screen bg-[#0B132B] relative overflow-x-hidden">
       <router-view />
     </div>

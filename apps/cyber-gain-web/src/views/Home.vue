@@ -1,17 +1,12 @@
 <template>
   <div class="home-page">
-    <!-- 引入頂部導航欄（絕對定位懸浮） -->
     <Header />
 
-    <!-- Banner 輪播區塊 -->
     <Banner />
 
-    <!-- 主選單 Tab (覆蓋在 Banner 底部) -->
     <HomeTabs />
 
-    <!-- 遊戲分類區塊容器 -->
     <div class="space-y-6 pt-4 px-4">
-      <!-- 熱門遊戲區塊（使用大尺寸卡片） -->
       <GameSection
         title="热门游戏"
         subtitle="24小时交易量领先"
@@ -20,7 +15,6 @@
         @view-all="handleViewAll('hot')"
       />
 
-      <!-- 體育區塊 -->
       <GameSection
         title="体育"
         subtitle="实时赛事投注"
@@ -28,7 +22,6 @@
         @view-all="handleViewAll('sports')"
       />
 
-      <!-- 真人娛樂區塊 -->
       <GameSection
         title="真人娱乐"
         subtitle="线上互动体验"
@@ -36,7 +29,6 @@
         @view-all="handleViewAll('live')"
       />
 
-      <!-- 撲克區塊 -->
       <GameSection
         title="扑克"
         subtitle="经典策略游戏"
@@ -44,7 +36,6 @@
         @view-all="handleViewAll('poker')"
       />
 
-      <!-- 老虎機區塊 -->
       <GameSection
         title="老虎机"
         subtitle="刺激转盘奖励"
@@ -52,7 +43,6 @@
         @view-all="handleViewAll('slots')"
       />
 
-      <!-- 街機區塊 -->
       <GameSection
         title="街机"
         subtitle="复古经典游戏"
@@ -61,15 +51,12 @@
       />
     </div>
 
-    <!-- 排行榜區塊（與街機間距 12px = mt-3）-->
     <Leaderboard />
 
-    <!-- Footer 區塊（確保底部有足夠空間，底部导航栏高度56px）-->
     <div class="pb-20">
       <Footer />
     </div>
 
-    <!-- 底部导航栏 -->
     <BottomNav />
   </div>
 </template>

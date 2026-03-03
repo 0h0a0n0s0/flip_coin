@@ -1,25 +1,18 @@
 <template>
-  <!-- 分類區塊容器（增加底部留白） -->
   <section class="w-full mb-8">
-    <!-- 標題區塊（帶微妙漸變背景） -->
     <div class="flex items-center justify-between mb-3 px-2 py-1.5 -mx-2 rounded-lg bg-gradient-to-r from-yellow-500/10 to-transparent">
-      <!-- 左側：裝飾線 + 標題與副標題（垂直居中對齊） -->
       <div class="flex items-center gap-2">
-        <!-- 黃色垂直裝飾線（與標題等高） -->
         <div class="w-1 h-5 bg-[#fdc700] rounded-full shrink-0"></div>
         
-        <!-- 主標題（白色粗體） -->
         <h2 class="text-white text-base font-bold leading-tight whitespace-nowrap">
           {{ title }}
         </h2>
         
-        <!-- 副標題（灰色小字、斜體，垂直居中） -->
         <p v-if="subtitle" class="text-[10px] text-[#64748B] italic whitespace-nowrap">
           {{ subtitle }}
         </p>
       </div>
       
-      <!-- 右側：查看全部按鈕 -->
       <button 
         class="flex items-center gap-1 text-[#fdc700] text-sm font-medium whitespace-nowrap shrink-0"
         @click="$emit('view-all')"
@@ -31,9 +24,7 @@
       </button>
     </div>
     
-    <!-- 卡片列表區塊：橫向滾動 + 動態漸層遮罩 -->
     <div class="relative">
-      <!-- 橫向滾動容器 -->
       <div 
         ref="scrollContainer"
         @scroll="handleScroll"

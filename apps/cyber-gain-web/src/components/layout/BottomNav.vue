@@ -1,9 +1,6 @@
 <template>
-  <!-- 底部导航栏：固定在页面底部 -->
   <nav class="bottom-nav">
-    <!-- 导航项容器 -->
     <div class="nav-container">
-      <!-- 选单 -->
       <button 
         class="nav-item"
         :class="{ 'active': activeTab === 'menu' }"
@@ -19,7 +16,6 @@
         <span class="nav-label">选单</span>
       </button>
 
-      <!-- 活动 -->
       <button 
         class="nav-item"
         :class="{ 'active': activeTab === 'activity' }"
@@ -35,7 +31,6 @@
         <span class="nav-label">活动</span>
       </button>
 
-      <!-- 推荐 -->
       <button 
         class="nav-item"
         :class="{ 'active': activeTab === 'recommend' }"
@@ -51,7 +46,6 @@
         <span class="nav-label">推荐</span>
       </button>
 
-      <!-- VIP -->
       <button 
         class="nav-item"
         :class="{ 'active': activeTab === 'vip' }"
@@ -67,7 +61,6 @@
         <span class="nav-label">VIP</span>
       </button>
 
-      <!-- 聊天 -->
       <button 
         class="nav-item"
         :class="{ 'active': activeTab === 'chat' }"
