@@ -1,8 +1,8 @@
 <template>
-  <!-- Auth 獨立頁（登入/註冊） -->
+  <!-- Auth 獨立頁（登入/註冊）：依裝置自適應，可完整顯示時無捲軸 -->
   <div
-    class="register-page fixed top-0 left-0 w-full bg-[#0F182F] overflow-y-auto overscroll-contain"
-    style="height: 100dvh; max-height: 100dvh; overscroll-behavior: contain; -webkit-overflow-scrolling: touch; min-height: 100dvh;"
+    class="register-page fixed top-0 left-0 w-full bg-[#0F182F] flex flex-col overscroll-contain"
+    style="height: 100dvh; max-height: 100dvh; overscroll-behavior: contain; -webkit-overflow-scrolling: touch;"
   >
       <!-- Background Effects (光晕为最底层，仅底色之上) + Gradient transition -->
       <div class="absolute top-0 left-0 right-0 h-[240px] overflow-hidden pointer-events-none z-0">
@@ -28,8 +28,8 @@
         </div>
       </div>
 
-      <!-- Main Content Container：内容自然高度，放得下则不出现卷轴；放不下才可滚动。pb-[88px] 确保社交图标与底部保持距离 -->
-      <div class="relative w-full max-w-[375px] mx-auto min-h-min z-10 pb-[88px]">
+      <!-- Main Content Container：flex-1 + min-h-0 + overflow-y-auto，放得下則不出現捲軸；放不下才可滾動 -->
+      <div class="relative w-full max-w-[375px] mx-auto flex-1 min-h-0 overflow-y-auto z-10 pb-12 sm:pb-[88px]">
         <!-- Banner Section -->
         <div class="relative h-[200px] w-full">
           <!-- 移除 Top Gradient Overlay，光晕不影响宝箱和文字 -->
@@ -123,10 +123,10 @@
         </div>
 
 
-        <!-- Form Container：使用较小间距让登入页在 iPhone SE 等小屏可一屏显示，无需卷轴 -->
-        <div class="w-[327px] mx-auto mt-4 sm:mt-5 flex flex-col gap-4 sm:gap-5">
+        <!-- Form Container：小屏緊湊間距以利一屏顯示；大屏舒適間距 -->
+        <div class="w-[327px] mx-auto mt-3 sm:mt-5 flex flex-col gap-3 sm:gap-5">
           <!-- Login Form -->
-          <div v-if="activeTab === 'login'" class="flex flex-col gap-5 sm:gap-[30px]">
+          <div v-if="activeTab === 'login'" class="flex flex-col gap-3 sm:gap-[30px]">
             <!-- Form Fields -->
             <div class="flex flex-col gap-3">
               <!-- 帳號 Input -->
@@ -188,7 +188,7 @@
           </div>
 
           <!-- Register Form -->
-          <div v-if="activeTab === 'register'" class="flex flex-col gap-5">
+          <div v-if="activeTab === 'register'" class="flex flex-col gap-3 sm:gap-5">
             <!-- Form Fields -->
             <div class="flex flex-col gap-3">
               <!-- 帳號 Input -->
