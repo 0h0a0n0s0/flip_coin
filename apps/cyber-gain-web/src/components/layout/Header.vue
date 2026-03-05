@@ -27,16 +27,16 @@
 </template>
 
 <script setup>
-// 登入按鈕處理函數
+import { useRouter } from 'vue-router'
+
+const router = useRouter()
+
 const handleLogin = () => {
-  console.log('[Header] 登入按鈕點擊')
-  // 後續可路由到登入頁
+  router.push({ path: '/auth', query: { tab: 'login' } })
 }
 
-// 註冊按鈕處理函數
 const handleRegister = () => {
-  console.log('[Header] 註冊按鈕點擊')
-  // 後續可路由到註冊頁
+  router.push({ path: '/auth', query: { tab: 'register' } })
 }
 </script>
 

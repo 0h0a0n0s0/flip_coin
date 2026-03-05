@@ -53,7 +53,7 @@
 
     <Leaderboard />
 
-    <div class="pb-20">
+    <div class="pb-[72px]">
       <Footer />
     </div>
 
