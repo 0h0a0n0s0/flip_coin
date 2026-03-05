@@ -95,6 +95,7 @@ services:
       - /usr/src/app/apps/cyber-gain-web/node_modules  # 保護 node_modules
     environment:
       - NODE_ENV=development
+      - VITE_API_TARGET=http://api:3000
     restart: unless-stopped
 
   # Nginx 代理服務

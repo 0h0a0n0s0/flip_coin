@@ -13,41 +13,64 @@ export function useAuth() {
 
   /**
    * 处理用户注册
+   * @param {string} username - 帳號（3-20 位英數底線）
+   * @param {string} password - 密碼（6-64 字無空白）
+   * @param {string} [confirmPassword] - 確認密碼（可選，傳入時須與 password 一致）
+   * @param {string} [referrerCode] - 推薦碼（可選，註冊成功後會嘗試綁定）
    */
-  async function handleRegister(username, password, confirmPassword) {
-    if (password !== confirmPassword) {
+  async function handleRegister(username, password, confirmPassword, referrerCode) {
+    if (confirmPassword !== undefined && password !== confirmPassword) {
       notifyError(t('notifications.register_failed') + ': ' + t('auth.confirm_password_placeholder'))
       return false
     }
-    if (username.length < 3 || username.length > 20) {
+    const trimmedUsername = (username || '').trim()
+    if (trimmedUsername.length < 3 || trimmedUsername.length > 20) {
       notifyError(t('auth.username_register_placeholder'))
       return false
     }
-    if (password.length < 6) {
+    if (!/^[a-zA-Z0-9_]+$/.test(trimmedUsername)) {
+      notifyError(t('auth.username_register_placeholder'))
+      return false
+    }
+    if (!password || password.length < 6 || password.length > 64) {
+      notifyError(t('auth.password_register_placeholder'))
+      return false
+    }
+    if (/\s/.test(password)) {
       notifyError(t('auth.password_register_placeholder'))
       return false
     }
 
     loading.value = true
     try {
-      const response = await api.register(username, password)
-      // (★★★ 修復：適配標準 API 響應格式 { success: true, data: { user, token } } ★★★)
+      const response = await api.register(trimmedUsername, password)
       const data = (response && response.success && response.data) ? response.data : response
       const { user, token } = data
-      
+
       if (!user || !token) {
         throw new Error('註冊響應格式錯誤')
       }
-      
+
       notifySuccess(t('notifications.register_success'))
-      
+
       setToken(token)
       setCurrentUser(user)
-      
+
+      if (referrerCode && typeof referrerCode === 'string' && referrerCode.trim()) {
+        try {
+          await api.bindReferrer(token, referrerCode.trim())
+          notifySuccess(t('notifications.referrer_bind_success'))
+        } catch (bindErr) {
+          notifyWarning(t('notifications.referrer_bind_failed') + ': ' + (bindErr.message || ''))
+        }
+      }
+
       return true
     } catch (error) {
       if (error.status === 400) {
         notifyWarning(error.message)
+      } else if (error.status >= 500) {
+        notifyError(t('notifications.register_failed') + ': ' + (error.message || '') + '。' + t('notifications.server_error_hint'))
       } else {
         notifyError(t('notifications.register_failed') + ': ' + (error.message || ''))
       }
@@ -61,14 +84,19 @@ export function useAuth() {
    * 处理用户登录
    */
   async function handleLogin(username, password) {
-    if (!username || !password) {
+    const trimmedUsername = (username || '').trim()
+    if (!trimmedUsername || !password) {
       notifyError(t('auth.username_placeholder') + ' / ' + t('auth.password_placeholder'))
+      return false
+    }
+    if (trimmedUsername.length < 3 || trimmedUsername.length > 20 || !/^[a-zA-Z0-9_]+$/.test(trimmedUsername)) {
+      notifyError(t('auth.username_placeholder'))
       return false
     }
     
     loading.value = true
     try {
-      const response = await api.login(username, password)
+      const response = await api.login(trimmedUsername, password)
       // (★★★ 修復：適配標準 API 響應格式 { success: true, data: { user, token } } ★★★)
       const data = (response && response.success && response.data) ? response.data : response
       const { user, token } = data
@@ -86,6 +114,8 @@ export function useAuth() {
     } catch (error) {
       if (error.status === 401) {
         notifyWarning(error.message)
+      } else if (error.status >= 500) {
+        notifyError(t('notifications.login_failed') + ': ' + (error.message || '') + '。' + t('notifications.server_error_hint'))
       } else {
         notifyError(t('notifications.login_failed') + ': ' + (error.message || ''))
       }

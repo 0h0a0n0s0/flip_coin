@@ -21,6 +21,15 @@
     "bet": "投注",
     "win": "獲勝",
     "lose": "失敗"
+  },
+  "auth": {
+    "agree_terms_required": "請先同意服務條款",
+    "logging_in": "登入中...",
+    "registering": "註冊中...",
+    "register_account": "註冊帳戶"
+  },
+  "notifications": {
+    "server_error_hint": "若持續發生，請確認後端服務 (port 3000) 是否已啟動"
   }
 }
 

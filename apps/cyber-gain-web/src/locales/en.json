@@ -58,7 +58,11 @@
     "password_placeholder": "Enter password",
     "username_register_placeholder": "Enter username (3-20 characters)",
     "password_register_placeholder": "Enter password (at least 6 characters)",
-    "confirm_password_placeholder": "Re-enter password"
+    "confirm_password_placeholder": "Re-enter password",
+    "agree_terms_required": "Please agree to the terms first",
+    "logging_in": "Logging in...",
+    "registering": "Registering...",
+    "register_account": "Register Account"
   },
   "header": {
     "deposit": "Deposit",
@@ -238,6 +242,7 @@
   "notifications": {
     "login_success": "Login successful",
     "login_failed": "Login failed",
+    "server_error_hint": "If this persists, please ensure the backend service (port 3000) is running",
     "register_success": "Registration successful! Auto-logged in.",
     "register_failed": "Registration failed",
     "logout_success": "You have successfully logged out.",

@@ -38,11 +38,20 @@ function authRoutes(router, passport) {
                 console.error('[Register] Failed to record auto-login info:', error);
                 // 不阻擋註冊流程，僅記錄錯誤
             }
-            
-            const payload = { id: user.id, username: user.username };
-            const token = jwt.sign(payload, process.env.JWT_SECRET, { expiresIn: '8h' });
-            delete user.password_hash;
-            return sendSuccess(res, { user, token }, 201);
+
+            try {
+                if (!process.env.JWT_SECRET) {
+                    console.error('[Auth] JWT_SECRET 未配置');
+                    return sendError(res, 503, '服務暫時不可用，請稍後再試。');
+                }
+                const payload = { id: user.id, username: user.username };
+                const token = jwt.sign(payload, process.env.JWT_SECRET, { expiresIn: '8h' });
+                delete user.password_hash;
+                return sendSuccess(res, { user, token }, 201);
+            } catch (tokenError) {
+                console.error('[Register] Token 生成失敗:', tokenError);
+                return sendError(res, 500, '登入處理失敗，請稍後再試。');
+            }
         })(req, res, next);
     });
 
@@ -82,11 +91,20 @@ function authRoutes(router, passport) {
             } catch (error) {
                 console.error('[Login] Failed to update user login info:', error);
             }
-            
-            const payload = { id: user.id, username: user.username };
-            const token = jwt.sign(payload, process.env.JWT_SECRET, { expiresIn: '8h' });
-            delete user.password_hash;
-            return sendSuccess(res, { user, token });
+
+            try {
+                if (!process.env.JWT_SECRET) {
+                    console.error('[Auth] JWT_SECRET 未配置');
+                    return sendError(res, 503, '服務暫時不可用，請稍後再試。');
+                }
+                const payload = { id: user.id, username: user.username };
+                const token = jwt.sign(payload, process.env.JWT_SECRET, { expiresIn: '8h' });
+                delete user.password_hash;
+                return sendSuccess(res, { user, token });
+            } catch (tokenError) {
+                console.error('[Login] Token 生成失敗:', tokenError);
+                return sendError(res, 500, '登入處理失敗，請稍後再試。');
+            }
         })(req, res, next);
     });
 }

@@ -179,10 +179,11 @@
 
               <button
                 @click="handleLogin"
-                class="w-full h-11 rounded-lg flex items-center justify-center text-[#101828] text-[14px] font-medium"
+                :disabled="loading"
+                class="w-full h-11 rounded-lg flex items-center justify-center text-[#101828] text-[14px] font-medium disabled:opacity-50 disabled:cursor-not-allowed"
                 style="font-family: 'Helvetica Neue', sans-serif; letter-spacing: -0.15px; background: linear-gradient(123.38deg, #F6FF92 0%, #FDC700 100%); box-shadow: 0px 2px 0px 0px #A27F00, 0px 0px 5.25px 0px rgba(255, 229, 0, 0.7);"
               >
-                登入
+                {{ loading ? t('auth.logging_in') : t('auth.login') }}
               </button>
             </div>
           </div>
@@ -255,11 +256,11 @@
 
               <button
                 @click="handleRegister"
-                :disabled="!registerForm.agreeTerms"
-                class="w-full h-11 rounded-lg flex items-center justify-center text-[#101828] text-[14px] font-medium disabled:opacity-50"
+                :disabled="!registerForm.agreeTerms || loading"
+                class="w-full h-11 rounded-lg flex items-center justify-center text-[#101828] text-[14px] font-medium disabled:opacity-50 disabled:cursor-not-allowed"
                 style="font-family: 'Helvetica Neue', sans-serif; letter-spacing: -0.15px; background: linear-gradient(123.38deg, #F6FF92 0%, #FDC700 100%); box-shadow: 0px 2px 0px 0px #A27F00, 0px 0px 5.25px 0px rgba(255, 229, 0, 0.7);"
               >
-                注册帐户
+                {{ loading ? t('auth.registering') : t('auth.register_account') }}
               </button>
             </div>
           </div>
@@ -296,9 +297,17 @@
 <script setup>
 import { ref, computed, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
+import { useI18n } from 'vue-i18n'
+import { useAuth } from '@/composables/useAuth.js'
+import { useSocket } from '@/composables/useSocket.js'
+import { getToken } from '@/store/index.js'
+import { notifyError } from '@/utils/notify.js'
 
 const route = useRoute()
 const router = useRouter()
+const { t } = useI18n()
+const { handleLogin: doLogin, handleRegister: doRegister, loading } = useAuth()
+const { initializeSocket } = useSocket()
 
 // activeTab 由 URL query 決定，無效值 fallback 為 register
 const activeTab = computed(() => {
@@ -341,16 +350,35 @@ const registerForm = ref({
 const showLoginPassword = ref(false)
 const showRegisterPassword = ref(false)
 
-const handleLogin = () => {
-  console.log('[Register] 登入', loginForm.value)
+async function handleLogin() {
+  const success = await doLogin(loginForm.value.email, loginForm.value.password)
+  if (success) {
+    const token = getToken()
+    if (token) {
+      initializeSocket(token)
+    }
+    router.push(route.query.redirect || '/')
+  }
 }
 
-const handleRegister = () => {
+async function handleRegister() {
   if (!registerForm.value.agreeTerms) {
-    console.log('[Register] 请先同意服务条款')
+    notifyError(t('auth.agree_terms_required'))
     return
   }
-  console.log('[Register] 注册', registerForm.value)
+  const success = await doRegister(
+    registerForm.value.email,
+    registerForm.value.password,
+    undefined,
+    registerForm.value.referralCode?.trim()
+  )
+  if (success) {
+    const token = getToken()
+    if (token) {
+      initializeSocket(token)
+    }
+    router.push(route.query.redirect || '/')
+  }
 }
 
 const handleGoogleLogin = () => {
