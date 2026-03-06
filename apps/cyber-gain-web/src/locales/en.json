@@ -60,6 +60,8 @@
     "password_register_placeholder": "Enter password (at least 6 characters)",
     "confirm_password_placeholder": "Re-enter password",
     "agree_terms_required": "Please agree to the terms first",
+    "referral_code_not_found": "No such referral code",
+    "referral_code_format_error": "Invalid referral code format",
     "logging_in": "Logging in...",
     "registering": "Registering...",
     "register_account": "Register Account"

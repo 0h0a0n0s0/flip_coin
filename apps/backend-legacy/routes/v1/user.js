@@ -10,7 +10,31 @@ const userService = require('../../services/UserService');
  * @param {Router} router - Express router 實例
  * @param {Object} passport - Passport 實例
  */
+// 推薦碼格式：8 位大寫英數字（與 invite_code 一致）
+const REFERRAL_CODE_REGEX = /^[A-Z0-9]{8}$/;
+
 function userRoutes(router, passport) {
+    // GET /api/v1/validate-referral - 驗證推薦碼（註冊前檢查，無需登入）
+    router.get('/api/v1/validate-referral', async (req, res) => {
+        const code = (req.query.code || '').trim().toUpperCase();
+        if (!code) {
+            return sendSuccess(res, { valid: true }); // 空值視為有效（可不填）
+        }
+        if (!REFERRAL_CODE_REGEX.test(code)) {
+            return sendSuccess(res, { valid: false, error: 'format_error' });
+        }
+        try {
+            const result = await db.query('SELECT 1 FROM users WHERE invite_code = $1', [code]);
+            if (result.rows.length === 0) {
+                return sendSuccess(res, { valid: false, error: 'not_found' });
+            }
+            return sendSuccess(res, { valid: true });
+        } catch (err) {
+            console.error('[API] validate-referral error:', err);
+            return sendError(res, 500, '服务器内部错误。');
+        }
+    });
+
     // GET /api/v1/me - 獲取當前用戶
     router.get('/api/v1/me', passport.authenticate('jwt', { session: false }), (req, res) => {
         return sendSuccess(res, req.user);

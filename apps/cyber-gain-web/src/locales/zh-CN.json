@@ -60,6 +60,8 @@
     "password_register_placeholder": "请输入密码 (至少 6 位)",
     "confirm_password_placeholder": "请再次输入密码",
     "agree_terms_required": "请先同意服务条款",
+    "referral_code_not_found": "无此推荐代码",
+    "referral_code_format_error": "推荐代码格式错误",
     "logging_in": "登入中...",
     "registering": "註冊中...",
     "register_account": "注册帐户"

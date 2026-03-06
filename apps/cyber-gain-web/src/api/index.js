@@ -227,6 +227,16 @@ export function updateNickname(token, nickname) {
 }
 
 /**
+ * 驗證推薦碼（註冊前檢查，無需 token）
+ * @returns {Promise<{ valid: boolean, error?: 'format_error' | 'not_found' }>}
+ */
+export function validateReferralCode(code) {
+    return request(`/validate-referral?code=${encodeURIComponent((code || '').trim())}`, {
+        method: 'GET'
+    });
+}
+
+/**
  * 绑定推荐码
  */
 export function bindReferrer(token, referrerCode) {

@@ -24,6 +24,8 @@
   },
   "auth": {
     "agree_terms_required": "請先同意服務條款",
+    "referral_code_not_found": "無此推薦代碼",
+    "referral_code_format_error": "推薦代碼格式錯誤",
     "logging_in": "登入中...",
     "registering": "註冊中...",
     "register_account": "註冊帳戶"

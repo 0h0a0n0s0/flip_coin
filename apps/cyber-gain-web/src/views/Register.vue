@@ -226,8 +226,11 @@
               </div>
 
               <!-- Referral Code Input -->
-              <div class="h-[52px] rounded-lg">
-                <div class="h-full flex items-center gap-3 px-3 rounded-[5px] bg-[#0b1223] border border-[#1b2a52] focus-within:border-[#355FD1] transition-colors duration-200">
+              <div class="rounded-lg">
+                <div
+                  class="h-[52px] flex items-center gap-3 px-3 rounded-[5px] bg-[#0b1223] border transition-colors duration-200"
+                  :class="referralCodeError ? 'border-[#F04248] focus-within:border-[#F04248]' : 'border-[#1b2a52] focus-within:border-[#355FD1]'"
+                >
                   <img src="/images/auth/promote.svg" alt="" class="w-4 h-4 flex-shrink-0" />
                   <input
                     v-model="registerForm.referralCode"
@@ -235,8 +238,16 @@
                     placeholder="输入推荐或促销代码(可不填)"
                     class="flex-1 bg-transparent border-none outline-none text-white placeholder-[#8a8ca6] text-[14px]"
                     style="font-family: 'Helvetica Neue', sans-serif;"
+                    @input="referralCodeError = null"
                   />
                 </div>
+                <p
+                  v-if="referralCodeError"
+                  class="mt-1 text-[14px] text-[#F04248]"
+                  style="font-family: 'Helvetica Neue', sans-serif;"
+                >
+                  {{ referralCodeError === 'not_found' ? t('auth.referral_code_not_found') : t('auth.referral_code_format_error') }}
+                </p>
               </div>
             </div>
 
@@ -256,7 +267,7 @@
 
               <button
                 @click="handleRegister"
-                :disabled="!registerForm.agreeTerms || loading"
+                :disabled="!registerForm.agreeTerms || loading || !!referralCodeError"
                 class="w-full h-11 rounded-lg flex items-center justify-center text-[#101828] text-[14px] font-medium disabled:opacity-50 disabled:cursor-not-allowed"
                 style="font-family: 'Helvetica Neue', sans-serif; letter-spacing: -0.15px; background: linear-gradient(123.38deg, #F6FF92 0%, #FDC700 100%); box-shadow: 0px 2px 0px 0px #A27F00, 0px 0px 5.25px 0px rgba(255, 229, 0, 0.7);"
               >
@@ -302,6 +313,10 @@ import { useAuth } from '@/composables/useAuth.js'
 import { useSocket } from '@/composables/useSocket.js'
 import { getToken } from '@/store/index.js'
 import { notifyError } from '@/utils/notify.js'
+import * as api from '@/api/index.js'
+
+// 推薦碼格式：8 位大寫英數字
+const REFERRAL_CODE_REGEX = /^[A-Z0-9]{8}$/
 
 const route = useRoute()
 const router = useRouter()
@@ -349,6 +364,7 @@ const registerForm = ref({
 
 const showLoginPassword = ref(false)
 const showRegisterPassword = ref(false)
+const referralCodeError = ref(null) // null | 'format_error' | 'not_found'
 
 async function handleLogin() {
   const success = await doLogin(loginForm.value.email, loginForm.value.password)
@@ -362,15 +378,34 @@ async function handleLogin() {
 }
 
 async function handleRegister() {
+  referralCodeError.value = null
   if (!registerForm.value.agreeTerms) {
     notifyError(t('auth.agree_terms_required'))
     return
+  }
+  const code = registerForm.value.referralCode?.trim()
+  if (code) {
+    if (!REFERRAL_CODE_REGEX.test(code.toUpperCase())) {
+      referralCodeError.value = 'format_error'
+      return
+    }
+    try {
+      const res = await api.validateReferralCode(code)
+      const data = (res?.success && res?.data) ? res.data : res
+      if (!data?.valid) {
+        referralCodeError.value = data?.error || 'not_found'
+        return
+      }
+    } catch (err) {
+      referralCodeError.value = 'not_found'
+      return
+    }
   }
   const success = await doRegister(
     registerForm.value.email,
     registerForm.value.password,
     undefined,
-    registerForm.value.referralCode?.trim()
+    code ? code.toUpperCase() : undefined
   )
   if (success) {
     const token = getToken()
