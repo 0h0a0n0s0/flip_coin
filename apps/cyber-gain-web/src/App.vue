@@ -3,11 +3,13 @@
     <div class="w-full max-w-[500px] min-h-screen bg-[#0B132B] relative overflow-x-hidden">
       <router-view />
     </div>
+    <ToastContainer />
   </div>
 </template>
 
 <script setup>
 import { onMounted } from 'vue'
+import ToastContainer from '@/components/common/ToastContainer.vue'
 import { useAuth } from '@/composables/useAuth.js'
 import { useSocket } from '@/composables/useSocket.js'
 import { getToken } from '@/store/index.js'

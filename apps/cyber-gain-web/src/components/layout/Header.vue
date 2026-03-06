@@ -1,7 +1,8 @@
 <template>
   <header
-    class="absolute top-0 left-0 w-full z-50 bg-gradient-to-b from-black/60 to-transparent py-3 px-4 flex items-center"
+    class="header-floating fixed top-0 left-0 w-full z-50 py-3 px-4 flex items-center"
     :class="isLoggedIn ? 'gap-[100px]' : 'justify-between'"
+    :style="{ backgroundColor: headerBgStyle }"
   >
     <!-- 左側：CG Logo（登入後區塊僅包含圖片本身，無多餘容器空間） -->
     <div
@@ -83,11 +84,40 @@
 </template>
 
 <script setup>
-import { computed } from 'vue'
+import { computed, ref, onMounted, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { state } from '@/store/index.js'
 
 const router = useRouter()
+
+/** 滾動過渡範圍：0px ~ 150px */
+const SCROLL_RANGE = 150
+/** 品牌背景色 Dark Navy #0B132B */
+const BRAND_BG_RGB = '11, 19, 43'
+
+/** 滾動位置對應的 alpha 值 (0~1) */
+const scrollAlpha = ref(0)
+
+/** 根據 scrollAlpha 計算 header 背景色 */
+const headerBgStyle = computed(() => {
+  const alpha = scrollAlpha.value
+  return `rgba(${BRAND_BG_RGB}, ${alpha})`
+})
+
+/** 滾動事件處理：在 0~150px 範圍內線性計算 alpha */
+const handleScroll = () => {
+  const y = typeof window !== 'undefined' ? window.scrollY ?? window.pageYOffset : 0
+  scrollAlpha.value = Math.min(1, Math.max(0, y / SCROLL_RANGE))
+}
+
+onMounted(() => {
+  handleScroll() // 初始化
+  window.addEventListener('scroll', handleScroll, { passive: true })
+})
+
+onUnmounted(() => {
+  window.removeEventListener('scroll', handleScroll)
+})
 
 /** 是否已登入（依 state.currentUser 響應式切換） */
 const isLoggedIn = computed(() => !!state.currentUser)
@@ -128,5 +158,7 @@ const handleBonus = () => {
 </script>
 
 <style scoped>
-/* 如需額外樣式可在此處添加 */
+.header-floating {
+  transition: background-color 0.3s ease;
+}
 </style>

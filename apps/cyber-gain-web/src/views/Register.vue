@@ -28,32 +28,28 @@
         </div>
       </div>
 
+      <!-- 平台 Logo：絕對定位，與首頁 Header 一致（left-4 top-3 = px-4 py-3），不影響下方區塊 -->
+      <div class="absolute left-4 top-3 z-20 flex items-center shrink-0 h-[35px] w-[161px] pointer-events-none">
+        <img src="/images/common/platformLogo.svg" alt="CYBER GAIN" class="h-full w-auto max-w-full object-contain object-left pointer-events-auto" />
+      </div>
+      <button
+        @click="handleClose"
+        class="absolute right-4 top-3 z-20 w-8 h-8 flex items-center justify-center shrink-0"
+        aria-label="返回首頁"
+      >
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+          <path d="M12.535 3.465a.5.5 0 0 1 0 .707l-8.363 8.363a.5.5 0 1 1-.707-.707l8.363-8.363a.5.5 0 0 1 .707 0Z" fill="white"/>
+          <path d="M3.465 3.465a.5.5 0 0 1 .707 0l8.363 8.363a.5.5 0 1 1-.707.707L3.465 4.172a.5.5 0 0 1 0-.707Z" fill="white"/>
+        </svg>
+      </button>
+
       <!-- Main Content Container：flex-1 + min-h-0 + overflow-y-auto，放得下則不出現捲軸；放不下才可滾動 -->
       <div class="relative w-full max-w-[375px] mx-auto flex-1 min-h-0 overflow-y-auto z-10 pb-12 sm:pb-[88px]">
         <!-- Banner Section -->
         <div class="relative h-[200px] w-full">
-          <!-- 移除 Top Gradient Overlay，光晕不影响宝箱和文字 -->
-          
           <!-- Logo Image (centered at ~140px-217px) -->
           <div class="absolute left-[140px] top-[4px] w-[217px] h-[212px]">
             <img src="/images/auth/registerPage-Logo.png" alt="Welcome Bonus" class="w-full h-full object-contain" />
-          </div>
-
-          <!-- Close Button -->
-          <button
-            @click="handleClose"
-            class="absolute right-[12px] top-[12px] w-4 h-4 flex items-center justify-center z-10"
-            aria-label="返回首頁"
-          >
-            <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
-              <path d="M12.535 3.465a.5.5 0 0 1 0 .707l-8.363 8.363a.5.5 0 1 1-.707-.707l8.363-8.363a.5.5 0 0 1 .707 0Z" fill="white"/>
-              <path d="M3.465 3.465a.5.5 0 0 1 .707 0l8.363 8.363a.5.5 0 1 1-.707.707L3.465 4.172a.5.5 0 0 1 0-.707Z" fill="white"/>
-            </svg>
-          </button>
-
-          <!-- Logo (Top Left) -->
-          <div class="absolute left-4 top-[15px] w-[161px] h-[35px]">
-            <img src="/images/common/platformLogo.svg" alt="CYBER GAIN" class="w-full h-full" />
           </div>
 
           <!-- Welcome Text -->
