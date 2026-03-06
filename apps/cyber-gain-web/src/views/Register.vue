@@ -1,7 +1,7 @@
 <template>
-  <!-- Auth 獨立頁（登入/註冊）：依裝置自適應，可完整顯示時無捲軸 -->
+  <!-- Auth 獨立頁（登入/註冊）：畫面區與首頁同寬 max-w-[500px]，居中顯示 -->
   <div
-    class="register-page fixed top-0 left-0 w-full bg-[#0F182F] flex flex-col overscroll-contain"
+    class="register-page fixed top-0 left-1/2 -translate-x-1/2 w-full max-w-[500px] bg-[#0F182F] flex flex-col overscroll-contain"
     style="height: 100dvh; max-height: 100dvh; overscroll-behavior: contain; -webkit-overflow-scrolling: touch;"
   >
       <!-- Background Effects (光晕为最底层，仅底色之上) + Gradient transition -->
@@ -193,8 +193,11 @@
             <!-- Form Fields -->
             <div class="flex flex-col gap-3">
               <!-- 帳號 Input -->
-              <div class="h-[52px] rounded-lg">
-                <div class="h-full flex items-center gap-3 px-3 rounded-[5px] bg-[#0b1223] border border-[#1b2a52] focus-within:border-[#355FD1] transition-colors duration-200">
+              <div class="rounded-lg">
+                <div
+                  class="h-[52px] flex items-center gap-3 px-3 rounded-[5px] bg-[#0b1223] border transition-colors duration-200"
+                  :class="usernameError ? 'border-[#F04248] focus-within:border-[#F04248]' : 'border-[#1b2a52] focus-within:border-[#355FD1]'"
+                >
                   <img src="/images/auth/account.svg" alt="" class="w-4 h-4 flex-shrink-0" />
                   <input
                     v-model="registerForm.email"
@@ -202,13 +205,24 @@
                     placeholder="输入帐号"
                     class="flex-1 bg-transparent border-none outline-none text-white placeholder-[#8a8ca6] text-[14px]"
                     style="font-family: 'Helvetica Neue', sans-serif;"
+                    @input="usernameError = null"
                   />
                 </div>
+                <p
+                  v-if="usernameError"
+                  class="mt-1 text-[14px] text-[#F04248]"
+                  style="font-family: 'Helvetica Neue', sans-serif;"
+                >
+                  {{ t('auth.username_format_error') }}
+                </p>
               </div>
 
               <!-- Password Input -->
-              <div class="h-[52px] rounded-lg">
-                <div class="h-full flex items-center justify-between gap-3 px-3 rounded-[5px] bg-[#0b1223] border border-[#1b2a52] focus-within:border-[#355FD1] transition-colors duration-200">
+              <div class="rounded-lg">
+                <div
+                  class="h-[52px] flex items-center justify-between gap-3 px-3 rounded-[5px] bg-[#0b1223] border transition-colors duration-200"
+                  :class="passwordError ? 'border-[#F04248] focus-within:border-[#F04248]' : 'border-[#1b2a52] focus-within:border-[#355FD1]'"
+                >
                   <div class="flex items-center gap-3">
                     <img src="/images/auth/password.svg" alt="" class="w-4 h-4 flex-shrink-0" />
                     <input
@@ -217,12 +231,20 @@
                       placeholder="输入密码"
                       class="flex-1 bg-transparent border-none outline-none text-white placeholder-[#8a8ca6] text-[14px]"
                       style="font-family: 'Helvetica Neue', sans-serif;"
+                      @input="passwordError = null"
                     />
                   </div>
                   <button @click="showRegisterPassword = !showRegisterPassword" class="flex-shrink-0">
                     <img :src="showRegisterPassword ? '/images/auth/passwordOpen.svg' : '/images/auth/passwordClose.svg'" alt="" class="w-4 h-4" />
                   </button>
                 </div>
+                <p
+                  v-if="passwordError"
+                  class="mt-1 text-[14px] text-[#F04248]"
+                  style="font-family: 'Helvetica Neue', sans-serif;"
+                >
+                  {{ t('auth.password_format_error') }}
+                </p>
               </div>
 
               <!-- Referral Code Input -->
@@ -313,10 +335,6 @@ import { useAuth } from '@/composables/useAuth.js'
 import { useSocket } from '@/composables/useSocket.js'
 import { getToken } from '@/store/index.js'
 import { notifyError } from '@/utils/notify.js'
-import * as api from '@/api/index.js'
-
-// 推薦碼格式：8 位大寫英數字
-const REFERRAL_CODE_REGEX = /^[A-Z0-9]{8}$/
 
 const route = useRoute()
 const router = useRouter()
@@ -365,6 +383,12 @@ const registerForm = ref({
 const showLoginPassword = ref(false)
 const showRegisterPassword = ref(false)
 const referralCodeError = ref(null) // null | 'format_error' | 'not_found'
+const usernameError = ref(null) // 帳號格式錯誤時為 true
+const passwordError = ref(null) // 密碼格式錯誤時為 true
+
+// 註冊格式：帳號 6-32 字，英文大小寫、數字、. _ - @；密碼 8-64 字，允許所有字符
+const REGISTER_USERNAME_REGEX = /^[a-zA-Z0-9._\-@]{6,32}$/
+const REGISTER_PASSWORD_REGEX = /^.{8,64}$/
 
 async function handleLogin() {
   const success = await doLogin(loginForm.value.email, loginForm.value.password)
@@ -379,35 +403,38 @@ async function handleLogin() {
 
 async function handleRegister() {
   referralCodeError.value = null
+  usernameError.value = null
+  passwordError.value = null
   if (!registerForm.value.agreeTerms) {
     notifyError(t('auth.agree_terms_required'))
     return
   }
+  const username = registerForm.value.email?.trim() ?? ''
+  const password = registerForm.value.password ?? ''
+  // 同時檢查帳號、密碼，空值或格式不符皆顯示錯誤樣式
+  const hasUsernameError = !REGISTER_USERNAME_REGEX.test(username)
+  const hasPasswordError = !REGISTER_PASSWORD_REGEX.test(password)
+  if (hasUsernameError) usernameError.value = true
+  if (hasPasswordError) passwordError.value = true
+  if (hasUsernameError || hasPasswordError) return
   const code = registerForm.value.referralCode?.trim()
-  if (code) {
-    if (!REFERRAL_CODE_REGEX.test(code.toUpperCase())) {
-      referralCodeError.value = 'format_error'
-      return
-    }
-    try {
-      const res = await api.validateReferralCode(code)
-      const data = (res?.success && res?.data) ? res.data : res
-      if (!data?.valid) {
-        referralCodeError.value = data?.error || 'not_found'
-        return
-      }
-    } catch (err) {
-      referralCodeError.value = 'not_found'
-      return
-    }
-  }
-  const success = await doRegister(
-    registerForm.value.email,
-    registerForm.value.password,
+  const result = await doRegister(
+    username,
+    password,
     undefined,
     code ? code.toUpperCase() : undefined
   )
-  if (success) {
+  if (result && typeof result === 'object' && !result.success && result.errorType) {
+    if (result.errorType === 'username_format') {
+      usernameError.value = true
+    } else if (result.errorType === 'password_format') {
+      passwordError.value = true
+    } else {
+      referralCodeError.value = result.errorType
+    }
+    return
+  }
+  if (result) {
     const token = getToken()
     if (token) {
       initializeSocket(token)

@@ -13,37 +13,23 @@ export function useAuth() {
 
   /**
    * 处理用户注册
-   * @param {string} username - 帳號（3-20 位英數底線）
-   * @param {string} password - 密碼（6-64 字無空白）
+   * @param {string} username - 帳號（6-32 字，英文大小寫、數字、. _ - @）
+   * @param {string} password - 密碼（8-64 字，允許所有字符）
    * @param {string} [confirmPassword] - 確認密碼（可選，傳入時須與 password 一致）
    * @param {string} [referrerCode] - 推薦碼（可選，註冊成功後會嘗試綁定）
+   * @returns {Promise<boolean|{success: boolean, errorType: string}>} 成功 true；格式錯誤回傳 { success: false, errorType }
    */
   async function handleRegister(username, password, confirmPassword, referrerCode) {
     if (confirmPassword !== undefined && password !== confirmPassword) {
       notifyError(t('notifications.register_failed') + ': ' + t('auth.confirm_password_placeholder'))
       return false
     }
+    // 格式驗證由 Register.vue 在送出前執行，此處不再重複
     const trimmedUsername = (username || '').trim()
-    if (trimmedUsername.length < 3 || trimmedUsername.length > 20) {
-      notifyError(t('auth.username_register_placeholder'))
-      return false
-    }
-    if (!/^[a-zA-Z0-9_]+$/.test(trimmedUsername)) {
-      notifyError(t('auth.username_register_placeholder'))
-      return false
-    }
-    if (!password || password.length < 6 || password.length > 64) {
-      notifyError(t('auth.password_register_placeholder'))
-      return false
-    }
-    if (/\s/.test(password)) {
-      notifyError(t('auth.password_register_placeholder'))
-      return false
-    }
 
     loading.value = true
     try {
-      const response = await api.register(trimmedUsername, password)
+      const response = await api.register(trimmedUsername, password, referrerCode)
       const data = (response && response.success && response.data) ? response.data : response
       const { user, token } = data
 
@@ -67,6 +53,16 @@ export function useAuth() {
 
       return true
     } catch (error) {
+      const errorCode = error.data?.errorCode
+      if (errorCode === 'referral_format_error' || errorCode === 'referral_not_found') {
+        return { success: false, errorType: errorCode === 'referral_format_error' ? 'format_error' : 'not_found' }
+      }
+      if (errorCode === 'username_format') {
+        return { success: false, errorType: 'username_format' }
+      }
+      if (errorCode === 'password_format') {
+        return { success: false, errorType: 'password_format' }
+      }
       if (error.status === 400) {
         notifyWarning(error.message)
       } else if (error.status >= 500) {
@@ -89,7 +85,8 @@ export function useAuth() {
       notifyError(t('auth.username_placeholder') + ' / ' + t('auth.password_placeholder'))
       return false
     }
-    if (trimmedUsername.length < 3 || trimmedUsername.length > 20 || !/^[a-zA-Z0-9_]+$/.test(trimmedUsername)) {
+    // 登入：相容舊帳號 3-32 字，允許 . _ - @
+    if (!/^[a-zA-Z0-9._\-@]{3,32}$/.test(trimmedUsername)) {
       notifyError(t('auth.username_placeholder'))
       return false
     }

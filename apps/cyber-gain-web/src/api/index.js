@@ -111,11 +111,18 @@ async function request(endpoint, options = {}) {
 
 /**
  * 用户注册
+ * @param {string} username - 帳號
+ * @param {string} password - 密碼
+ * @param {string} [referrerCode] - 推薦碼（可選）
  */
-export function register(username, password) {
+export function register(username, password, referrerCode) {
+    const body = { username, password };
+    if (referrerCode && referrerCode.trim()) {
+        body.referrer_code = referrerCode.trim().toUpperCase();
+    }
     return request('/register', {
         method: 'POST',
-        body: JSON.stringify({ username, password }),
+        body: JSON.stringify(body),
     });
 }
 
@@ -223,16 +230,6 @@ export function updateNickname(token, nickname) {
         method: 'PATCH',
         token: token,
         body: JSON.stringify({ nickname }),
-    });
-}
-
-/**
- * 驗證推薦碼（註冊前檢查，無需 token）
- * @returns {Promise<{ valid: boolean, error?: 'format_error' | 'not_found' }>}
- */
-export function validateReferralCode(code) {
-    return request(`/validate-referral?code=${encodeURIComponent((code || '').trim())}`, {
-        method: 'GET'
     });
 }
 

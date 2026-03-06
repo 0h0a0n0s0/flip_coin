@@ -8,9 +8,19 @@
 
 <script setup>
 import { onMounted } from 'vue'
+import { useAuth } from '@/composables/useAuth.js'
+import { useSocket } from '@/composables/useSocket.js'
+import { getToken } from '@/store/index.js'
 
-onMounted(() => {
+onMounted(async () => {
   console.log('[Cyber Gain Web] 應用已啟動')
+  const { autoLogin } = useAuth()
+  const { initializeSocket } = useSocket()
+  await autoLogin()
+  const token = getToken()
+  if (token) {
+    initializeSocket(token)
+  }
 })
 </script>
 

@@ -5,6 +5,7 @@ const jwt = require('jsonwebtoken');
 const { sendError, sendSuccess } = require('../../utils/safeResponse');
 const { registerRateLimiter, loginRateLimiter } = require('../../middleware/rateLimiter');
 const { validateRegisterInput, validateLoginInput } = require('../../validators/authValidators');
+const { validateReferrerCodeIfPresent } = require('../../middleware/validateReferrerCode');
 const { enforceSameIpRiskControl } = require('../../services/riskControlService');
 const UserService = require('../../services/UserService');
 
@@ -14,8 +15,8 @@ const UserService = require('../../services/UserService');
  * @param {Object} passport - Passport 實例
  */
 function authRoutes(router, passport) {
-    // POST /api/v1/register - 用戶註冊
-    router.post('/api/v1/register', registerRateLimiter, validateRegisterInput, (req, res, next) => {
+    // POST /api/v1/register - 用戶註冊（含推薦碼驗證）
+    router.post('/api/v1/register', registerRateLimiter, validateRegisterInput, validateReferrerCodeIfPresent, (req, res, next) => {
         passport.authenticate('local-signup', { session: false }, async (err, user, info) => {
             if (err) return next(err);
             if (!user) return sendError(res, 400, info.message || '注册失败。');

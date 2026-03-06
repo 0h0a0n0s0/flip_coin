@@ -1,25 +1,30 @@
 const { sendError } = require('../utils/safeResponse');
 
-const USERNAME_REGEX = /^[a-zA-Z0-9_]{3,20}$/;
-const PASSWORD_REGEX = /^[\S]{6,64}$/;
+// 註冊：帳號 6-32 字，英文大小寫、數字、. _ - @
+const REGISTER_USERNAME_REGEX = /^[a-zA-Z0-9._\-@]{6,32}$/;
+// 註冊：密碼 8-64 字，允許所有字符
+const REGISTER_PASSWORD_REGEX = /^.{8,64}$/;
+// 登入：相容舊帳號格式（3-32 字）
+const LOGIN_USERNAME_REGEX = /^[a-zA-Z0-9._\-@]{3,32}$/;
+const LOGIN_PASSWORD_REGEX = /^[\S]{6,64}$/;
 const TRON_ADDRESS_REGEX = /^T[1-9A-HJ-NP-Za-km-z]{25,34}$/;
 
-function validateUsername(username) {
-    return USERNAME_REGEX.test(username || '');
+function validateRegisterUsername(username) {
+    return REGISTER_USERNAME_REGEX.test(username || '');
 }
 
-function validatePassword(password) {
-    return PASSWORD_REGEX.test(password || '');
+function validateRegisterPassword(password) {
+    return REGISTER_PASSWORD_REGEX.test(password || '');
 }
 
 function validateRegisterInput(req, res, next) {
     const { username, password } = req.body || {};
 
-    if (!validateUsername(username)) {
-        return sendError(res, 400, '帳號需為 3-20 位字母、數字或底線。');
+    if (!validateRegisterUsername(username)) {
+        return sendError(res, 400, '帳號需為 6-32 字，僅限英文、數字及 . _ - @', { errorCode: 'username_format' });
     }
-    if (!validatePassword(password)) {
-        return sendError(res, 400, '密碼長度需介於 6-64 字元，且不可包含空白。');
+    if (!validateRegisterPassword(password)) {
+        return sendError(res, 400, '密碼需為 8-64 字', { errorCode: 'password_format' });
     }
 
     next();
@@ -28,10 +33,10 @@ function validateRegisterInput(req, res, next) {
 function validateLoginInput(req, res, next) {
     const { username, password } = req.body || {};
 
-    if (!validateUsername(username)) {
+    if (!LOGIN_USERNAME_REGEX.test(username || '')) {
         return sendError(res, 400, '請輸入有效的帳號。');
     }
-    if (!validatePassword(password)) {
+    if (!LOGIN_PASSWORD_REGEX.test(password || '')) {
         return sendError(res, 400, '請輸入有效的密碼。');
     }
 
@@ -60,7 +65,7 @@ function validateWithdrawalInput(req, res, next) {
         return sendError(res, 400, '提款金額最多允許 2 位小數。');
     }
 
-    if (!validatePassword(withdrawal_password)) {
+    if (!LOGIN_PASSWORD_REGEX.test(withdrawal_password || '')) {
         return sendError(res, 400, '提款密碼格式無效。');
     }
 
