@@ -21,8 +21,11 @@ COPY apps/cyber-gain-web/package.json ./apps/cyber-gain-web/package.json
 # 設置 CI 環境變數，避免 pnpm 在 Docker 中的 TTY 問題
 ENV CI=true
 
-RUN pnpm fetch --registry=https://registry.npmmirror.com || true
-RUN pnpm install --frozen-lockfile --prefer-offline --registry=https://registry.npmmirror.com
+# 使用 BuildKit 快取 pnpm store，加速重建（需 DOCKER_BUILDKIT=1）
+RUN --mount=type=cache,id=pnpm,target=/root/.local/share/pnpm/store \
+    pnpm fetch --registry=https://registry.npmmirror.com || true
+RUN --mount=type=cache,id=pnpm,target=/root/.local/share/pnpm/store \
+    pnpm install --frozen-lockfile --prefer-offline --registry=https://registry.npmmirror.com
 
 # ===== 第四層：複製源碼並構建 =====
 COPY apps/cyber-gain-web ./apps/cyber-gain-web

@@ -19,8 +19,11 @@ COPY apps/cyber-gain-web/package.json ./apps/cyber-gain-web/package.json
 
 # 安裝依賴（開發環境，不使用 frozen-lockfile）
 ENV CI=true
-RUN pnpm fetch --registry=https://registry.npmmirror.com || true
-RUN pnpm install --no-frozen-lockfile --prefer-offline --registry=https://registry.npmmirror.com
+# 使用 BuildKit 快取 pnpm store，加速重建（需 DOCKER_BUILDKIT=1）
+RUN --mount=type=cache,id=pnpm,target=/root/.local/share/pnpm/store \
+    pnpm fetch --registry=https://registry.npmmirror.com || true
+RUN --mount=type=cache,id=pnpm,target=/root/.local/share/pnpm/store \
+    pnpm install --no-frozen-lockfile --prefer-offline --registry=https://registry.npmmirror.com
 
 # 切換到 cyber-gain-web 目錄
 WORKDIR /usr/src/app/apps/cyber-gain-web

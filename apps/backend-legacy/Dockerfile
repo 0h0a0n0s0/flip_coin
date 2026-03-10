@@ -28,8 +28,11 @@ ENV CI=true
 # 使用 pnpm fetch + install 組合以優化速度
 # --frozen-lockfile: 確保使用 lockfile 中的精確版本（如果存在）
 # --shamefully-hoist: 確保所有依賴都在根 node_modules 中
-RUN pnpm fetch --registry=https://registry.npmmirror.com || true
-RUN pnpm install --shamefully-hoist --frozen-lockfile --prefer-offline --registry=https://registry.npmmirror.com
+# 使用 BuildKit 快取 pnpm store，加速重建（需 DOCKER_BUILDKIT=1）
+RUN --mount=type=cache,id=pnpm,target=/root/.local/share/pnpm/store \
+    pnpm fetch --registry=https://registry.npmmirror.com || true
+RUN --mount=type=cache,id=pnpm,target=/root/.local/share/pnpm/store \
+    pnpm install --shamefully-hoist --frozen-lockfile --prefer-offline --registry=https://registry.npmmirror.com
 
 # ===== 第四層：複製源碼（這一層會頻繁變動，但不會影響上面的緩存）=====
 COPY packages/database ./packages/database

@@ -13,8 +13,17 @@ const state = reactive({
   isBetting: false,
   gamesCache: null, // 遊戲列表緩存
   gamesCacheTimestamp: null, // 緩存時間戳（用於判斷是否需要刷新）
-  platformName: null // 平台名稱緩存
+  platformName: null, // 平台名稱緩存
+  showDepositModal: false // 充值 BottomSheet 顯示狀態（與餘額彈窗同結構，遮罩後為當前頁面）
 })
+
+export function openDepositModal() {
+  state.showDepositModal = true
+}
+
+export function closeDepositModal() {
+  state.showDepositModal = false
+}
 
 /**
  * 获取 JWT Token

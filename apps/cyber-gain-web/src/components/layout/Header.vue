@@ -58,9 +58,7 @@
           @click="handleDeposit"
           aria-label="充值"
         >
-          <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
-            <path d="M8 3v10M4 7h8" stroke="currentColor" stroke-width="2" stroke-linecap="round" />
-          </svg>
+          <img src="/images/common/plus.svg" alt="" class="w-[22px] h-[22px] object-contain" aria-hidden="true" />
         </button>
       </div>
 
@@ -186,6 +184,12 @@
         </div>
       </Transition>
     </Teleport>
+
+    <!-- 充值內容區塊：與餘額彈窗同結構，點擊黃色方框向上展出，遮罩後方為當前頁面（首頁等） -->
+    <DepositSheet
+      :model-value="state.showDepositModal"
+      @update:model-value="(v) => (state.showDepositModal = v)"
+    />
   </header>
 </template>
 
@@ -194,6 +198,7 @@ import { computed, ref, onMounted, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { state } from '@/store/index.js'
 import { formatBalance } from '@/utils/format.js'
+import DepositSheet from '@/components/deposit/DepositSheet.vue'
 
 const router = useRouter()
 
@@ -298,8 +303,7 @@ const handleRegister = () => {
 }
 
 const handleDeposit = () => {
-  // TODO: 開啟充值彈窗或導向充值頁
-  console.log('[Header] 充值')
+  router.push('/wallet/deposit')
 }
 
 const handleAvatar = () => {
