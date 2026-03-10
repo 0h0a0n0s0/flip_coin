@@ -7,8 +7,12 @@
         <div
           v-for="item in toastState.items"
           :key="item.id"
-          class="toast-item flex items-center gap-3 min-h-[56px] py-3 px-4 rounded-xl border-[1.5px] bg-[#0B132B] text-white font-bold text-base pointer-events-auto transition-all duration-300"
+          class="toast-item flex items-center gap-3 min-h-[56px] py-3 px-4 rounded-xl border-[1.5px] bg-[#0B132B] text-white font-bold text-base pointer-events-auto transition-all duration-300 cursor-pointer"
           :class="borderClass(item.type)"
+          @click="removeToast(item.id)"
+          role="button"
+          tabindex="0"
+          @keydown.enter="removeToast(item.id)"
         >
           <img
             :src="iconSrc(item.type)"
@@ -23,7 +27,7 @@
 </template>
 
 <script setup>
-import { toastState } from '@/store/toast.js'
+import { toastState, removeToast } from '@/store/toast.js'
 
 const ICONS = {
   success: '/images/common/healthy.svg',

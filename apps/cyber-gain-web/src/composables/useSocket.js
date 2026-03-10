@@ -6,6 +6,7 @@ import { useI18n } from 'vue-i18n'
 import { io } from 'socket.io-client'
 import { getToken, getCurrentUser, setCurrentUser, setSocket, getSocket, getBettingState, clearState } from '@/store/index.js'
 import { notifySuccess, notifyError } from '@/utils/notify.js'
+import { formatBalance } from '@/utils/format.js'
 
 export function useSocket() {
   let socket = null
@@ -60,7 +61,7 @@ export function useSocket() {
         
         // 只有在非下注状态 且 余额真的变动时 才弹出提示
         if (!getBettingState() && oldBalance !== fullUser.balance) {
-          notifySuccess(t('notifications.bet_success') + ` (${t('wallet.available_balance')}: ${parseFloat(fullUser.balance).toFixed(2)} USDT)`)
+          notifySuccess(t('notifications.bet_success') + ` (${t('wallet.available_balance')}: ${formatBalance(fullUser.balance)} USDT)`)
         }
         
         if (callbacks.onUserUpdated) {
